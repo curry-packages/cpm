@@ -39,7 +39,6 @@ module CPM.Package
   ) where
 
 import Char
-import Directory (doesFileExist)
 import List (intercalate, isInfixOf)
 import FilePath ((</>))
 import SetFunctions
@@ -52,6 +51,7 @@ import DetParse
 import Read (readInt)
 
 import CPM.ErrorLogger
+import CPM.FileUtil (ifFileExists)
 
 --- A Version. Tuple components are major, minor, patch, prerelease, e.g.
 --- 3.1.1-rc5
@@ -95,9 +95,10 @@ data PackageId = PackageId String Version
 data PackageExecutable = PackageExecutable String String
 
 --- The specification of a test suite for a package.
---- It consists of a list of directories to be included in the
---- load path and a list of modules to be tested.
-data PackageTests = PackageTests [String] [String]
+--- It consists of a list of directory/modules pairs.
+--- Each pair specifies a test which is performed in the given directoy
+--- by running CurryCheck on the given list of modules.
+data PackageTests = PackageTests [(String,[String])]
 
 --- A source where the contents of a package can be acquired.
 --- @cons Http - URL to a ZIP file 
@@ -136,6 +137,7 @@ data Package = Package {
   , compilerCompatibility :: [CompilerCompatibility]
   , source                :: Maybe PackageSource
   , exportedModules       :: [String]
+  , configModule          :: Maybe String
   , executableSpec        :: Maybe PackageExecutable
   , testSuite             :: Maybe PackageTests
   }
@@ -160,6 +162,7 @@ emptyPackage = Package {
   , compilerCompatibility = []
   , source                = Nothing
   , exportedModules       = []
+  , configModule          = Nothing
   , executableSpec        = Nothing
   , testSuite             = Nothing
   }
@@ -191,15 +194,14 @@ writePackageSpec pkg file = writeFile file $ ppJSON $ packageSpecToJSON pkg
 --- @param the directory containing the package.json file
 loadPackageSpec :: String -> IO (ErrorLogger Package)
 loadPackageSpec dir = do
-  exists <- doesFileExist packageFile
-  if exists
-    then do
-      contents <- readFile packageFile
-      case readPackageSpec contents of
-        Left err -> failIO err
-        Right v  -> succeedIO v
-    else failIO $ "Illegal package: file `package.json' does not exist!"
-    where packageFile = dir </> "package.json"
+  let packageFile = dir </> "package.json"
+  ifFileExists packageFile
+    (do debugMessage $ "Reading package specification '" ++ packageFile ++ "'..."
+        contents <- readFile packageFile
+        case readPackageSpec contents of
+          Left err -> failIO err
+          Right v  -> succeedIO v )
+    (failIO $ "Illegal package: file `package.json' does not exist!")
 
 --- Checks whether two package ids are equal, i.e. if their names and versions
 --- match.
@@ -312,7 +314,7 @@ showVersionConstraint (VCompatible v) = " ~> " ++ (showVersion v)
 --- Renders the id of a package as a string. Package name and version separated
 --- by a dash.
 packageId :: Package -> String
-packageId p = (name p) ++ "-" ++ (showVersion $ version p)
+packageId p = name p ++ "-" ++ showVersion (version p)
 
 --- Reads a package spec from a JSON string.
 readPackageSpec :: String -> Either String Package
@@ -324,19 +326,21 @@ readPackageSpec s = case parseJSON s of
 
 --- Reads a package spec from the key-value-pairs of a JObject.
 packageSpecFromJObject :: [(String, JValue)] -> Either String Package
-packageSpecFromJObject kv = mandatoryString "name" $ \name ->
-  mandatoryString "version" $ \versionS ->
-  mandatoryString "author" $ \author ->
-  optionalString "maintainer" $ \maintainer ->
-  mandatoryString "synopsis" $ \synopsis ->
-  optionalString "description" $ \description ->
+packageSpecFromJObject kv =
+  mandatoryString "name" kv $ \name ->
+  mandatoryString "version" kv $ \versionS ->
+  mandatoryString "author" kv $ \author ->
+  optionalString "maintainer" kv $ \maintainer ->
+  mandatoryString "synopsis" kv $ \synopsis ->
+  optionalString "description" kv $ \description ->
   getStringList "A category" "category" $ \categories ->
-  optionalString "license" $ \license ->
-  optionalString "licenseFile" $ \licenseFile ->
-  optionalString "copyright" $ \copyright ->
-  optionalString "homepage" $ \homepage ->
-  optionalString "bugReports" $ \bugReports ->
-  optionalString "repository" $ \repository ->
+  optionalString "license" kv $ \license ->
+  optionalString "licenseFile" kv $ \licenseFile ->
+  optionalString "copyright" kv $ \copyright ->
+  optionalString "homepage" kv $ \homepage ->
+  optionalString "bugReports" kv $ \bugReports ->
+  optionalString "repository" kv $ \repository ->
+  optionalString "configModule" kv $ \configModule ->
   mustBeVersion versionS $ \version ->
   getDependencies $ \dependencies ->
   getSource $ \source ->
@@ -362,35 +366,11 @@ packageSpecFromJObject kv = mandatoryString "name" $ \name ->
     , compilerCompatibility = compilerCompatibility
     , source = source
     , exportedModules = exportedModules
+    , configModule    = configModule
     , executableSpec  = executable
     , testSuite       = testsuite
     }
   where
-    mandatoryString :: String -> (String -> Either String a) -> Either String a
-    mandatoryString k f = case lookup k kv of
-      Nothing -> Left $ "Mandatory field missing: '" ++ k ++ "'"
-      Just (JString s) -> f s
-      Just (JObject _) -> Left $ "Expected a string, got an object" ++ forKey
-      Just (JArray _) -> Left $ "Expected a string, got an array" ++ forKey
-      Just (JNumber _) -> Left $ "Expected a string, got a number" ++ forKey
-      Just JTrue -> Left $ "Expected a string, got 'true'" ++ forKey
-      Just JFalse -> Left $ "Expected a string, got 'false'" ++ forKey
-      Just JNull -> Left $ "Expected a string, got 'null'" ++ forKey
-     where forKey = " for key '" ++ k ++ "'"
-     
-    optionalString :: String -> (Maybe String -> Either String a)
-                   -> Either String a
-    optionalString k f = case lookup k kv of
-      Nothing -> f Nothing
-      Just (JString s) -> f (Just s)
-      Just (JObject _) -> Left $ "Expected a string, got an object" ++ forKey
-      Just (JArray _) -> Left $ "Expected a string, got an array" ++ forKey
-      Just (JNumber _) -> Left $ "Expected a string, got a number" ++ forKey
-      Just JTrue -> Left $ "Expected a string, got 'true'" ++ forKey
-      Just JFalse -> Left $ "Expected a string, got 'false'" ++ forKey
-      Just JNull -> Left $ "Expected a string, got 'null'" ++ forKey
-     where forKey = " for key '" ++ k ++ "'"
-      
     mustBeVersion :: String -> (Version -> Either String a) -> Either String a
     mustBeVersion s f = case readVersion s of
       Nothing -> Left $ "'" ++ s ++ "' is not a valid version specification."
@@ -410,7 +390,8 @@ packageSpecFromJObject kv = mandatoryString "name" $ \name ->
       Just JNull       -> Left $ "Expected an object, got 'null'"   ++ forKey
      where forKey = " for key 'dependencies'"
 
-    getCompilerCompatibility :: ([CompilerCompatibility] -> Either String a) -> Either String a
+    getCompilerCompatibility :: ([CompilerCompatibility] -> Either String a)
+                             -> Either String a
     getCompilerCompatibility f = case lookup "compilerCompatibility" kv of
       Nothing -> f []
       Just (JObject ds) -> case compilerCompatibilityFromJObject ds of
@@ -469,16 +450,45 @@ packageSpecFromJObject kv = mandatoryString "name" $ \name ->
 
     getTestSuite :: (Maybe PackageTests -> Either String a) -> Either String a
     getTestSuite f = case lookup "testsuite" kv of
-      Nothing -> f Nothing
+      Nothing          -> f Nothing
       Just (JObject s) -> case testSuiteFromJObject s of Left  e  -> Left e
                                                          Right s' -> f (Just s')
+      Just (JArray  a) -> case testSuiteFromJArray a of
+                            Left  e  -> Left e
+                            Right s' -> f (Just s')
       Just (JString _) -> Left $ "Expected an object, got a string" ++ forKey
-      Just (JArray  _) -> Left $ "Expected an object, got an array" ++ forKey
       Just (JNumber _) -> Left $ "Expected an object, got a number" ++ forKey
       Just JTrue       -> Left $ "Expected an object, got 'true'"   ++ forKey
       Just JFalse      -> Left $ "Expected an object, got 'false'"  ++ forKey
       Just JNull       -> Left $ "Expected an object, got 'null'"   ++ forKey
      where forKey = " for key 'testsuite'"
+
+
+mandatoryString :: String -> [(String, JValue)]
+                -> (String -> Either String a) -> Either String a
+mandatoryString k kv f = case lookup k kv of
+  Nothing -> Left $ "Mandatory field missing: '" ++ k ++ "'"
+  Just (JString s) -> f s
+  Just (JObject _) -> Left $ "Expected a string, got an object" ++ forKey
+  Just (JArray _)  -> Left $ "Expected a string, got an array" ++ forKey
+  Just (JNumber _) -> Left $ "Expected a string, got a number" ++ forKey
+  Just JTrue       -> Left $ "Expected a string, got 'true'" ++ forKey
+  Just JFalse      -> Left $ "Expected a string, got 'false'" ++ forKey
+  Just JNull       -> Left $ "Expected a string, got 'null'" ++ forKey
+ where forKey = " for key '" ++ k ++ "'"
+     
+optionalString :: String -> [(String, JValue)]
+               -> (Maybe String -> Either String a) -> Either String a
+optionalString k kv f = case lookup k kv of
+  Nothing -> f Nothing
+  Just (JString s) -> f (Just s)
+  Just (JObject _) -> Left $ "Expected a string, got an object" ++ forKey
+  Just (JArray _)  -> Left $ "Expected a string, got an array" ++ forKey
+  Just (JNumber _) -> Left $ "Expected a string, got a number" ++ forKey
+  Just JTrue       -> Left $ "Expected a string, got 'true'" ++ forKey
+  Just JFalse      -> Left $ "Expected a string, got 'false'" ++ forKey
+  Just JNull       -> Left $ "Expected a string, got 'null'" ++ forKey
+ where forKey = " for key '" ++ k ++ "'"
 
 test_specFromJObject_mandatoryFields :: Test.EasyCheck.Prop
 test_specFromJObject_mandatoryFields =
@@ -501,11 +511,12 @@ test_specFromJObject_minimalSpec =
        test x = author p == "me" && name p == "mypackage"
           where p = (head . rights) [x]
 
---- Reads the list of exported modules from a list of JValues.
+--- Reads a list of strings from a list of JValues.
 stringsFromJArray :: String -> [JValue] -> Either String [String]
-stringsFromJArray ekind a = if any isLeft strings
-  then Left $ head $ lefts strings
-  else Right $ rights strings
+stringsFromJArray ekind a =
+  if any isLeft strings
+    then Left $ head $ lefts strings
+    else Right $ rights strings
  where
   strings = map extractString a
   extractString s = case s of
@@ -518,17 +529,20 @@ dependenciesFromJObject :: [(String, JValue)] -> Either String [Dependency]
 dependenciesFromJObject kv = if any isLeft dependencies
   then Left $ intercalate "; " (lefts dependencies)
   else Right $ rights dependencies
-  where
-    dependencies = map buildDependency kv
-    buildDependency (pkg, JString vc) = case readVersionConstraints vc of
-      Nothing -> Left $ "Invalid constraint '" ++ vc ++ "' for package '" ++ pkg ++ "'"
-      Just v -> Right $ Dependency pkg v
-    buildDependency (_,   JObject  _) = Left "Version constraint must be a string"
-    buildDependency (_,   JArray   _) = Left "Version constraint must be a string"
-    buildDependency (_,   JNumber  _) = Left "Version constraint must be a string"
-    buildDependency (_,   JTrue     ) = Left "Version constraint must be a string"
-    buildDependency (_,   JFalse    ) = Left "Version constraint must be a string"
-    buildDependency (_,   JNull     ) = Left "Version constraint must be a string"
+ where
+  dependencies = map buildDependency kv
+  buildDependency (pkg, JString vc) = case readVersionConstraints vc of
+    Nothing -> Left $ "Invalid constraint '" ++ vc ++ "' for package '" ++
+                       pkg ++ "'"
+    Just v -> Right $ Dependency pkg v
+  buildDependency (_,   JObject  _) = wrongVersionConstraint
+  buildDependency (_,   JArray   _) = wrongVersionConstraint
+  buildDependency (_,   JNumber  _) = wrongVersionConstraint
+  buildDependency (_,   JTrue     ) = wrongVersionConstraint
+  buildDependency (_,   JFalse    ) = wrongVersionConstraint
+  buildDependency (_,   JNull     ) = wrongVersionConstraint
+
+  wrongVersionConstraint = Left "Version constraint must be a string"
 
 --- Reads the compiler compatibility constraints of a package from the 
 --- key-value-pairs of a JObject.
@@ -539,14 +553,17 @@ compilerCompatibilityFromJObject kv = if any isLeft compilerCompats
  where
   compilerCompats = map buildCompilerCompat kv
   buildCompilerCompat (c, JString vc) = case readVersionConstraints vc of
-    Nothing -> Left $ "Invalid constraint '" ++ vc ++ "' for compiler '" ++ c ++ "'"
+    Nothing -> Left $ "Invalid constraint '" ++ vc ++ "' for compiler '" ++
+                      c ++ "'"
     Just  v -> Right $ CompilerCompatibility c v
-  buildCompilerCompat (_, JObject  _) = Left "Version constraint must be a string"
-  buildCompilerCompat (_, JArray   _) = Left "Version constraint must be a string"
-  buildCompilerCompat (_, JNumber  _) = Left "Version constraint must be a string"
-  buildCompilerCompat (_, JTrue     ) = Left "Version constraint must be a string"
-  buildCompilerCompat (_, JFalse    ) = Left "Version constraint must be a string"
-  buildCompilerCompat (_, JNull     ) = Left "Version constraint must be a string"
+  buildCompilerCompat (_, JObject  _) = wrongVersionConstraint
+  buildCompilerCompat (_, JArray   _) = wrongVersionConstraint
+  buildCompilerCompat (_, JNumber  _) = wrongVersionConstraint
+  buildCompilerCompat (_, JTrue     ) = wrongVersionConstraint
+  buildCompilerCompat (_, JFalse    ) = wrongVersionConstraint
+  buildCompilerCompat (_, JNull     ) = wrongVersionConstraint
+
+  wrongVersionConstraint = Left "Version constraint must be a string"
 
 --- Read source specification from the key-value-pairs of a JObject.
 sourceFromJObject :: [(String, JValue)] -> Either String PackageSource
@@ -572,23 +589,33 @@ revisionFromJObject kv = case lookup "tag" kv of
     else Right $ Just $ Tag tag
   Just _             -> Left "Tag expects string"
 
---- Read executable specification from the key-value-pairs of a JObject.
+--- Reads executable specification from the key-value-pairs of a JObject.
 execSpecFromJObject :: [(String, JValue)] -> Either String PackageExecutable
-execSpecFromJObject kv = case lookup "name" kv of
-  Nothing -> Left $ "Name of executable not provided"
-  Just (JString name) -> case lookup "main" kv of
-    Nothing             -> Right $ PackageExecutable name "Main"
-    Just (JString main) -> Right $ PackageExecutable name main
-    Just _  -> Left $ "Main module of executable must be a string"
-  Just _ -> Left "Name of executable must be a string"
+execSpecFromJObject kv =
+  mandatoryString "name"       kv $ \name ->
+  optionalString  "main"       kv $ \main ->
+  Right $ PackageExecutable name (maybe "" id main)
 
---- Read a test suite specification from the key-value-pairs of a JObject.
+--- Reads a test suite specification from the key-value-pairs of a JObject.
 testSuiteFromJObject :: [(String, JValue)] -> Either String PackageTests
-testSuiteFromJObject kv = case getOptStringList True "src-dir" kv of
-  Left e -> Left e
-  Right dirs -> case getOptStringList False "module" kv of
-                  Left e -> Left e
-                  Right mods -> Right (PackageTests dirs mods)
+testSuiteFromJObject kv =
+  mandatoryString "src-dir" kv $ \dir ->
+  case getOptStringList False "module" kv of
+    Left e     -> Left e
+    Right mods -> Right (PackageTests [(dir,mods)])
+
+--- Reads the list of testsuites from a list of JValues (testsuite objects).
+testSuiteFromJArray :: [JValue] -> Either String PackageTests
+testSuiteFromJArray a =
+  if any isLeft tests
+    then Left $ head $ lefts tests
+    else Right $ PackageTests (concatMap (\ (PackageTests t) -> t)
+                                         (rights tests))
+ where
+  tests = map extractTests a
+  extractTests s = case s of
+    JObject o -> testSuiteFromJObject o
+    _         -> Left "Array element must be a testsuite object"
 
 --- Reads an (optional) key with a string list value.
 getOptStringList :: Bool -> String -> [(String, JValue)]

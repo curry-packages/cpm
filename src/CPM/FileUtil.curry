@@ -17,15 +17,18 @@ module CPM.FileUtil
   , inDirectory
   , recreateDirectory
   , removeDirectoryComplete
+  , safeReadFile, checkAndGetDirectoryContents
+  , whenFileExists, ifFileExists
   ) where
 
-import Directory ( doesFileExist, getCurrentDirectory, setCurrentDirectory
+import Directory ( doesFileExist, doesDirectoryExist, getCurrentDirectory
+                 , setCurrentDirectory, getDirectoryContents
                  , getTemporaryDirectory, doesDirectoryExist, createDirectory
                  , createDirectoryIfMissing)
-import System    (system, getEnviron)
-import IOExts    (evalCmd)
-import FilePath  (FilePath, replaceFileName, (</>), searchPathSeparator)
-import List      (intercalate, splitOn)
+import System    ( system, getEnviron, exitWith )
+import IOExts    ( evalCmd, readCompleteFile )
+import FilePath  ( FilePath, replaceFileName, (</>), searchPathSeparator )
+import List      ( intercalate, splitOn )
 
 --- Joins a list of directories into a search path.
 joinSearchPath :: [FilePath] -> String
@@ -90,12 +93,12 @@ tempDir = do
 --- directory.
 inTempDir :: IO b -> IO b
 inTempDir b = do
-  t <- getTemporaryDirectory
-  exists <- doesDirectoryExist (t </> "cpm")
+  t <- tempDir
+  exists <- doesDirectoryExist t
   if exists
     then return ()
-    else createDirectory (t </> "cpm")
-  inDirectory (t </> "cpm") b
+    else createDirectory t
+  inDirectory t b
 
 --- Executes an IO action with the current directory set to a specific 
 --- directory.
@@ -119,3 +122,31 @@ removeDirectoryComplete :: String -> IO ()
 removeDirectoryComplete dir = do
   exists <- doesDirectoryExist dir
   when exists $ system ("rm -Rf " ++ quote dir) >> done
+
+--- Reads the complete contents of a file and catches any error
+--- (which is returned).
+safeReadFile :: String -> IO (Either IOError String)
+safeReadFile fname = do
+  catch (readCompleteFile fname >>= return . Right)
+        (return . Left)
+
+--- Returns the list of all entries in a directory and terminates with
+--- an error message if the directory does not exist.
+checkAndGetDirectoryContents :: FilePath -> IO [FilePath]
+checkAndGetDirectoryContents dir = do
+  exdir <- doesDirectoryExist dir
+  if exdir then getDirectoryContents dir
+           else do putStrLn $ "ERROR: Directory '" ++ dir ++ "' does not exist!"
+                   exitWith 1
+
+--- Performs an action when a file exists.
+whenFileExists :: FilePath -> IO () -> IO ()
+whenFileExists fname act = do
+  exfile <- doesFileExist fname
+  when exfile act
+
+--- Performs one of two actions depending on the existence of a file.
+ifFileExists :: FilePath -> IO a -> IO a -> IO a
+ifFileExists fname thenact elseact = do
+  exfile <- doesFileExist fname
+  if exfile then thenact else elseact

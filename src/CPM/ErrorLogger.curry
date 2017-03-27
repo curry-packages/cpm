@@ -18,6 +18,7 @@ module CPM.ErrorLogger
   , failIO
   , log
   , showLogEntry
+  , infoMessage, debugMessage
   ) where
 
 import Global
@@ -175,3 +176,11 @@ log lvl msg =
       return $ ([LogEntry lvl msg], Right ())
  where
   showTime t = show (t `div` 1000) ++ "." ++ show ((t `mod` 1000) `div` 10)
+
+--- Prints an info message in the standard IO monad.
+infoMessage :: String -> IO ()
+infoMessage msg = (log Info msg |> succeedIO ()) >> done
+
+--- Prints a debug message in the standard IO monad.
+debugMessage :: String -> IO ()
+debugMessage msg = (log Debug msg |> succeedIO ()) >> done
