@@ -7,16 +7,17 @@ This repository contains the Curry package manager (CPM).
 To build the Curry package manager, you need to run `make` inside this 
 directory. The `Makefile` assumes that the `curry` executable and `git` are on
 your path. If the build was successful, a `cpm` binary will be placed in the 
-`bin` directory. Put this binary somewhere on your path. Afterwards, run 
+directory `~/.cpm/bin` (which is also the directory where CPM installs
+binaries of tools distributed in packages). Therefore, you should
+add this directory to your path. Afterwards, run 
 `cpm update` to clone a copy of the central package index repository. More 
-information can be found in the manual, see the `doc` directory.
+information can be found in the manual, see the `docs` directory.
 
 ## Documentation
 
 Use `make manual` to generate a PDF version of the manual. A working LaTeX 
 installation is required. `make doc` generates the CurryDoc documentation for
-the CPM source code in the `cdoc` directory. You need a CurryDoc installation
-containing [this patch][1].
+the CPM source code in the `cdoc` directory.
 
 ## Contributing
 
@@ -68,5 +69,3 @@ A good set of packages to start with is the following:
 - `karma-1.2.0` has 1,850 dependencies available in 24,264 different versions.
   Currently, the resolution algorithm is too slow and does not arrive at a 
   solution in a reasonable timeframe.
- 
-[1]: https://git.ps.informatik.uni-kiel.de/curry/curry-tools/merge_requests/1
