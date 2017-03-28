@@ -594,7 +594,7 @@ execSpecFromJObject :: [(String, JValue)] -> Either String PackageExecutable
 execSpecFromJObject kv =
   mandatoryString "name"       kv $ \name ->
   optionalString  "main"       kv $ \main ->
-  Right $ PackageExecutable name (maybe "" id main)
+  Right $ PackageExecutable name (maybe "Main" id main)
 
 --- Reads a test suite specification from the key-value-pairs of a JObject.
 testSuiteFromJObject :: [(String, JValue)] -> Either String PackageTests

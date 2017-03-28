@@ -1,18 +1,24 @@
 {
     "name": "cpm",
-    "version": "0.0.2",
+    "version": "0.0.3",
     "author": "Jonas Oberschweiber, Michael Hanus",
     "maintainer": "Michael Hanus <mh@informatik.uni-kiel.de>",
     "synopsis": "Curry Package Manager: a tool to distribute and install Curry libraries and applications",
     "category": [ "Package" ],
     "dependencies": {
-        "det-parse": ">= 0.0.1",
-        "opt-parse": ">= 0.0.3",
-        "boxes": ">= 0.0.2",
-        "json": ">= 0.0.2"
+        "det-parse"    : ">= 0.0.1",
+        "opt-parse"    : ">= 0.0.3",
+        "boxes"        : ">= 0.0.2",
+        "json"         : ">= 0.0.2",
+        "cass-analysis": ">= 0.0.3",
+        "cass"         : ">= 0.0.1"
     },
-  "source": {
-      "git": "https://git.ps.informatik.uni-kiel.de/curry-packages/cpm.git",
-      "tag": "$version"
-  }
+    "executable": {
+        "name": "cpm",
+        "main": "CPM.Main"
+    },
+    "source": {
+        "git": "https://git.ps.informatik.uni-kiel.de/curry-packages/cpm.git",
+        "tag": "$version"
+    }
 }

@@ -1,0 +1,6 @@
+boxes https://git.ps.informatik.uni-kiel.de/curry-packages/boxes.git v0.0.2
+opt-parse https://git.ps.informatik.uni-kiel.de/curry-packages/opt-parse.git v0.0.3
+det-parse https://git.ps.informatik.uni-kiel.de/curry-packages/det-parse.git v0.0.1
+json https://git.ps.informatik.uni-kiel.de/curry-packages/json.git v0.0.3
+cass-analysis https://git.ps.informatik.uni-kiel.de/curry-packages/cass-analysis.git v0.0.3
+cass https://git.ps.informatik.uni-kiel.de/curry-packages/cass.git v0.0.1
