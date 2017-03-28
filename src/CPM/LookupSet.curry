@@ -1,9 +1,9 @@
---------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 --- This module implements the LookupSet datatype. A lookup set is used to store
 --- and query packages for dependency resolution. It stores the source of a 
 --- package specification alongside the specification itself (e.g. the global
 --- repository or the local package cache).
---------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 
 module CPM.LookupSet 
   ( LookupSource (..)
@@ -24,6 +24,8 @@ import TableRBT
 import Test.EasyCheck
 
 import CPM.Package 
+
+------------------------------------------------------------------------------
 
 data LookupSource = FromRepository
                   | FromLocalCache
@@ -123,7 +125,7 @@ test_findAllVersions_nonLocalIfIgnored = findAllVersions ls "A" False -=- [aNonL
         ls = setLocallyIgnored (addPackage (addPackage emptySet aLocal FromLocalCache) aNonLocal FromRepository) ["A"]
 
 cPackage :: String -> Version -> [Dependency] -> Package
-cPackage p v ds = Package {
+cPackage p v ds = emptyPackage {
     name = p
   , version = v
   , author = "author"

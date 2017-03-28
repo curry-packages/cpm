@@ -17,6 +17,10 @@
         "name": "cpm",
         "main": "CPM.Main"
     },
+    "testsuite": {
+        "src-dir": "src",
+        "modules": [ "CPM.Package", "CPM.Resolution", "CPM.LookupSet" ]
+    },
     "source": {
         "git": "https://git.ps.informatik.uni-kiel.de/curry-packages/cpm.git",
         "tag": "$version"

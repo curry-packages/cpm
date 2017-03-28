@@ -668,7 +668,7 @@ test_reportsCompilerIncompatibility = showResult result -=- "The package json-1.
         db = cDB [json]
 
 cPackage :: String -> Version -> [Dependency] -> Package
-cPackage p v ds = Package {
+cPackage p v ds = emptyPackage {
     name = p
   , version = v
   , author = "author"
@@ -688,7 +688,7 @@ cPackage p v ds = Package {
   }
 
 cPackageCC :: String -> Version -> [CompilerCompatibility] -> Package
-cPackageCC p v cs = Package {
+cPackageCC p v cs = emptyPackage {
     name = p
   , version = v
   , author = "author"
