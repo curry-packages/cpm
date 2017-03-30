@@ -28,7 +28,7 @@ module CPM.Package
   , PackageId (..)
   , PackageSource (..)
   , GitRevision (..)
-  , PackageExecutable (..), PackageTests (..)
+  , PackageExecutable (..), PackageTest (..)
   , showDependency
   , showCompilerDependency
   , loadPackageSpec
@@ -95,12 +95,12 @@ data PackageId = PackageId String Version
 --- module (which must contain an operation `main`).
 data PackageExecutable = PackageExecutable String String
 
---- The specification of a test suite for a package.
---- It consists of a list of directory/modules/option tuples.
---- Each tuple specifies a test which is performed in the given directoy
+--- The specification of a single test suite for a package.
+--- It consists of a directory, a list of modules and options.
+--- Thi structure specifies a test which is performed in the given directory
 --- by running CurryCheck on the given list of modules where the option
 --- string is passed to CurryCheck.
-data PackageTests = PackageTests [(String,[String],String)]
+data PackageTest = PackageTest String [String] String
 
 --- A source where the contents of a package can be acquired.
 --- @cons Http - URL to a ZIP file 
@@ -142,7 +142,7 @@ data Package = Package {
   , exportedModules       :: [String]
   , configModule          :: Maybe String
   , executableSpec        :: Maybe PackageExecutable
-  , testSuite             :: Maybe PackageTests
+  , testSuite             :: Maybe [PackageTest]
   }
 
 --- An empty package specification.
@@ -461,7 +461,7 @@ packageSpecFromJObject kv =
       Just JNull       -> Left $ "Expected an object, got 'null'"   ++ forKey
      where forKey = " for key 'executable'"
 
-    getTestSuite :: (Maybe PackageTests -> Either String a) -> Either String a
+    getTestSuite :: (Maybe [PackageTest] -> Either String a) -> Either String a
     getTestSuite f = case lookup "testsuite" kv of
       Nothing          -> f Nothing
       Just (JObject s) -> case testSuiteFromJObject s of Left  e  -> Left e
@@ -610,21 +610,20 @@ execSpecFromJObject kv =
   Right $ PackageExecutable name (maybe "Main" id main)
 
 --- Reads a test suite specification from the key-value-pairs of a JObject.
-testSuiteFromJObject :: [(String, JValue)] -> Either String PackageTests
+testSuiteFromJObject :: [(String, JValue)] -> Either String [PackageTest]
 testSuiteFromJObject kv =
   mandatoryString "src-dir" kv $ \dir ->
   optionalString  "options" kv $ \opts ->
   case getOptStringList False "module" kv of
     Left e     -> Left e
-    Right mods -> Right (PackageTests [(dir, mods, maybe "" id opts)])
+    Right mods -> Right [PackageTest dir mods (maybe "" id opts)]
 
 --- Reads the list of testsuites from a list of JValues (testsuite objects).
-testSuiteFromJArray :: [JValue] -> Either String PackageTests
+testSuiteFromJArray :: [JValue] -> Either String [PackageTest]
 testSuiteFromJArray a =
   if any isLeft tests
     then Left $ head $ lefts tests
-    else Right $ PackageTests (concatMap (\ (PackageTests t) -> t)
-                                         (rights tests))
+    else Right $ concat (rights tests)
  where
   tests = map extractTests a
   extractTests s = case s of

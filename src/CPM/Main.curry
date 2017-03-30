@@ -724,7 +724,7 @@ test opts cfg getRepo getGC =
       then putStrLn "No modules to be tested!" >> succeedIO ()
       else foldEL (\_ -> execTest aspecDir) () tests
  where
-  execTest apkgdir (dir,mods,ccopts) = do
+  execTest apkgdir (PackageTest dir mods ccopts) = do
     putStrLn $ "Testing modules with CurryCheck (options: " ++ ccopts ++
                ")\n(in directory '" ++ dir ++ "', showing raw output):\n" ++
                unwords mods ++ "\n"
@@ -742,11 +742,11 @@ test opts cfg getRepo getGC =
                       in if null exports
                            then if null mainprogs
                                   then []
-                                  else [("src",mainprogs,"")]
-                           else [("src",exports,"")])
-                     (\ (PackageTests tests) -> tests)
+                                  else [PackageTest "src" mainprogs ""]
+                           else [PackageTest "src" exports ""])
+                     id
                      (testSuite spec)
-    Just ms -> [("src",ms,"")]
+    Just ms -> [PackageTest "src" ms ""]
 
 --- Get the names of all Curry modules containing in a directory.
 --- Modules in subdirectories are returned as hierarchical modules.
@@ -847,8 +847,7 @@ cleanPackage ll =
       srcdirs  = map (specDir </>) (sourceDirsOf pkg)
       testdirs = map (specDir </>)
                      (maybe []
-                            (\ (PackageTests tests) -> map (\ (m,_,_) -> m)
-                                                           tests)
+                            (map (\ (PackageTest m _ _) -> m))
                             (testSuite pkg))
       rmdirs   = dotcpm : map addCurrySubdir (srcdirs ++ testdirs)
   in log ll ("Removing directories: " ++ unwords rmdirs) |>

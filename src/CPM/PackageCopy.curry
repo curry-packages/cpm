@@ -41,7 +41,7 @@ import CPM.Package ( Package (..)
                    , showVersion, PackageSource (..), showDependency
                    , showCompilerDependency
                    , Dependency, GitRevision (..), PackageExecutable (..)
-                   , PackageTests (..)
+                   , PackageTest (..)
                    , packageIdEq, loadPackageSpec)
 import CPM.Resolution
 import CPM.FileUtil (copyDirectory, recreateDirectory)
@@ -243,8 +243,8 @@ renderPackageInfo allinfos _ gc pkg = pPrint doc
 
   testsuites = case testSuite pkg of
     Nothing -> []
-    Just  (PackageTests tests) ->
-      map (\ (dir,mods,opts) ->
+    Just  tests ->
+      map (\ (PackageTest dir mods opts) ->
              bold (text "Test suite") <$$>
              indent 4 (bold (text "Directory    ") <+> text dir) <$$>
              (if null opts
