@@ -71,7 +71,8 @@ copyMod origDir deps dest nameMap (name, _) = do
   if dirExists
     then return ()
     else createDirectory (takeDirectory destPath)
-  transformAbstractCurryInDeps origDir deps (applyModuleRenames nameMap) name destPath
+  transformAbstractCurryInDeps origDir deps (applyModuleRenames nameMap)
+                               name destPath
  where
   newName = case lookup name nameMap of
     Nothing -> name

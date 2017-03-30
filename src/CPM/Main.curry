@@ -4,6 +4,7 @@
 
 module CPM.Main where
 
+import Char         ( toLower )
 import CSV          ( showCSV )
 import Directory    ( doesFileExist, getAbsolutePath, doesDirectoryExist
                     , createDirectory, createDirectoryIfMissing
@@ -263,9 +264,10 @@ diffOpts s = case optCommand s of
   _         -> DiffOptions Nothing Nothing True True True
 
 readLogLevel :: String -> Either String LogLevel
-readLogLevel s = if s == "debug"
-  then Right $ Debug
-  else Right $ Info
+readLogLevel s = case map toLower s of
+  "debug" -> Right Debug
+  "info"  -> Right Info
+  _       -> Left $ "Illegal verbosity value: " ++ s
 
 readRcOption :: String -> Either String (String,String)
 readRcOption s =
@@ -524,10 +526,11 @@ compiler o cfg getRepo getGC =
  where
   computePackageLoadPath pkgdir =
     getRepo >>= \repo -> getGC >>= \gc ->
-    resolveAndCopyDependencies cfg repo gc pkgdir |>= \pkgs ->
+    loadPackageSpec pkgdir |>= \pkg ->
+    resolveAndCopyDependenciesForPackage cfg repo gc pkgdir pkg |>= \pkgs ->
     getAbsolutePath pkgdir >>= \abs -> succeedIO () |>
-    succeedIO (abs </> "src") |>= \srcDir ->
-    let currypath = joinSearchPath (srcDir : dependencyPathsSeparate pkgs abs)
+    let srcdirs = map (abs </>) (sourceDirsOf pkg)
+        currypath = joinSearchPath (srcdirs ++ dependencyPathsSeparate pkgs abs)
     in saveCurryPathToCache pkgdir currypath >> succeedIO currypath
 
 
@@ -823,10 +826,11 @@ execWithPkgDir o cfg getRepo getGC specDir =
  where
   computePackageLoadPath pkgdir =
     getRepo >>= \repo -> getGC >>= \gc ->
-    resolveAndCopyDependencies cfg repo gc pkgdir |>= \pkgs ->
+    loadPackageSpec pkgdir |>= \pkg ->
+    resolveAndCopyDependenciesForPackage cfg repo gc pkgdir pkg |>= \pkgs ->
     getAbsolutePath pkgdir >>= \abs -> succeedIO () |>
-    succeedIO (abs </> "src") |>= \srcDir ->
-    let currypath = joinSearchPath (srcDir : dependencyPathsSeparate pkgs abs)
+    let srcdirs = map (abs </>) (sourceDirsOf pkg)
+        currypath = joinSearchPath (srcdirs ++ dependencyPathsSeparate pkgs abs)
     in saveCurryPathToCache pkgdir currypath >> succeedIO currypath
 
 
@@ -836,9 +840,11 @@ cleanPackage ll =
   tryFindLocalPackageSpec "." |>= \specDir ->
   loadPackageSpec specDir     |>= \pkg ->
   let dotcpm   = specDir </> ".cpm"
-      srcdirs  = [specDir </> "src"]
-      testdirs = maybe [] (\ (PackageTests tests) -> map fst tests)
-                       (testSuite pkg)
+      srcdirs  = map (specDir </>) (sourceDirsOf pkg)
+      testdirs = map (specDir </>)
+                     (maybe []
+                            (\ (PackageTests tests) -> map fst tests)
+                            (testSuite pkg))
       rmdirs   = dotcpm : map addCurrySubdir (srcdirs ++ testdirs)
   in log ll ("Removing directories: " ++ unwords rmdirs) |>
      (system (unwords (["rm", "-rf"] ++ rmdirs)) >> succeedIO ())

@@ -17,6 +17,7 @@ module CPM.Package
   , readVersionConstraint
   , readVersionConstraints
   , readPackageSpec
+  , sourceDirsOf
   , dependencyNames
   , vlt
   , vlte
@@ -136,6 +137,7 @@ data Package = Package {
   , dependencies          :: [Dependency]
   , compilerCompatibility :: [CompilerCompatibility]
   , source                :: Maybe PackageSource
+  , sourceDirs            :: [String]
   , exportedModules       :: [String]
   , configModule          :: Maybe String
   , executableSpec        :: Maybe PackageExecutable
@@ -161,6 +163,7 @@ emptyPackage = Package {
   , dependencies          = []
   , compilerCompatibility = []
   , source                = Nothing
+  , sourceDirs            = []
   , exportedModules       = []
   , configModule          = Nothing
   , executableSpec        = Nothing
@@ -281,6 +284,13 @@ isPreRelease :: Version -> Bool
 isPreRelease (_, _, _, Nothing) = False
 isPreRelease (_, _, _, Just  _) = True
 
+--- Gets the list of source directories of a package.
+--- It is either the field `sourceDirs` (if non-empty) or `["src"]`.
+sourceDirsOf :: Package -> [String]
+sourceDirsOf p =
+  if null (sourceDirs p) then ["src"]
+                         else sourceDirs p
+
 --- Gets the package names of all dependencies of a package.
 dependencyNames :: Package -> [String]
 dependencyNames p = map (\(Dependency s _) -> s) $ dependencies p
@@ -344,6 +354,7 @@ packageSpecFromJObject kv =
   mustBeVersion versionS $ \version ->
   getDependencies $ \dependencies ->
   getSource $ \source ->
+  getStringList "A source directory" "sourceDirs" $ \sourcedirs ->
   getStringList "An exported module" "exportedModules" $ \exportedModules ->
   getCompilerCompatibility $ \compilerCompatibility ->
   getExecutableSpec $ \executable ->
@@ -365,6 +376,7 @@ packageSpecFromJObject kv =
     , dependencies = dependencies
     , compilerCompatibility = compilerCompatibility
     , source = source
+    , sourceDirs      = sourcedirs
     , exportedModules = exportedModules
     , configModule    = configModule
     , executableSpec  = executable

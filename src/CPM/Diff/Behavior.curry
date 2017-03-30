@@ -44,8 +44,7 @@ import Analysis.Termination ( productivityAnalysis, Productivity(..) )
 import Analysis.TypeUsage   ( typesInValuesAnalysis )
 import CASS.Server          ( analyzeGeneric )
 
-import CPM.AbstractCurry ( readAbstractCurryFromPath, readAbstractCurryFromDeps
-                         , loadPathForPackage )
+import CPM.AbstractCurry ( readAbstractCurryFromDeps, loadPathForPackage )
 import CPM.Config (Config)
 import CPM.Diff.API as APIDiff
 import CPM.Diff.CurryComments (readComments, getFuncComment)
@@ -145,7 +144,7 @@ infoText :: String
 infoText = unlines
   [ "Running behavior diff where the raw output of CurryCheck is shown."
   , "The test operations are named after the operations they compare."
-  , "If a test fails, their implementations differ." ]
+  , "If a test fails, their implementations semantically differ." ]
 
 --- Compare the behavior of two package versions using CurryCheck.
 --- 
@@ -769,14 +768,13 @@ findFunctionsToCompare :: Config
                        -> IO (ErrorLogger (ACYCache, [String],
                               [(Bool,CFuncDecl)], [(CFuncDecl, FilterReason)]))
 findFunctionsToCompare cfg repo gc dirA dirB useanalysis cmods =
-  loadPackageSpec dirA |>=
-  \pkgA -> loadPackageSpec dirB |>= 
-  \pkgB -> resolveAndCopyDependencies cfg repo gc dirA |>=
-  \depsA -> succeedIO
-              (maybe (intersect (exportedModules pkgA) (exportedModules pkgB))
-                     id
-                     cmods )|>=
-  \mods -> log Debug ("Comparing modules: "++ intercalate " " mods) |>
+  loadPackageSpec dirA |>= \pkgA ->
+  loadPackageSpec dirB |>= \pkgB ->
+  resolveAndCopyDependencies cfg repo gc dirA |>= \depsA ->
+  succeedIO (maybe (intersect (exportedModules pkgA) (exportedModules pkgB))
+                   id
+                   cmods) |>= \mods ->
+  log Debug ("Comparing modules: "++ intercalate " " mods) |>
   APIDiff.compareModulesInDirs cfg repo gc dirA dirB (Just mods) |>= \diffs ->
   findAllFunctions dirA dirB pkgA depsA emptyACYCache mods |>=
   \(acy, allFuncs) ->
@@ -795,20 +793,20 @@ findFunctionsToCompare cfg repo gc dirA dirB useanalysis cmods =
       filterNoCompare        dirA dirB depsA `areNoCompareThenFilter`
       filterNonMatchingTypes dirA dirB depsA `areNonMatchingThenFilter`
       filterFuncArg          dirA dirB depsA `haveFuncArgThenFilter`
-      liftFilter id ) |>= terminationFilter dirA dirB depsA useanalysis
+      liftFilter id ) |>= terminationFilter pkgA dirA depsA useanalysis
 
 --- Filters out functions which are possibly non-terminating and
 --- non-productive, and mark productive functions so that they are
 --- tested not by standard equality.
-terminationFilter :: String -> String -> [Package] -> Bool
+terminationFilter :: Package -> String -> [Package] -> Bool
                   -> (ACYCache, [CFuncDecl], [(CFuncDecl, FilterReason)])
                   -> IO (ErrorLogger (ACYCache, [String], [(Bool,CFuncDecl)],
                                       [(CFuncDecl, FilterReason)]))
 terminationFilter _ _ _ False (a,fs,rm) =
   succeedIO (a, [], map (\f->(False,f)) fs, rm)
-terminationFilter dirA _ depsA True (acy, funcs, rm) = do
-  let currypath = loadPathForPackage dirA depsA
-      mods      = nub (map (fst . funcName) funcs)
+terminationFilter pkgA dirA depsA True (acy, funcs, rm) = do
+  let currypath = loadPathForPackage pkgA dirA depsA
+      mods = nub (map (fst . funcName) funcs)
   ainfo <- analyzeModules "productivity" productivityAnalysis currypath mods
   -- compute functions which should be definitely compared (due to TERMINATE
   -- or PRODUCTIVE pragmas):
@@ -1148,13 +1146,13 @@ findAllFunctions dirA dirB _ deps acyCache mods =
   foldEL findForMod (acyCache, []) mods |>=
   \(a, fs) -> succeedIO (a, nub fs)
  where
-  findForMod (acy,_) mod =
+  findForMod (acy,fdecls) mod =
     readCached dirA deps acy mod |>= \(_, progA) ->
     readCached dirB deps acy mod |>= \(acy'', progB) -> 
     let funcsA = filter isPublic $ functions progA
         funcsB = filter isPublic $ functions progB
-    in succeedIO (acy'', nubBy (\a b -> funcName a == funcName b)
-                               (funcsA ++ funcsB))
+    in succeedIO (acy'', fdecls ++ nubBy (\a b -> funcName a == funcName b)
+                                         (funcsA ++ funcsB))
 
 --- Checks whether a function is public.
 isPublic :: CFuncDecl -> Bool

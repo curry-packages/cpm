@@ -6,7 +6,7 @@
 
 module CPM.AbstractCurry 
   ( loadPathForPackage
-  , readAbstractCurryFromPath
+  , readAbstractCurryFromPackagePath
   , readAbstractCurryFromDeps
   , transformAbstractCurryInDeps 
   , applyModuleRenames
@@ -25,42 +25,50 @@ import AbstractCurry.Transform
 import AbstractCurry.Types (CurryProg)
 import System
 
+
+import CPM.ErrorLogger
 import qualified CPM.PackageCache.Runtime as RuntimeCache
-import CPM.Package (Package)
+import CPM.Package (Package, loadPackageSpec, sourceDirsOf)
 
 --- Returns the load path for a package stored in some directory
---- w.r.t. the dependent packages
+--- w.r.t. the dependent packages.
 ---
---- @param - pkgDir - the package's directory
+--- @param - pkg - the package
+--- @param - pkgDir - the directory containing this package
 --- @param - deps - the resolved dependencies of the package
 --- @return the full load path for modules in the package or dependent packages
-loadPathForPackage :: String -> [Package] -> [String]
-loadPathForPackage pkgDir deps =
-  [pkgDir </> "src"] ++  RuntimeCache.dependencyPathsSeparate deps pkgDir
-  
+loadPathForPackage :: Package -> String -> [Package] -> [String]
+loadPathForPackage pkg pkgDir deps =
+  (map (pkgDir </>) (sourceDirsOf pkg) ++
+  RuntimeCache.dependencyPathsSeparate deps pkgDir)
+
 --- Returns the full load path for a package stored in some directory.
 ---
---- @param - pkgDir - the package's directory
+--- @param - pkg - the package
+--- @param - pkgDir - the directory containing this package
 --- @param - deps - the resolved dependencies of the package
 --- @return the full load path for modules in the package or dependent packages
-fullLoadPathForPackage :: String -> [Package] -> [String]
-fullLoadPathForPackage pkgDir deps =
-  sysLibPath ++ loadPathForPackage pkgDir deps
+fullLoadPathForPackage :: Package -> String -> [Package] -> [String]
+fullLoadPathForPackage pkg pkgDir deps =
+  sysLibPath ++ loadPathForPackage pkg pkgDir deps
   
 --- Reads an AbstractCurry module from a package.
 ---
 --- @param - dir the package's directory
 --- @param - deps the resolved dependencies of the package
 --- @param - mod the module to read
-readAbstractCurryFromPath :: String -> [Package] -> String -> IO CurryProg
-readAbstractCurryFromPath pkgDir deps modname = do
-  let loadPath = fullLoadPathForPackage pkgDir deps
+readAbstractCurryFromPackagePath :: Package -> String -> [Package] -> String
+                                 -> IO CurryProg
+readAbstractCurryFromPackagePath pkg pkgDir deps modname = do
+  let loadPath = fullLoadPathForPackage pkg pkgDir deps
   params <- return $ setQuiet True (setFullPath loadPath defaultParams)
   callFrontendWithParams ACY params modname 
+  src <- lookupModuleSource loadPath modname
+  acyName <- return $ case src of
+    Nothing -> error $ "Module not found: " ++ modname
+    Just (_, file) -> replaceExtension (inCurrySubdirModule modname file) ".acy"
   readAbstractCurryFile acyName
- where
-  acyName = inCurrySubdir (pkgDir </> "src" </> modname) ++ ".acy"
-  
+
 --- Reads an AbstractCurry module from a package or one of its dependencies.
 ---
 --- @param dir - the package's directory
@@ -68,7 +76,8 @@ readAbstractCurryFromPath pkgDir deps modname = do
 --- @param mod - the module to read
 readAbstractCurryFromDeps :: String -> [Package] -> String -> IO CurryProg
 readAbstractCurryFromDeps pkgDir deps modname = do
-  let loadPath = fullLoadPathForPackage pkgDir deps
+  pkg <- fromErrorLogger (loadPackageSpec pkgDir)
+  let loadPath = fullLoadPathForPackage pkg pkgDir deps
   params <- return $ setQuiet True (setFullPath loadPath defaultParams)
   src <- lookupModuleSource loadPath modname
   sourceFile <- return $ case src of
@@ -88,7 +97,8 @@ readAbstractCurryFromDeps pkgDir deps modname = do
 transformAbstractCurryInDeps :: String -> [Package] -> (CurryProg -> CurryProg) 
                              -> String -> String -> IO ()
 transformAbstractCurryInDeps pkgDir deps transform modname destFile = do
-  let loadPath = fullLoadPathForPackage pkgDir deps
+  pkg <- fromErrorLogger (loadPackageSpec pkgDir)
+  let loadPath = fullLoadPathForPackage pkg pkgDir deps
   params <- return $ setQuiet True (setFullPath loadPath defaultParams)
   src <- lookupModuleSource loadPath modname
   sourceFile <- return $ case src of

@@ -5,7 +5,7 @@
 
 module CPM.PackageCopy
   ( resolveDependenciesForPackageCopy
-  , resolveAndCopyDependencies
+  , resolveAndCopyDependencies, resolveAndCopyDependenciesForPackage
   , resolveDependencies
   , upgradeAllPackages
   , upgradeSinglePackage
@@ -173,15 +173,20 @@ tryFindLocalPackageSpec dir = do
 --- Resolves the dependencies for a package copy and fills the package caches.
 resolveAndCopyDependencies :: Config -> Repository -> GC.GlobalCache -> String 
                            -> IO (ErrorLogger [Package])
-resolveAndCopyDependencies cfg repo gc dir = loadPackageSpec dir |>=
-  \pkgSpec -> resolveDependenciesForPackageCopy cfg pkgSpec repo gc dir |>=
-  \result -> 
-    let 
-      deps = resolvedPackages result
-      missingDeps = GC.missingPackages gc deps 
-      failMsg = "Missing dependencies " 
-        ++ (intercalate "," $ map packageId missingDeps) 
-        ++ "\nUse `cpm install` to install missing dependencies."
+resolveAndCopyDependencies cfg repo gc dir =
+  loadPackageSpec dir |>= resolveAndCopyDependenciesForPackage cfg repo gc dir
+
+--- Resolves the dependencies for a package copy and fills the package caches.
+resolveAndCopyDependenciesForPackage ::
+     Config -> Repository -> GC.GlobalCache -> String -> Package
+  -> IO (ErrorLogger [Package])
+resolveAndCopyDependenciesForPackage cfg repo gc dir pkgSpec =
+  resolveDependenciesForPackageCopy cfg pkgSpec repo gc dir |>= \result -> 
+    let deps = resolvedPackages result
+        missingDeps = GC.missingPackages gc deps 
+        failMsg = "Missing dependencies " 
+                  ++ (intercalate "," $ map packageId missingDeps) 
+                  ++ "\nUse `cpm install` to install missing dependencies."
     in if length missingDeps > 0
          then failIO failMsg
          else copyDependencies cfg gc pkgSpec deps dir |>= \_ ->
@@ -202,7 +207,7 @@ renderPackageInfo allinfos _ gc pkg = pPrint doc
   doc = vcat $ [ heading, rule, installed, ver, auth, maintnr, synop
                , cats, deps, compilers, descr ] ++
                if allinfos
-                 then [ expmods, cfgmod, execspec] ++ testsuites ++
+                 then [ srcdirs, expmods, cfgmod, execspec] ++ testsuites ++
                       [ src, licns, copyrt, homepg, reposy, bugrep]
                  else []
 
@@ -259,6 +264,12 @@ renderPackageInfo allinfos _ gc pkg = pPrint doc
     Just  (Http s)       -> bold (text "Source") <$$> indent 4 (text s)
     Just  (Git s _)      -> bold (text "Source") <$$> indent 4 (text s)
     Just  (FileSource s) -> bold (text "Source") <$$> indent 4 (text s)
+
+  srcdirs =
+    if null (sourceDirs pkg)
+      then empty
+      else bold (text "Source directories") <$$>
+           indent 4 (fillSep (map text (sourceDirs pkg)))
 
   expmods =
     if null (exportedModules pkg)

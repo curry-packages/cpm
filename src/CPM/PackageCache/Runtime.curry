@@ -19,7 +19,7 @@ import List        ( intercalate, split )
 import CPM.Config (Config, binInstallDir)
 import CPM.ErrorLogger
 import CPM.PackageCache.Global (installedPackageDir)
-import CPM.Package  ( Package, packageId, PackageExecutable(..)
+import CPM.Package  ( Package, packageId, PackageExecutable(..), sourceDirsOf
                     , configModule, executableSpec, version, showVersion )
 import CPM.FileUtil ( copyDirectoryFollowingSymlinks, recreateDirectory )
 import CPM.PackageCache.Local as LocalCache
@@ -37,7 +37,8 @@ dependencyPaths pkgs dir = intercalate ":" $ dependencyPathsSeparate pkgs dir
 --- Returns a list of the paths to a list of given packages inside a package's
 --- runtime package cache.
 dependencyPathsSeparate :: [Package] -> String -> [String]
-dependencyPathsSeparate pkgs dir = map ((</> "src") . cacheDirectory dir) pkgs
+dependencyPathsSeparate pkgs dir =
+  concatMap (\p -> map (cacheDirectory dir p </>) (sourceDirsOf p)) pkgs
 
 --- Returns the directory for a package inside another package's runtime cache.
 cacheDirectory :: String -> Package -> String

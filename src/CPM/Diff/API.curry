@@ -26,7 +26,7 @@ import List (nub)
 import Maybe (listToMaybe, catMaybes)
 import Pretty (pPrint, text, (<+>), vcat, empty, red, ($$))
 
-import CPM.AbstractCurry (readAbstractCurryFromPath)
+import CPM.AbstractCurry (readAbstractCurryFromPackagePath)
 import CPM.Config (Config)
 import CPM.ErrorLogger
 import CPM.FileUtil (copyDirectory, recreateDirectory)
@@ -121,15 +121,18 @@ compareModulesInDirs cfg repo gc dirA dirB onlyMods = loadPackageSpec dirA |>=
 compareApiModule :: Package -> String -> [Package] -> Package -> String 
                  -> [Package] -> String -> IO (ErrorLogger Differences)
 compareApiModule pkgA dirA depsA pkgB dirB depsB mod =
-  if mod `elem` (exportedModules pkgA)
-    then if mod `elem` (exportedModules pkgB)
-      then readAbstractCurryFromPath dirA depsA mod >>= succeedIO |>=
-        \prog1 -> readAbstractCurryFromPath dirB depsB mod >>= succeedIO |>=
-        \prog2 -> let
-          funcDiffs = diffFuncsFiltered funcIsPublic prog1 prog2
-          typeDiffs = diffTypesFiltered typeIsPublic prog1 prog2
-          opDiffs   = diffOpsFiltered   (\_ _ -> True) prog1 prog2 in
-          succeedIO $ (Nothing, funcDiffs, typeDiffs, opDiffs)
+  if mod `elem` exportedModules pkgA
+    then
+     if mod `elem` exportedModules pkgB
+       then
+         readAbstractCurryFromPackagePath pkgA dirA depsA mod >>= succeedIO
+              |>= \prog1 ->
+         readAbstractCurryFromPackagePath pkgB dirB depsB mod >>= succeedIO
+              |>= \prog2 ->
+         let funcDiffs = diffFuncsFiltered funcIsPublic   prog1 prog2
+             typeDiffs = diffTypesFiltered typeIsPublic   prog1 prog2
+             opDiffs   = diffOpsFiltered   (\_ _ -> True) prog1 prog2
+         in succeedIO $ (Nothing, funcDiffs, typeDiffs, opDiffs)
       else succeedIO $ (Just $ Addition mod, [], [], [])
     else succeedIO $ (Just $ Removal mod, [], [], [])
 

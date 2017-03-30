@@ -768,6 +768,13 @@ in all versions.
 package described in the specification can be obtained. See 
 Section~\ref{sec:publishing-a-package} for details.
 
+\item[\fbox{\code{sourceDirs}}] A list of directories inside this
+package where the source code is located.
+When the package is compiled, these directories are put at the front
+of the Curry load path.
+If this field is not specified, \code{src} is used as the single
+source directory.
+
 \item[\fbox{\code{exportedModules}}] A list of modules intended for use by 
 consumers of the package.
 These are the modules compared by the \code{cpm diff}

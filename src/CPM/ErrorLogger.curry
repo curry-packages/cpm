@@ -18,12 +18,13 @@ module CPM.ErrorLogger
   , failIO
   , log
   , showLogEntry
-  , infoMessage, debugMessage
+  , infoMessage, debugMessage, fromErrorLogger
   ) where
 
 import Global
 import Pretty
 import Profile -- for show run-time
+import System (exitWith)
 
 infixl 0 |>=
 infixl 0 |>
@@ -184,3 +185,14 @@ infoMessage msg = (log Info msg |> succeedIO ()) >> done
 --- Prints a debug message in the standard IO monad.
 debugMessage :: String -> IO ()
 debugMessage msg = (log Debug msg |> succeedIO ()) >> done
+
+--- Transforms an error logger actions into a standard IO action.
+--- It shows all messages and, if the result is not available,
+--- exits with a non-zero code.
+fromErrorLogger :: IO (ErrorLogger a) -> IO a
+fromErrorLogger a = do
+  (msgs, err) <- a 
+  mapIO showLogEntry msgs
+  case err of
+    Right v -> return v
+    Left  m -> showLogEntry m >> exitWith 1
