@@ -96,10 +96,11 @@ data PackageId = PackageId String Version
 data PackageExecutable = PackageExecutable String String
 
 --- The specification of a test suite for a package.
---- It consists of a list of directory/modules pairs.
---- Each pair specifies a test which is performed in the given directoy
---- by running CurryCheck on the given list of modules.
-data PackageTests = PackageTests [(String,[String])]
+--- It consists of a list of directory/modules/option tuples.
+--- Each tuple specifies a test which is performed in the given directoy
+--- by running CurryCheck on the given list of modules where the option
+--- string is passed to CurryCheck.
+data PackageTests = PackageTests [(String,[String],String)]
 
 --- A source where the contents of a package can be acquired.
 --- @cons Http - URL to a ZIP file 
@@ -612,9 +613,10 @@ execSpecFromJObject kv =
 testSuiteFromJObject :: [(String, JValue)] -> Either String PackageTests
 testSuiteFromJObject kv =
   mandatoryString "src-dir" kv $ \dir ->
+  optionalString  "options" kv $ \opts ->
   case getOptStringList False "module" kv of
     Left e     -> Left e
-    Right mods -> Right (PackageTests [(dir,mods)])
+    Right mods -> Right (PackageTests [(dir, mods, maybe "" id opts)])
 
 --- Reads the list of testsuites from a list of JValues (testsuite objects).
 testSuiteFromJArray :: [JValue] -> Either String PackageTests

@@ -847,6 +847,8 @@ All these modules are tested with CurryCheck
 by the command \code{cpm test}.
 If no test suite is defined, all (exported) modules are tested
 in the directory \code{src}.
+A test suite can also contain a field \code{options}
+which defines a string of options passed to the call to CurryCheck.
 
 One can also specify test suites for more than one directory.
 In this case, the \code{testsuite} value is an array
@@ -862,6 +864,7 @@ directories \code{test} and \code{examples} could be as follows:
        "modules": [ "testDataConversion", "testIO" ]
      },
      { "src-dir": "examples",
+       "options": "-m80",
        "modules": [ "Nats", "Ints" ]
      }
   ]

@@ -724,13 +724,17 @@ test opts cfg getRepo getGC =
       then putStrLn "No modules to be tested!" >> succeedIO ()
       else foldEL (\_ -> execTest aspecDir) () tests
  where
-  execTest apkgdir (dir,mods) = do
-    putStrLn $ "Testing modules (in directory '" ++ dir ++ "', " ++
-               "with CurryCheck, showing raw output):\n" ++
+  execTest apkgdir (dir,mods,ccopts) = do
+    putStrLn $ "Testing modules with CurryCheck (options: " ++ ccopts ++
+               ")\n(in directory '" ++ dir ++ "', showing raw output):\n" ++
                unwords mods ++ "\n"
-    inDirectory dir $
+    let currysubdir = apkgdir </> addCurrySubdir dir
+    debugMessage $ "Removing directory: " ++ currysubdir
+    system (unwords ["rm", "-rf", currysubdir])
+    inDirectory (apkgdir </> dir) $
      execWithPkgDir
-      (ExecOptions (installDir </> "bin" </> "curry check " ++ unwords mods) [])
+      (ExecOptions (installDir </> "bin" </> "curry check " ++
+                    unwords (ccopts : mods)) [])
       cfg getRepo getGC apkgdir
 
   testsuites spec mainprogs = case testModules opts of
@@ -738,11 +742,11 @@ test opts cfg getRepo getGC =
                       in if null exports
                            then if null mainprogs
                                   then []
-                                  else [("src",mainprogs)]
-                           else [("src",exports)])
+                                  else [("src",mainprogs,"")]
+                           else [("src",exports,"")])
                      (\ (PackageTests tests) -> tests)
                      (testSuite spec)
-    Just ms -> [("src",ms)]
+    Just ms -> [("src",ms,"")]
 
 --- Get the names of all Curry modules containing in a directory.
 --- Modules in subdirectories are returned as hierarchical modules.
@@ -843,7 +847,8 @@ cleanPackage ll =
       srcdirs  = map (specDir </>) (sourceDirsOf pkg)
       testdirs = map (specDir </>)
                      (maybe []
-                            (\ (PackageTests tests) -> map fst tests)
+                            (\ (PackageTests tests) -> map (\ (m,_,_) -> m)
+                                                           tests)
                             (testSuite pkg))
       rmdirs   = dotcpm : map addCurrySubdir (srcdirs ++ testdirs)
   in log ll ("Removing directories: " ++ unwords rmdirs) |>

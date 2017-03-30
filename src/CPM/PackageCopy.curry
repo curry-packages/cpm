@@ -244,9 +244,12 @@ renderPackageInfo allinfos _ gc pkg = pPrint doc
   testsuites = case testSuite pkg of
     Nothing -> []
     Just  (PackageTests tests) ->
-      map (\ (dir,mods) ->
+      map (\ (dir,mods,opts) ->
              bold (text "Test suite") <$$>
              indent 4 (bold (text "Directory    ") <+> text dir) <$$>
+             (if null opts
+                then empty
+                else indent 4 (bold (text "Check options") <+> text opts)) <$$>
              indent 4 (bold (text "Test modules ") <+>
              align (fillSep (map text mods))))
           tests
