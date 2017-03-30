@@ -725,8 +725,9 @@ test opts cfg getRepo getGC =
       else foldEL (\_ -> execTest aspecDir) () tests
  where
   execTest apkgdir (PackageTest dir mods ccopts) = do
-    putStrLn $ "Testing modules with CurryCheck (options: " ++ ccopts ++
-               ")\n(in directory '" ++ dir ++ "', showing raw output):\n" ++
+    putStrLn $ "Testing modules with CurryCheck " ++
+               (if null ccopts then "" else "(options: " ++ ccopts ++ ")") ++
+               "\n(in directory '" ++ dir ++ "', showing raw output):\n" ++
                unwords mods ++ "\n"
     let currysubdir = apkgdir </> addCurrySubdir dir
     debugMessage $ "Removing directory: " ++ currysubdir
