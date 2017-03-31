@@ -574,6 +574,7 @@ install :: InstallOptions -> Config -> Repository -> GlobalCache
         -> IO (ErrorLogger ())
 install (InstallOptions Nothing Nothing _) cfg repo gc =
   tryFindLocalPackageSpec "." |>= \specDir ->
+  cleanCurryPathCache specDir |>
   installLocalDependencies cfg repo gc specDir |>= \ (pkg,_) ->
   installExecutable cfg repo pkg specDir
 install (InstallOptions (Just pkg) Nothing pre) cfg repo gc = do
@@ -695,19 +696,23 @@ search (SearchOptions q) _ repo = putStr rendered >> succeedIO ()
 
 upgrade :: UpgradeOptions -> Config -> Repository -> GlobalCache
         -> IO (ErrorLogger ())
-upgrade (UpgradeOptions Nothing) cfg repo gc = tryFindLocalPackageSpec "." |>=
-  \specDir -> log Info "Upgrading all packages" |>
+upgrade (UpgradeOptions Nothing) cfg repo gc =
+  tryFindLocalPackageSpec "." |>= \specDir ->
+  cleanCurryPathCache specDir |>
+  log Info "Upgrading all packages" |>
   upgradeAllPackages cfg repo gc specDir
 upgrade (UpgradeOptions (Just pkg)) cfg repo gc =
-  tryFindLocalPackageSpec "." |>=
-  \specDir -> log Info ("Upgrade " ++ pkg) |>
+  tryFindLocalPackageSpec "." |>= \specDir ->
+  log Info ("Upgrade " ++ pkg) |>
   upgradeSinglePackage cfg repo gc specDir pkg
 
 
 link :: LinkOptions -> Config -> Repository -> GlobalCache
      -> IO (ErrorLogger ())
-link (LinkOptions src) _ _ _ = tryFindLocalPackageSpec "." |>=
-  \specDir -> log Info ("Linking '" ++ src ++ "' into local package cache") |>
+link (LinkOptions src) _ _ _ =
+  tryFindLocalPackageSpec "." |>= \specDir ->
+  cleanCurryPathCache specDir |>
+  log Info ("Linking '" ++ src ++ "' into local package cache") |>
   linkToLocalCache src specDir
 
 --- `test` command: run `curry check` on exported or top-level modules
@@ -911,21 +916,22 @@ newPackage = do
 -- Caching the current CURRYPATH of a package for faster startup.
 
 --- The name of the cache file in a package directory.
-curryPathCachFile :: String -> String
-curryPathCachFile pkgdir = pkgdir </> ".cpm" </> "currypath_cache"
+curryPathCacheFile :: String -> String
+curryPathCacheFile pkgdir = pkgdir </> ".cpm" </> "currypath_cache"
 
 --- Saves package CURRYPATH in local cache file in the given package dir.
 saveCurryPathToCache :: String -> String -> IO ()
 saveCurryPathToCache pkgdir path = do
   let cpmdir = pkgdir </> ".cpm"
   createDirectoryIfMissing False cpmdir
-  writeFile (curryPathCachFile pkgdir) (path ++ "\n")
+  writeFile (curryPathCacheFile pkgdir) (path ++ "\n")
 
 --- Restores package CURRYPATH from local cache file in the given package dir,
---- if it is still up-to-date.
+--- if it is still up-to-date, i.e., it exists and is newer than the package
+--- specification.
 loadCurryPathFromCache :: String -> IO (ErrorLogger (Maybe String))
 loadCurryPathFromCache pkgdir = do
-  let cachefile = curryPathCachFile pkgdir
+  let cachefile = curryPathCacheFile pkgdir
   excache <- doesFileExist cachefile
   if excache
     then do
@@ -938,5 +944,13 @@ loadCurryPathFromCache pkgdir = do
                                        else Just (head ls)
         else succeedIO Nothing
     else succeedIO Nothing
+
+--- Cleans the local cache file for CURRYPATH. This might be necessary
+--- for upgrade/install/link commands.
+cleanCurryPathCache :: String -> IO (ErrorLogger ())
+cleanCurryPathCache pkgdir = do
+  let cachefile = curryPathCacheFile pkgdir
+  whenFileExists cachefile $ removeFile cachefile
+  succeedIO ()
 
 ---------------------------------------------------------------------------
