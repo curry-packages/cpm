@@ -27,6 +27,8 @@ done <dependencies.txt
 # The following file is required by the package `cass`:
 CASSCONFIG=vendor/cass/src/CASS/PackageConfig.curry
 echo "module CASS.PackageConfig where" > $CASSCONFIG
+echo "packageVersion :: String"       >> $CASSCONFIG
+echo "packageVersion = \"0.0.1\""     >> $CASSCONFIG
 echo "packagePath :: String"          >> $CASSCONFIG
 echo "packagePath = \"`pwd`/vendor/cass\"" >> $CASSCONFIG
 echo "packageExecutable :: String"    >> $CASSCONFIG
