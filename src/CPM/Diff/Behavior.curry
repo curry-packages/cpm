@@ -28,7 +28,7 @@ import AbstractCurry.Types ( CurryProg (..), CFuncDecl (..), CVisibility (..)
                            , CVarIName, QName)
 import Char      (isAlphaNum)
 import Directory (createDirectory, doesDirectoryExist, getTemporaryDirectory)
-import Distribution (installDir, lookupModuleSource)
+import Distribution (lookupModuleSource)
 import FilePath ((</>), joinPath)
 import Function (both)
 import List   ( intercalate, intersect, nub, splitOn, isPrefixOf, isInfixOf
@@ -45,7 +45,7 @@ import Analysis.TypeUsage   ( typesInValuesAnalysis )
 import CASS.Server          ( analyzeGeneric )
 
 import CPM.AbstractCurry ( readAbstractCurryFromDeps, loadPathForPackage )
-import CPM.Config (Config)
+import CPM.Config        ( Config (curryExec) )
 import CPM.Diff.API as APIDiff
 import CPM.Diff.CurryComments (readComments, getFuncComment)
 import CPM.Diff.Rename (prefixPackageAndDeps)
@@ -180,7 +180,7 @@ diffBehavior cfg repo gc info useanalysis cmods = getBaseTemp |>=
            putStrLn $
              "Comparing operations " ++ showFuncNames filteredNames ++ "\n"
            genCurryCheckProgram cfg repo gc filteredFuncs info acyCache loadpath
-            |> callCurryCheck info baseTmp
+            |> callCurryCheck cfg info baseTmp
  where
    printRemoved removed =
      if null removed then done
@@ -205,10 +205,10 @@ renderRemoved rs =
   reasonText NonTerm   = text "Possibly non-terminating"
 
 --- Runs CurryCheck on the generated program.
-callCurryCheck :: ComparisonInfo -> String -> IO (ErrorLogger ())
-callCurryCheck info baseTmp = do
+callCurryCheck :: Config -> ComparisonInfo -> String -> IO (ErrorLogger ())
+callCurryCheck cfg info baseTmp = do
   oldPath <- getEnviron "CURRYPATH"
-  let currybin  = installDir </> "bin" </> "curry"
+  let currybin  = curryExec cfg
       currypath = infDirA info ++ ":" ++ infDirB info
   setEnviron "CURRYPATH" currypath
   log Debug ("Run `curry check Compare' in `" ++ baseTmp ++ "' with") |>

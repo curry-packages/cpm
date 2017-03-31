@@ -10,8 +10,7 @@ import Directory    ( doesFileExist, getAbsolutePath, doesDirectoryExist
                     , createDirectory, createDirectoryIfMissing
                     , getDirectoryContents, getModificationTime
                     , renameFile, removeFile, setCurrentDirectory )
-import Distribution ( installDir, stripCurrySuffix, addCurrySubdir
-                    , curryCompiler )
+import Distribution ( stripCurrySuffix, addCurrySubdir )
 import Either
 import FilePath     ( (</>), splitSearchPath, takeExtension )
 import IO           ( hFlush, stdout )
@@ -26,7 +25,7 @@ import CPM.ErrorLogger
 import CPM.FileUtil ( fileInPath, joinSearchPath, safeReadFile, whenFileExists
                     , ifFileExists, inDirectory, removeDirectoryComplete )
 import CPM.Config              ( Config ( packageInstallDir, binInstallDir
-                                        , binPackageDir )
+                                        , binPackageDir, curryExec )
                                , readConfigurationWithDefault )
 import CPM.PackageCache.Global ( GlobalCache, readInstalledPackagesFromDir
                                , installFromZip, checkoutPackage
@@ -45,7 +44,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 27/03/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 31/03/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -517,13 +516,16 @@ compiler o cfg getRepo getGC =
   tryFindLocalPackageSpec "." |>= \specDir ->
   loadCurryPathFromCache specDir |>=
   maybe (computePackageLoadPath specDir) succeedIO |>= \currypath ->
-  log Info ("Starting Curry with CURRYPATH " ++ currypath) |>
+  log Info ("Starting '" ++ currybin ++ "' with") |>
+  log Info ("CURRYPATH=" ++ currypath) |>
   do setEnviron "CURRYPATH" $ currypath
-     ecode <- system $ "curry " ++ comCommand o
+     ecode <- system $ currybin ++ " " ++ comCommand o
      unsetEnviron "CURRYPATH"
      unless (ecode==0) (exitWith ecode)
      succeedIO ()
  where
+  currybin = curryExec cfg
+
   computePackageLoadPath pkgdir =
     getRepo >>= \repo -> getGC >>= \gc ->
     loadPackageSpec pkgdir |>= \pkg ->
@@ -604,10 +606,8 @@ installExecutable cfg repo pkg pkgdir =
            getEnviron "PATH" >>= \path ->
            log Info ("Compiling main module: " ++ mainmod) |>
            let cmd = unwords $
-                       [":set", if levelGte Debug lvl then "v1" else "v0"] ++
-                       (if curryCompiler == "pakcs" && not (levelGte Debug lvl)
-                          then [":set","-warn"] else []) ++
-                       [":load", mainmod, ":save", ":quit"]
+                       [":set", if levelGte Debug lvl then "v1" else "v0",
+                        ":load", mainmod, ":save", ":quit"]
                bindir     = binInstallDir cfg
                binexec    = bindir </> name
            in writePackageConfig cfg pkgdir pkg |>
@@ -616,7 +616,7 @@ installExecutable cfg repo pkg pkgdir =
               log Info ("Installing executable '" ++ name ++ "' into '" ++
                         bindir ++ "'") |>
               (whenFileExists binexec (backupExistingBin binexec) >>
-               -- renaming might not work across file systems:
+               -- renaming might not work across file systems, hence we move:
                system (unwords ["mv", mainmod, binexec]) >>
                checkPath path bindir))
         (executableSpec pkg)
@@ -724,18 +724,20 @@ test opts cfg getRepo getGC =
       then putStrLn "No modules to be tested!" >> succeedIO ()
       else foldEL (\_ -> execTest aspecDir) () tests
  where
+  currycheck = curryExec cfg ++ " check"
+  
   execTest apkgdir (PackageTest dir mods ccopts) = do
-    putStrLn $ "Testing modules with CurryCheck " ++
-               (if null ccopts then "" else "(options: " ++ ccopts ++ ")") ++
-               "\n(in directory '" ++ dir ++ "', showing raw output):\n" ++
+    putStrLn $ "Running CurryCheck (" ++ currycheck ++
+               (if null ccopts then "" else " " ++ ccopts) ++ ")\n" ++
+               "(in directory '" ++ dir ++
+               "', showing raw output) on modules:\n" ++
                unwords mods ++ "\n"
     let currysubdir = apkgdir </> addCurrySubdir dir
     debugMessage $ "Removing directory: " ++ currysubdir
     system (unwords ["rm", "-rf", currysubdir])
     inDirectory (apkgdir </> dir) $
      execWithPkgDir
-      (ExecOptions (installDir </> "bin" </> "curry check " ++
-                    unwords (ccopts : mods)) [])
+      (ExecOptions (unwords (currycheck : ccopts : mods)) [])
       cfg getRepo getGC apkgdir
 
   testsuites spec mainprogs = case testModules opts of

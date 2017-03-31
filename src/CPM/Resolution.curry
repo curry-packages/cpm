@@ -485,11 +485,14 @@ isCompatibleToCompiler' :: (String, Int, Int) -> Package -> Bool
 isCompatibleToCompiler' (name, maj, min) p = case compats of
   []    -> True -- No constraints => compiler is compatible
   (_:_) -> case constraintForCompiler of
-    Nothing -> False -- No constraints for current compiler => compiler is incompatible
-    Just (CompilerCompatibility _ c) -> isDisjunctionCompatible (maj, min, 0, Nothing) c
+    Nothing -> False -- No constraints for current compiler
+                     -- => compiler is incompatible
+    Just (CompilerCompatibility _ c) ->
+               isDisjunctionCompatible (maj, min, 0, Nothing) c
  where
   compats = compilerCompatibility p
-  constraintForCompiler = find (\(CompilerCompatibility c _) -> c == name) compats
+  constraintForCompiler = find (\(CompilerCompatibility c _) -> c == name)
+                               compats
 
 isDisjunctionCompatible :: Version -> Disjunction -> Bool
 isDisjunctionCompatible ver cs = any id (map (all id) rs)

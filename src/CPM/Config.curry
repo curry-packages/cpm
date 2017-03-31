@@ -1,16 +1,17 @@
---------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 --- This module defines the data type for CPM's configuration options, the 
 --- default values for all options, and functions for reading the user's .cpmrc
 --- file and merging its contents into the default options.
---------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 
 module CPM.Config 
   ( Config ( Config, packageInstallDir, binInstallDir, repositoryDir
-           , binPackageDir, packageIndexRepository )
+           , binPackageDir, packageIndexRepository, curryExec )
   , readConfiguration, readConfigurationWithDefault, defaultConfig ) where
 
-import Char         (isSpace)
+import Char         (isSpace, toLower)
 import Directory    (getHomeDirectory, createDirectoryIfMissing)
+import Distribution (installDir, curryCompiler)
 import FilePath     ((</>))
 import Function     ((***))
 import List         (splitOn, intersperse)
@@ -39,6 +40,8 @@ data Config = Config {
   , binPackageDir :: String
     --- URL to the package index repository
   , packageIndexRepository :: String
+    --- The executable of the Curry system used to compile and check packages
+  , curryExec :: String
   }
 
 --- CPM's default configuration values. These are used if no .cpmrc file is found
@@ -49,7 +52,8 @@ defaultConfig = Config
   , binInstallDir          = "$HOME/.cpm/bin"
   , repositoryDir          = "$HOME/.cpm/index" 
   , binPackageDir          = "$HOME/.cpm/bin_packages" 
-  , packageIndexRepository = packageIndexURI }
+  , packageIndexRepository = packageIndexURI
+  , curryExec              = installDir </> "bin" </> curryCompiler }
 
 --- Reads the .cpmrc file from the user's home directory (if present) and merges
 --- its contents into the default configuration. Resolves the $HOME variable 
@@ -111,11 +115,12 @@ mergeConfigSettings cfg props = applyEither setters cfg
                             unlines (map fst keySetters)
     Just  s -> \c -> Right $ s v c
 
---- Removes leading and trailing whitespace from option keys and values.
+--- Removes leading and trailing whitespace from option keys and values
+--- and transforms option keys to lowercase.
 ---
 --- @param opts - the options
 stripProps :: [(String, String)] -> [(String, String)]
-stripProps = map (strip *** strip) 
+stripProps = map ((map toLower . strip) *** strip) 
  where
   strip s = reverse $ dropWhile isSpace $ reverse $ dropWhile isSpace s
 
@@ -127,6 +132,7 @@ keySetters =
   , ("package_install_path", \v c -> c { packageInstallDir = v})
   , ("bin_install_path"    , \v c -> c { binInstallDir     = v})
   , ("bin_package_path"    , \v c -> c { binPackageDir     = v})
+  , ("curry_bin"           , \v c -> c { curryExec         = v})
   ]
 
 --- Sequentially applies a list of functions that transform a value to a value
@@ -141,3 +147,5 @@ applyEither [] z = Right z
 applyEither (f:fs) z = case f z of
   Left err -> Left err
   Right z' -> applyEither fs z'
+
+------------------------------------------------------------------------------

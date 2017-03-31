@@ -267,9 +267,11 @@ of this default path).
 
 To use the dependencies of a package, the Curry compiler needs to be
 started via CPM so that the compiler will know where to search for the
-modules provided. You can use the \code{cpm curry} command to start the current
-Curry compiler (the \code{curry} command that is on the path). Any
-parameters given to \code{cpm curry} will be passed along verbatim to
+modules provided. You can use the \code{cpm curry} command to start the
+Curry compiler (which is either the compiler used to install CPM
+or specified with the configuration option \code{curry_bin},
+see Section~\ref{sec:config}).
+Any parameters given to \code{cpm curry} will be passed along verbatim to
 the Curry compiler, for example the following will start the Curry
 compiler, print the result of evaluating the expression \code{39+3}
 and then quit.
@@ -505,6 +507,12 @@ Default value: \code{\$HOME/.cpm/bin}
 The path to the package cache where packages are checked out if only
 their binaries are installed (see Section~\ref{sec:installbin}).
 Default value: \code{\$HOME/.cpm/bin_packages}.
+
+\item[\fbox{\code{curry_bin}}]
+The name of the executable of the Curry system used
+to compile and test packages.
+The default value is the binary of the Curry system which has been used
+to compile CPM.
 \end{description}
 %
 Note that one can override the values of these configuration options
@@ -679,8 +687,8 @@ For example, it can be used to execute \ccode{curry check}
 or \ccode{curry analyze} with correct dependencies available.
 
 \item[\fbox{\code{curry $args$}}] Executes the Curry compiler with the 
-dependencies of the current package available. Any arguments are passed verbatim
-to the compiler.
+dependencies of the current package available.
+Any arguments are passed verbatim to the compiler.
 
 \item[\fbox{\code{link $source$}}] Can be used to replace a dependency of the 
 current package using a local copy, see Section~\ref{sec:cpm-link} for details.
@@ -695,6 +703,7 @@ after installing the application.
 
 \item[\fbox{\code{new}}] Asks a few questions and creates a new package.
 \end{description}
+
 
 \section{Package Specification Reference}
 \label{sec:reference}

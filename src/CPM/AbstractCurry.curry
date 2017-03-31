@@ -13,8 +13,8 @@ module CPM.AbstractCurry
   ) where
 
 import Distribution (FrontendTarget (..), FrontendParams (..), defaultParams
-                    , callFrontendWithParams, setQuiet, setFullPath, sysLibPath
-                    , curryCompiler, installDir, inCurrySubdir, modNameToPath
+                    , callFrontendWithParams, setQuiet, setFullPath
+                    , sysLibPath, inCurrySubdir, modNameToPath
                     , inCurrySubdirModule, lookupModuleSource)
 import List (intercalate, nub)
 import FilePath ((</>), (<.>), takeFileName, replaceExtension)
@@ -24,7 +24,6 @@ import AbstractCurry.Select (imports)
 import AbstractCurry.Transform
 import AbstractCurry.Types (CurryProg)
 import System
-
 
 import CPM.ErrorLogger
 import qualified CPM.PackageCache.Runtime as RuntimeCache
@@ -50,8 +49,9 @@ loadPathForPackage pkg pkgDir deps =
 --- @return the full load path for modules in the package or dependent packages
 fullLoadPathForPackage :: Package -> String -> [Package] -> [String]
 fullLoadPathForPackage pkg pkgDir deps =
-  sysLibPath ++ loadPathForPackage pkg pkgDir deps
-  
+  loadPathForPackage pkg pkgDir deps ++ sysLibPath
+  -- here we assume that the system libs are identical for each Curry system
+
 --- Reads an AbstractCurry module from a package.
 ---
 --- @param - dir the package's directory
