@@ -859,7 +859,17 @@ in the directory \code{src}.
 A test suite can also contain a field \code{options}
 which defines a string of options passed to the call to CurryCheck.
 
-One can also specify test suites for more than one directory.
+If a test suite contains a specific test script instead
+modules to be tested with CurryCheck, then one can specify the name
+of this test script in the field \code{script}.
+In this case, this script is executed in the test directory
+(with the possible \code{options} value added).
+The script should return the exit code \code{0} if the test is
+successful, otherwise a non-zero exit code.
+Note that one has to specify either a (non-empty) list of modules
+or a test script name in a test suite, but not both.
+
+One can also specify several test suites for a package.
 In this case, the \code{testsuite} value is an array
 of JSON objects as described above.
 For instance, a test suite specification for tests in the
@@ -870,7 +880,8 @@ directories \code{test} and \code{examples} could be as follows:
   ...,
   "testsuite": [
      { "src-dir": "test",
-       "modules": [ "testDataConversion", "testIO" ]
+       "options": "-v",
+       "script": [ "test.sh" ]
      },
      { "src-dir": "examples",
        "options": "-m80",

@@ -96,11 +96,14 @@ data PackageId = PackageId String Version
 data PackageExecutable = PackageExecutable String String
 
 --- The specification of a single test suite for a package.
---- It consists of a directory, a list of modules and options.
---- Thi structure specifies a test which is performed in the given directory
+--- It consists of a directory, a list of modules, options (for CurryCheck),
+--- and a name of a test script in this directory.
+--- The test script can be empty, but then a non-empty list of modules must be
+--- provided.
+--- This structure specifies a test which is performed in the given directory
 --- by running CurryCheck on the given list of modules where the option
 --- string is passed to CurryCheck.
-data PackageTest = PackageTest String [String] String
+data PackageTest = PackageTest String [String] String String
 
 --- A source where the contents of a package can be acquired.
 --- @cons Http - URL to a ZIP file 
@@ -614,9 +617,19 @@ testSuiteFromJObject :: [(String, JValue)] -> Either String [PackageTest]
 testSuiteFromJObject kv =
   mandatoryString "src-dir" kv $ \dir ->
   optionalString  "options" kv $ \opts ->
-  case getOptStringList False "module" kv of
+  optionalString  "script"  kv $ \scriptval ->
+  let script = maybe "" id scriptval in
+  case getOptStringList (not (null script)) "module" kv of
     Left e     -> Left e
-    Right mods -> Right [PackageTest dir mods (maybe "" id opts)]
+    Right mods -> if null script && null mods
+                    then Left emptyError
+                    else if not (null script) && not (null mods)
+                           then Left doubleError
+                           else Right [PackageTest dir mods (maybe "" id opts)
+                                                   script]
+ where
+  emptyError  = "'script' and 'modules' cannot be both empty in 'testsuite'"
+  doubleError = "'script' and 'modules' cannot be both non-empty in 'testsuite'"
 
 --- Reads the list of testsuites from a list of JValues (testsuite objects).
 testSuiteFromJArray :: [JValue] -> Either String [PackageTest]
@@ -630,7 +643,7 @@ testSuiteFromJArray a =
     JObject o -> testSuiteFromJObject o
     _         -> Left "Array element must be a testsuite object"
 
---- Reads an (optional) key with a string list value.
+--- Reads an (optional, if first argument = True) key with a string list value.
 getOptStringList :: Bool -> String -> [(String, JValue)]
                  -> Either String [String]
 getOptStringList optional key kv = case lookup (key++"s") kv of

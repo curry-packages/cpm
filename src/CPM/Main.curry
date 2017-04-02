@@ -44,7 +44,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 31/03/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 02/04/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -731,30 +731,35 @@ test opts cfg getRepo getGC =
  where
   currycheck = curryExec cfg ++ " check"
   
-  execTest apkgdir (PackageTest dir mods ccopts) = do
-    putStrLn $ "Running CurryCheck (" ++ currycheck ++
-               (if null ccopts then "" else " " ++ ccopts) ++ ")\n" ++
-               "(in directory '" ++ dir ++
-               "', showing raw output) on modules:\n" ++
-               unwords mods ++ "\n"
+  execTest apkgdir (PackageTest dir mods ccopts script) = do
+    let scriptcmd = "." </> script ++ if null ccopts then "" else ' ' : ccopts
+        checkcmd  = currycheck ++ if null ccopts then "" else ' ' : ccopts
+    unless (null mods) $ putStrLn $
+      "Running CurryCheck (" ++ checkcmd ++ ")\n" ++
+      "(in directory '" ++ dir ++ "', showing raw output) on modules:\n" ++
+      unwords mods ++ "\n"
+    unless (null script) $ putStrLn $
+      "Executing test script '" ++ scriptcmd ++ "'\n" ++
+      "(in directory '" ++ dir ++ "', showing raw output):\n"
     let currysubdir = apkgdir </> addCurrySubdir dir
+        testcmd = if not (null mods)
+                    then unwords (checkcmd : mods)
+                    else scriptcmd
     debugMessage $ "Removing directory: " ++ currysubdir
     system (unwords ["rm", "-rf", currysubdir])
     inDirectory (apkgdir </> dir) $
-     execWithPkgDir
-      (ExecOptions (unwords (currycheck : ccopts : mods)) [])
-      cfg getRepo getGC apkgdir
+      execWithPkgDir (ExecOptions testcmd []) cfg getRepo getGC apkgdir
 
   testsuites spec mainprogs = case testModules opts of
     Nothing -> maybe (let exports = exportedModules spec
                       in if null exports
                            then if null mainprogs
                                   then []
-                                  else [PackageTest "src" mainprogs ""]
-                           else [PackageTest "src" exports ""])
+                                  else [PackageTest "src" mainprogs "" ""]
+                           else [PackageTest "src" exports "" ""])
                      id
                      (testSuite spec)
-    Just ms -> [PackageTest "src" ms ""]
+    Just ms -> [PackageTest "src" ms "" ""]
 
 --- Get the names of all Curry modules containing in a directory.
 --- Modules in subdirectories are returned as hierarchical modules.
@@ -855,7 +860,7 @@ cleanPackage ll =
       srcdirs  = map (specDir </>) (sourceDirsOf pkg)
       testdirs = map (specDir </>)
                      (maybe []
-                            (map (\ (PackageTest m _ _) -> m))
+                            (map (\ (PackageTest m _ _ _) -> m))
                             (testSuite pkg))
       rmdirs   = dotcpm : map addCurrySubdir (srcdirs ++ testdirs)
   in log ll ("Removing directories: " ++ unwords rmdirs) |>
