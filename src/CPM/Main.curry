@@ -44,7 +44,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 02/04/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 03/04/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -160,7 +160,8 @@ data CheckoutOptions = CheckoutOptions
 data InstallOptions = InstallOptions
   { instTarget     :: Maybe String
   , instVersion    :: Maybe Version
-  , instPrerelease :: Bool }
+  , instPrerelease :: Bool
+  , instExecutable :: Bool }
 
 data UninstallOptions = UninstallOptions
   { uninstPackage :: Maybe String
@@ -210,7 +211,7 @@ checkoutOpts s = case optCommand s of
 installOpts :: Options -> InstallOptions
 installOpts s = case optCommand s of
   Install opts -> opts
-  _            -> InstallOptions Nothing Nothing False
+  _            -> InstallOptions Nothing Nothing False True
 
 uninstallOpts :: Options -> UninstallOptions
 uninstallOpts s = case optCommand s of
@@ -349,7 +350,11 @@ optionParser = optParser
               <.> flag (\a -> Right $ a { optCommand = Install (installOpts a) { instPrerelease = True } })
                     (  short "p"
                     <> long "pre"
-                    <> help "Try pre-release versions when searching for newest version.") )
+                    <> help "Try pre-release versions when searching for newest version.")
+              <.> flag (\a -> Right $ a { optCommand = Install (installOpts a) { instExecutable = False } })
+                    (  short "n"
+                    <> long "noexec"
+                    <> help "Do not install executable.") )
         <|> command "uninstall" (help "Uninstall package")
                     (\a -> Right $ a { optCommand = Uninstall (uninstallOpts a) })
               (   arg (\s a -> Right $ a { optCommand =
@@ -564,7 +569,7 @@ installbin opts cfg repo gc = do
     (checkout opts cfg repo gc |>
      log Debug ("Change into directory " ++ copkgdir) |>
      (setCurrentDirectory copkgdir >> succeedIO ()) |>
-     install (InstallOptions Nothing Nothing False) cfg repo gc |>
+     install (InstallOptions Nothing Nothing False True) cfg repo gc |>
      cleanPackage Debug)
  where
   binpkgdir = binPackageDir cfg
@@ -572,12 +577,12 @@ installbin opts cfg repo gc = do
 
 install :: InstallOptions -> Config -> Repository -> GlobalCache
         -> IO (ErrorLogger ())
-install (InstallOptions Nothing Nothing _) cfg repo gc =
+install (InstallOptions Nothing Nothing _ instexec) cfg repo gc =
   tryFindLocalPackageSpec "." |>= \specDir ->
   cleanCurryPathCache specDir |>
   installLocalDependencies cfg repo gc specDir |>= \ (pkg,_) ->
-  installExecutable cfg repo pkg specDir
-install (InstallOptions (Just pkg) Nothing pre) cfg repo gc = do
+  if instexec then installExecutable cfg repo pkg specDir else succeedIO ()
+install (InstallOptions (Just pkg) Nothing pre _) cfg repo gc = do
   fileExists <- doesFileExist pkg
   if fileExists
     then installFromZip cfg pkg
@@ -585,12 +590,12 @@ install (InstallOptions (Just pkg) Nothing pre) cfg repo gc = do
       Nothing -> failIO $ "Package '" ++ pkg ++
                           "' not found in package repository."
       Just  p -> acquireAndInstallPackageWithDependencies cfg repo gc p
-install (InstallOptions (Just pkg) (Just ver) _) cfg repo gc =
+install (InstallOptions (Just pkg) (Just ver) _ _) cfg repo gc =
  case findVersion repo pkg ver of
   Nothing -> failIO $ "Package '" ++ pkg ++ "-" ++ (showVersion ver) ++
                       "' not found in package repository."
   Just  p -> acquireAndInstallPackageWithDependencies cfg repo gc p
-install (InstallOptions Nothing (Just _) _) _ _ _ =
+install (InstallOptions Nothing (Just _) _ _) _ _ _ =
   failIO "Must specify package name"
 
 --- Installs the executable specified in the package in the

@@ -200,6 +200,8 @@ which can be specifed in the \code{package.json} file
 then the command \code{cpm install} also compiles the application
 and installs the executable in the \code{bin} install directory of CPM
 (see Section~\ref{sec:config} for details).
+The installation of executables can be suppressed by the
+\code{cpm install} option \code{-n} or \code{--noexec}.
 
 
 \subsection{Checking out Packages}
@@ -588,7 +590,8 @@ to the newest available version.
 
 \item[\fbox{\code{install}}] Installs all dependencies of the current package.
 Furthermore, if the current package contains an executable application,
-the application is compiled and the executable is installed.
+the application is compiled and the executable is installed
+(unless the option \code{-n} or \code{--noexec} is set).
 
 \item[\fbox{\code{install $package$ [--$pre$]}}] Installs the newest version of 
 a package to the global package cache. \code{--$pre$} enables the installation
