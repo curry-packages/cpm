@@ -556,10 +556,14 @@ checkout (CheckoutOptions pkg (Just ver) _) cfg repo gc =
   Just  p -> acquireAndInstallPackageWithDependencies cfg repo gc p |>
              checkoutPackage cfg repo gc p
 
--- Installs the binary provided by a package.
--- This is done by checking out the package into CPM's bin_packages
--- cache (default: $HOME/.cpm/bin_packages, see bin_package_path
--- in .cpmrc configuration file) and then install this package.
+--- Installs the binary provided by a package.
+--- This is done by checking out the package into CPM's bin_packages
+--- cache (default: $HOME/.cpm/bin_packages, see bin_package_path
+--- in .cpmrc configuration file) and then install this package.
+---
+--- Note: the installed package should not be cleaned or removed
+--- after the installation since its execution might refer (via the
+--- config module) to some data stored in the package.
 installbin :: CheckoutOptions -> Config -> Repository -> GlobalCache
            -> IO (ErrorLogger ())
 installbin opts cfg repo gc = do
@@ -569,8 +573,7 @@ installbin opts cfg repo gc = do
     (checkout opts cfg repo gc |>
      log Debug ("Change into directory " ++ copkgdir) |>
      (setCurrentDirectory copkgdir >> succeedIO ()) |>
-     install (InstallOptions Nothing Nothing False True) cfg repo gc |>
-     cleanPackage Debug)
+     install (InstallOptions Nothing Nothing False True) cfg repo gc )
  where
   binpkgdir = binPackageDir cfg
   copkgdir  = binpkgdir </> coPackage opts

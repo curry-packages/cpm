@@ -896,4 +896,35 @@ directories \code{test} and \code{examples} could be as follows:
 
 \end{description}
 
+\section{Error Recovery}
+\label{sec:recovery}
+
+There might occur situations when your package or repository
+is in an inconsistent state, e.g., when you manually changed
+some internal files or such files have been inadvertently changed or
+deleted, or a package is broken due to an incomplete download.
+Since CPM checks these files, CPM might exit with an error message
+that something is wrong.
+In such cases, it might be a good idea to clean up your package file system.
+Here are some suggestions how to do this:
+\begin{description}
+\item[\code{cpm clean}]~\\
+This command cleans the current package from
+generated auxiliariy files (see Section~\ref{sec:cmd-reference}).
+Then you can re-install the package and packages on which it depends
+by the command \code{cpm install}.
+\item[\code{rm -rf \$HOME/.cpm/packages}] ~\\
+This cleans all packages which have been previously installed
+in the global package cache (see Section~\ref{sec:internals}).
+Such an action might be reasonable in case of some download failure.
+After clearing the global package cache, all necessary packages
+are downloaded again when they are needed.
+\item[\code{rm -rf \$HOME/.cpm/index}] ~\\
+This removes the central package index of CPM
+(see Section~\ref{sec:internals}).
+You can simply re-install the newest version of this index
+by the command \code{cpm update}.
+\end{description}
+
+
 \end{document}
