@@ -14,7 +14,7 @@ import Distribution ( stripCurrySuffix, addCurrySubdir )
 import Either
 import FilePath     ( (</>), splitSearchPath, takeExtension )
 import IO           ( hFlush, stdout )
-import List         ( intercalate, split, splitOn )
+import List         ( groupBy, intercalate, nub, split, splitOn )
 import Sort         ( sortBy )
 import System       ( getArgs, getEnviron, setEnviron, system, unsetEnviron
                     , exitWith )
@@ -44,7 +44,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 03/04/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 07/04/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -173,8 +173,10 @@ data InfoOptions = InfoOptions
   , infoAll     :: Bool }
 
 data ListOptions = ListOptions
-  { listAll :: Bool
-  , listCSV :: Bool }
+  { listAll :: Bool   -- list all versions of each package
+  , listCSV :: Bool   -- list in CSV format
+  , listCat :: Bool   -- list all categories
+  }
 
 data SearchOptions = SearchOptions
   { searchQuery :: String }
@@ -226,7 +228,7 @@ infoOpts s = case optCommand s of
 listOpts :: Options -> ListOptions
 listOpts s = case optCommand s of
   List opts -> opts
-  _         -> ListOptions False False
+  _         -> ListOptions False False False
 
 searchOpts :: Options -> SearchOptions
 searchOpts s = case optCommand s of
@@ -449,14 +451,18 @@ optionParser = optParser
                                                          { listAll = True } })
                     (  short "a"
                     <> long "all"
-                    <> help "Show all versions"
-                    <> optional ) 
+                    <> help "Show all versions" ) 
               <.> flag (\a -> Right $ a { optCommand = List (listOpts a)
                                                       { listCSV = True } })
-                    (  short "c"
+                    (  short "t"
                     <> long "csv"
-                    <> help "Show in CSV format"
-                    <> optional ) )
+                    <> help "Show in CSV table format" )
+              <.> flag (\a -> Right $ a { optCommand = List (listOpts a)
+                                                      { listCat = True } })
+                    (  short "c"
+                    <> long "category"
+                    <> help "Show all categories" )
+              )
         <|> command "search" (help "Search the package repository") Right
               (   arg (\s a -> Right $ a { optCommand = Search (searchOpts a) { searchQuery = s } }) 
                     (  metavar "QUERY"
@@ -671,25 +677,47 @@ tryFindVersion pkg ver repo = case findVersion repo pkg ver of
 
 --- Lists all packages in the given repository.
 listCmd :: ListOptions -> Config -> Repository -> IO (ErrorLogger ())
-listCmd (ListOptions lv csv) _ repo = putStr rendered >> succeedIO ()
+listCmd (ListOptions lv csv cat) _ repo =
+  if cat then putStr (renderCats catgroups) >> succeedIO ()
+         else putStr (renderPkgs allpkgs)   >> succeedIO ()
  where
-  results = concatMap (if lv then id else ((:[]) . head))
+  -- all packages (and versions if `lv`)
+  allpkgs = concatMap (if lv then id else ((:[]) . head))
                       (sortBy (\ps1 ps2 -> name (head ps1) <= name (head ps2))
                               (listPackages repo))
 
-  rendered =
-    if csv
-      then showCSV (head columns : drop 2 columns)
-      else render (table columns [nameLen + 4, 66 - nameLen, 10]) ++
-             "\nUse 'cpm info PACKAGE' for more information about a package." ++
-             "\nUse 'cpm update' to download the newest package index.\n"
+  -- all categories together with their package names:
+  catgroups =
+    let newpkgs = map head (listPackages repo)
+        catpkgs = concatMap (\p -> map (\c -> (c, name p)) (category p)) newpkgs
+        nocatps = map name (filter (null . category) newpkgs)
+    in map (\cg -> (fst (head cg), map snd cg))
+           (groupBy (\ (c1,_) (c2,_) -> c1==c2) (nub $ sortBy (<=) catpkgs)) ++
+       if null nocatps then []
+                       else [("???", nub $ sortBy (<=) nocatps)]
 
-  header = [ ["Name", "Synopsis", "Version"]
-           , ["----", "--------", "-------"]]
+  renderPkgs pkgs =
+    let namelen = foldl max 4 $ map (length . name) pkgs
+        header = [ ["Name", "Synopsis", "Version"]
+                 , ["----", "--------", "-------"]]
+        formatPkg p = [name p, synopsis p, showVersion (version p)]
+        columns = header ++ map formatPkg pkgs
+    in renderTable [namelen + 4, 66 - namelen, 10] columns
 
-  formatPkg p = [name p, synopsis p, showVersion (version p)]
-  columns = header ++ map formatPkg results
-  nameLen = foldl max 0 $ map (length . name) results
+  renderCats catgrps =
+    let namelen = foldl max 8 $ map (length . fst) catgrps
+        header = [ ["Category", "Packages"]
+                 , ["--------", "--------"]]
+        columns = header ++ map (\ (c,ns) -> [c, unwords ns]) catgrps
+    in renderTable [namelen + 4, 76 - namelen] columns
+  
+  renderTable colsizes cols =
+    if csv then showCSV (head cols : drop 2 cols)
+           else render (table cols colsizes) ++ cpmInfo
+
+  cpmInfo = "\nUse 'cpm info PACKAGE' for more information about a package." ++
+            "\nUse 'cpm update' to download the newest package index.\n"
+
 
 search :: SearchOptions -> Config -> Repository -> IO (ErrorLogger ())
 search (SearchOptions q) _ repo = putStr rendered >> succeedIO ()

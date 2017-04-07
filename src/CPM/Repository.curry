@@ -44,12 +44,13 @@ emptyRepository = Repository []
 --- @param p the name of the package to search for
 --- @param pre should pre-release versions be included?
 findAllVersions :: Repository -> String -> Bool -> [Package]
-findAllVersions (Repository ps) p pre = sortedByVersion $ preFiltered $ sameName ps
-  where 
-    sortedByVersion = sortBy (\a b -> (version a) `vgt` (version b))
-    preFiltered = filter filterPre
-    sameName = filter ((== p) . name) 
-    filterPre p' = pre || (not . isPreRelease . version) p'
+findAllVersions (Repository ps) p pre =
+  sortedByVersion $ preFiltered $ sameName ps
+ where 
+  sortedByVersion = sortBy (\a b -> (version a) `vgt` (version b))
+  preFiltered = filter filterPre
+  sameName = filter ((== p) . name) 
+  filterPre p' = pre || (not . isPreRelease . version) p'
 
 --- Search the names and synopses of all packages in the repository for a 
 --- particular term. Lower/upercase is ignored for the search.

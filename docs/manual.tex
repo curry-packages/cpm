@@ -578,8 +578,14 @@ Prints basic information on the given package version.
 The option \code{--all} shows more information.
 
 \item[\fbox{\code{list [--all] [--csv]}}] List the names and synopses of all 
-packages in the central package index.
+packages of the central package index.
 The option \code{--all} shows also all package versions.
+The option \code{--csv} shows the information in CSV format.
+
+\item[\fbox{\code{list --category [--csv]}}]
+List the category names together with the packages belonging to this
+category (see Section~\ref{sec:reference})
+of the central package index.
 The option \code{--csv} shows the information in CSV format.
 
 \item[\fbox{\code{search $query$}}] Searches the names and synopses of all 
