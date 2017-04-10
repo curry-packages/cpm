@@ -6,17 +6,22 @@
 
 module CPM.Config 
   ( Config ( Config, packageInstallDir, binInstallDir, repositoryDir
-           , binPackageDir, packageIndexRepository, curryExec )
-  , readConfiguration, readConfigurationWithDefault, defaultConfig ) where
+           , binPackageDir, packageIndexRepository, curryExec
+           , compilerVersion )
+  , readConfiguration, readConfigurationWithDefault, defaultConfig
+  , showCompilerVersion ) where
 
 import Char         (isSpace, toLower)
 import Directory    (getHomeDirectory, createDirectoryIfMissing)
-import Distribution (installDir, curryCompiler)
+import Distribution (installDir, curryCompiler, curryCompilerMinorVersion
+                    , curryCompilerMajorVersion)
 import FilePath     ((</>))
 import Function     ((***))
-import List         (splitOn, intersperse)
+import IOExts       (evalCmd)
+import List         (split, splitOn, intersperse)
 import Maybe        (mapMaybe)
 import PropertyFile (readPropertyFile)
+import Read         (readInt)
 
 import CPM.ErrorLogger
 import CPM.FileUtil (ifFileExists)
@@ -42,6 +47,8 @@ data Config = Config {
   , packageIndexRepository :: String
     --- The executable of the Curry system used to compile and check packages
   , curryExec :: String
+    --- The compiler version (name,major,minor) used to compile packages
+  , compilerVersion :: (String,Int,Int)
   }
 
 --- CPM's default configuration values. These are used if no .cpmrc file is found
@@ -53,7 +60,34 @@ defaultConfig = Config
   , repositoryDir          = "$HOME/.cpm/index" 
   , binPackageDir          = "$HOME/.cpm/bin_packages" 
   , packageIndexRepository = packageIndexURI
-  , curryExec              = installDir </> "bin" </> curryCompiler }
+  , curryExec              = installDir </> "bin" </> curryCompiler
+  , compilerVersion        = (curryCompiler, curryCompilerMajorVersion,
+                              curryCompilerMinorVersion)
+  }
+
+--- Shows the compiler version in the configuration.
+showCompilerVersion :: Config -> String
+showCompilerVersion cfg =
+  let (cname,cmaj,cmin) = compilerVersion cfg
+  in cname ++ ' ' : show cmaj ++ "." ++ show cmin
+
+--- Sets the correct compiler version in the configuration.
+setCompilerVersion :: Config -> IO Config
+setCompilerVersion cfg =
+  if curryExec cfg == installDir </> "bin" </> curryCompiler
+    then return cfg { compilerVersion = currVersion }
+    else do (c1,sname,_) <- evalCmd (curryExec cfg) ["--compiler-name"] ""
+            (c2,svers,_) <- evalCmd (curryExec cfg) ["--numeric-version"] ""
+            when (c1 > 0 || c2 > 0) $
+              error $ "Cannot determine compiler version"
+            let cname = strip sname
+                cvers = strip svers
+                (majs:mins:_) = split (=='.') cvers
+            debugMessage $ "Compiler version: " ++ cname ++ " " ++ cvers
+            return cfg { compilerVersion = (cname, readInt majs, readInt mins) }
+ where
+  currVersion = (curryCompiler, curryCompilerMajorVersion,
+                                curryCompilerMinorVersion)
 
 --- Reads the .cpmrc file from the user's home directory (if present) and merges
 --- its contents into the default configuration. Resolves the $HOME variable 
@@ -78,8 +112,10 @@ readConfigurationWithDefault defsettings = do
                          (settingsFromFile ++ stripProps defsettings)
   case mergedSettings of
     Left e   -> return $ Left e
-    Right s' -> replaceHome s' >>= \s'' -> createDirectories s'' >>
-                return (Right s'')
+    Right s0 -> do s1 <- replaceHome s0
+                   createDirectories s1
+                   s2 <- setCompilerVersion s1
+                   return $ Right s2
 
 replaceHome :: Config -> IO Config
 replaceHome cfg = do
@@ -121,8 +157,9 @@ mergeConfigSettings cfg props = applyEither setters cfg
 --- @param opts - the options
 stripProps :: [(String, String)] -> [(String, String)]
 stripProps = map ((map toLower . strip) *** strip) 
- where
-  strip s = reverse $ dropWhile isSpace $ reverse $ dropWhile isSpace s
+
+strip :: String -> String
+strip = reverse . dropWhile isSpace . reverse . dropWhile isSpace
 
 --- A map from option names to functions that will update a configuration
 --- record with a value for that option.

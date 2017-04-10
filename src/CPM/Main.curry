@@ -24,14 +24,14 @@ import OptParse
 import CPM.ErrorLogger
 import CPM.FileUtil ( fileInPath, joinSearchPath, safeReadFile, whenFileExists
                     , ifFileExists, inDirectory, removeDirectoryComplete )
-import CPM.Config              ( Config ( packageInstallDir, binInstallDir
-                                        , binPackageDir, curryExec )
-                               , readConfigurationWithDefault )
+import CPM.Config   ( Config ( packageInstallDir, binInstallDir
+                             , binPackageDir, curryExec )
+                    , readConfigurationWithDefault, showCompilerVersion )
 import CPM.PackageCache.Global ( GlobalCache, readInstalledPackagesFromDir
                                , installFromZip, checkoutPackage
                                , uninstallPackage )
 import CPM.Package
-import CPM.Resolution ( showResult )
+import CPM.Resolution ( isCompatibleToCompiler, showResult )
 import CPM.Repository ( Repository, readRepository, findVersion, listPackages
                       , findLatestVersion, updateRepository, searchPackages )
 import CPM.PackageCache.Runtime ( dependencyPathsSeparate, writePackageConfig )
@@ -44,7 +44,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 07/04/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 10/04/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -540,6 +540,7 @@ compiler o cfg getRepo getGC =
   computePackageLoadPath pkgdir =
     getRepo >>= \repo -> getGC >>= \gc ->
     loadPackageSpec pkgdir |>= \pkg ->
+    checkCompiler cfg pkg >>
     resolveAndCopyDependenciesForPackage cfg repo gc pkgdir pkg |>= \pkgs ->
     getAbsolutePath pkgdir >>= \abs -> succeedIO () |>
     let srcdirs = map (abs </>) (sourceDirsOf pkg)
@@ -607,11 +608,18 @@ install (InstallOptions (Just pkg) (Just ver) _ _) cfg repo gc =
 install (InstallOptions Nothing (Just _) _ _) _ _ _ =
   failIO "Must specify package name"
 
+--- Checks the compiler compatibility.
+checkCompiler :: Config -> Package -> IO ()
+checkCompiler cfg pkg =
+  unless (isCompatibleToCompiler cfg pkg)
+    (error $ "Incompatible compiler: " ++ showCompilerVersion cfg)
+
 --- Installs the executable specified in the package in the
 --- bin directory of CPM (compare .cpmrc).
 installExecutable :: Config -> Repository -> Package -> String
                   -> IO (ErrorLogger ())
 installExecutable cfg repo pkg pkgdir =
+  checkCompiler cfg pkg >>
   -- we read the global cache again since it might be modified by
   -- the installation of the package:
   getGlobalCache cfg >>= \gc ->

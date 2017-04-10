@@ -13,10 +13,9 @@ module CPM.Resolution
   , transitiveDependencies
   , resolve
   , resolveDependenciesFromLookupSet
+  , isCompatibleToCompiler
   ) where
 
-import Distribution (curryCompiler, curryCompilerMinorVersion
-                    , curryCompilerMajorVersion)
 import Either
 import List
 import Pretty
@@ -24,25 +23,27 @@ import Sort
 import Maybe
 import Test.EasyCheck
 
+import CPM.Config (Config, defaultConfig, compilerVersion)
 import CPM.ErrorLogger
 import CPM.LookupSet
 import CPM.Package
 
 --- Resolves the dependencies of a package using packages from a lookup set, 
 --- inside an error logger.
-resolveDependenciesFromLookupSet :: Package -> LookupSet -> IO (ErrorLogger ResolutionResult)
-resolveDependenciesFromLookupSet pkg lookupSet = 
-  let result = resolve pkg lookupSet in if resolutionSuccess result
+resolveDependenciesFromLookupSet :: Config -> Package -> LookupSet
+                                 -> IO (ErrorLogger ResolutionResult)
+resolveDependenciesFromLookupSet cfg pkg lookupSet = 
+  let result = resolve cfg pkg lookupSet in if resolutionSuccess result
     then succeedIO result
     else failIO $ showResult result
 
 --- Resolves the dependencies of a package using packages from a lookup set.
-resolve :: Package -> LookupSet -> ResolutionResult
-resolve pkg ls = case resolvedPkgs of
+resolve :: Config -> Package -> LookupSet -> ResolutionResult
+resolve cfg pkg ls = case resolvedPkgs of
   Just pkgs -> ResolutionSuccess pkg pkgs
   Nothing   -> ResolutionFailure labeledTree
  where
-  labeledTree = labelConflicts $ candidateTree pkg ls
+  labeledTree = labelConflicts cfg $ candidateTree pkg ls
   noConflicts = prune ((/= Nothing) . clConflict) labeledTree
   resolvedPkgs = maybeHead . map stPackages . filter stComplete . leaves . mapTree clState $ noConflicts
 
@@ -94,8 +95,9 @@ showConflictTree (ResolutionFailure t) = showTree $ mapTree labeler $ cutBelowCo
 showCandidateTree :: Tree State -> String
 showCandidateTree = showTree . mapTree (text . packageId . actPackage . stActivation)
 
-showLabelTree :: Tree State -> String
-showLabelTree = showTree . mapTree labeler . cutBelowConflict . labelConflicts
+showLabelTree :: Config -> Tree State -> String
+showLabelTree cfg =
+  showTree . mapTree labeler . cutBelowConflict . labelConflicts cfg
  where
   pkgId = text . packageId . actPackage . stActivation
   actId = text . packageId . actPackage
@@ -278,10 +280,10 @@ candidateTree pkg ls = let s = InitialA pkg in
 
 --- Calculates the first conflict for each node in the tree and annotates the 
 --- nodes with these conflicts.
-labelConflicts :: Tree State -> Tree ConflictState
-labelConflicts = mapTree f
+labelConflicts :: Config -> Tree State -> Tree ConflictState
+labelConflicts cfg = mapTree f
  where
-  f s = (s, firstConflict s (reverse $ stDependencies s))
+  f s = (s, firstConflict cfg s (reverse $ stDependencies s))
 
 --- Checks whether a state is complete, i.e. whether all packages mentioned in
 --- all dependencies of all active packages are present in the list of active
@@ -304,15 +306,15 @@ missingPackages s = missing' (stPackages s) (stAllDependencies s)
   noPackage pkgs (Dependency p _) = find ((== p) . name) pkgs == Nothing
 
 --- Calculates the first conflict in a state.
-firstConflict :: State -> [(Activation, Dependency)] -> Maybe Conflict
-firstConflict _ [] = Nothing
-firstConflict s@(act, acts) ((depAct, Dependency p disj):ds) =
-  if not $ isCompatibleToCompiler (actPackage act)
+firstConflict :: Config -> State -> [(Activation, Dependency)] -> Maybe Conflict
+firstConflict _ _ [] = Nothing
+firstConflict cfg s@(act, acts) ((depAct, Dependency p disj):ds) =
+  if not $ isCompatibleToCompiler cfg (actPackage act)
     then Just $ CompilerConflict act
     else case findPkg of
-      Nothing -> firstConflict s ds
+      Nothing -> firstConflict cfg s ds
       Just  a -> if isDisjunctionCompatible (version $ actPackage a) disj
-        then firstConflict s ds
+        then firstConflict cfg s ds
         else if actParent a == depAct
           then Just $ PrimaryConflict a
           else Just $ SecondaryConflict a depAct
@@ -477,12 +479,8 @@ test_transitiveDependencies_multipleVersions = transitiveDependencies db pkg -=-
         d = cPackage "D" (1, 0, 0, Nothing) []
         db = cDB [b100, b110, c, d]
 
-isCompatibleToCompiler :: Package -> Bool
-isCompatibleToCompiler p = isCompatibleToCompiler' c p
- where c = (curryCompiler, curryCompilerMajorVersion, curryCompilerMinorVersion)
-
-isCompatibleToCompiler' :: (String, Int, Int) -> Package -> Bool
-isCompatibleToCompiler' (name, maj, min) p = case compats of
+isCompatibleToCompiler :: Config -> Package -> Bool
+isCompatibleToCompiler cfg p = case compats of
   []    -> True -- No constraints => compiler is compatible
   (_:_) -> case constraintForCompiler of
     Nothing -> False -- No constraints for current compiler
@@ -490,6 +488,7 @@ isCompatibleToCompiler' (name, maj, min) p = case compats of
     Just (CompilerCompatibility _ c) ->
                isDisjunctionCompatible (maj, min, 0, Nothing) c
  where
+  (name, maj, min) = compilerVersion cfg
   compats = compilerCompatibility p
   constraintForCompiler = find (\(CompilerCompatibility c _) -> c == name)
                                compats
@@ -560,7 +559,8 @@ test_semverMinimum = isDisjunctionCompatible ver dis -=- False
         dis = cDisj "~> 0.7.2"
   
 test_resolvesSimpleDependency :: Test.EasyCheck.Prop
-test_resolvesSimpleDependency = maybeResolvedPackages (resolve pkg db) -=- Just [json100, pkg]
+test_resolvesSimpleDependency =
+  maybeResolvedPackages (resolve defaultConfig pkg db) -=- Just [json100, pkg]
   where pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "json" "=1.0.0"]
         json100 = cPackage "json" (1, 0, 0, Nothing) []
         json101 = cPackage "json" (1, 0, 1, Nothing) []
@@ -568,20 +568,20 @@ test_resolvesSimpleDependency = maybeResolvedPackages (resolve pkg db) -=- Just 
 
 test_reportsUnknownPackage :: Test.EasyCheck.Prop
 test_reportsUnknownPackage = showResult result -=- "There seems to be no version of package json that can satisfy the constraint json = 1.0.0"
-  where result = resolve pkg db
+  where result = resolve defaultConfig pkg db
         pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "json" "= 1.0.0"]
         db = cDB [pkg]
 
 test_reportsMissingPackageVersion :: Test.EasyCheck.Prop
 test_reportsMissingPackageVersion = showResult result -=- "There seems to be no version of package json that can satisfy the constraint json = 1.2.0"
-  where result = resolve pkg db
+  where result = resolve defaultConfig pkg db
         pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "json" "=1.2.0"]
         json = cPackage "json" (1, 0, 0, Nothing) []
         db  = cDB [json]
 
 test_reportsSecondaryConflict :: Test.EasyCheck.Prop
 test_reportsSecondaryConflict = showResult result -=- expectedMessage
- where result = resolve pkg db
+ where result = resolve defaultConfig pkg db
        pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "json" "= 1.0.0", cDep "b" ">= 0.0.1"]
        b = cPackage "b" (0, 0, 2, Nothing) [cDep "json" "~> 1.0.4"]
        json100 = cPackage "json" (1, 0, 0, Nothing) []
@@ -596,7 +596,7 @@ test_reportsSecondaryConflict = showResult result -=- expectedMessage
 
 test_reportsSecondaryConflictInsteadOfPrimary :: Test.EasyCheck.Prop
 test_reportsSecondaryConflictInsteadOfPrimary = showResult result -=- expectedMessage
- where result = resolve pkg db
+ where result = resolve defaultConfig pkg db
        pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "json" "= 1.0.0", cDep "b" ">= 0.0.5"]
        b001 = cPackage "b" (0, 0, 1, Nothing) []
        b002 = cPackage "b" (0, 0, 2, Nothing) []
@@ -614,7 +614,7 @@ test_reportsSecondaryConflictInsteadOfPrimary = showResult result -=- expectedMe
 
 test_detectsSecondaryOnFirstActivation :: Test.EasyCheck.Prop
 test_detectsSecondaryOnFirstActivation = showResult result -=- expectedMessage
- where result = resolve pkg db
+ where result = resolve defaultConfig pkg db
        pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "a" "= 0.0.1", cDep "b" "> 0.0.1"]
        a001 = cPackage "a" (0, 0, 1, Nothing) [cDep "b" "= 0.0.1"]
        b001 = cPackage "b" (0, 0, 1, Nothing) []
@@ -628,28 +628,32 @@ test_detectsSecondaryOnFirstActivation = showResult result -=- expectedMessage
         ++ "  |- b (b > 0.0.1)"
 
 test_makesDecisionBetweenAlternatives :: Test.EasyCheck.Prop
-test_makesDecisionBetweenAlternatives = maybeResolvedPackages (resolve pkg db) -=- Just [json150, pkg]
+test_makesDecisionBetweenAlternatives =
+  maybeResolvedPackages (resolve defaultConfig pkg db) -=- Just [json150, pkg]
   where pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "json" "> 1.0.0, < 2.0.0 || >= 4.0.0"]
         json150 = cPackage "json" (1, 5, 0, Nothing) []
         json320 = cPackage "json" (3, 2, 0, Nothing) []
         db = cDB [json150, json320]
 
 test_alwaysChoosesNewestAlternative :: Test.EasyCheck.Prop
-test_alwaysChoosesNewestAlternative = maybeResolvedPackages (resolve pkg db) -=- Just [json420, pkg]
+test_alwaysChoosesNewestAlternative =
+  maybeResolvedPackages (resolve defaultConfig pkg db) -=- Just [json420, pkg]
   where pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "json" "> 1.0.0, < 2.0.0 || >= 4.0.0"]
         json150 = cPackage "json" (1, 5, 0, Nothing) []
         json420 = cPackage "json" (4, 2, 0, Nothing) []
         db = cDB [json150, json420]
 
 test_doesNotChoosePrereleaseByDefault :: Test.EasyCheck.Prop
-test_doesNotChoosePrereleaseByDefault = maybeResolvedPackages (resolve pkg db) -=- Just [b109, pkg]
+test_doesNotChoosePrereleaseByDefault =
+  maybeResolvedPackages (resolve defaultConfig pkg db) -=- Just [b109, pkg]
   where pkg = cPackage "A" (0, 0, 1, Nothing) [cDep "B" ">= 1.0.0"]
         b109 = cPackage "B" (1, 0, 9, Nothing) []
         b110b1 = cPackage "B" (1, 1, 0, Just "b1") []
         db = cDB [b109, b110b1]
 
 test_upgradesPackageToPrereleaseWhenNeccesary :: Test.EasyCheck.Prop
-test_upgradesPackageToPrereleaseWhenNeccesary = maybeResolvedPackages (resolve pkg db) -=- Just [b110b1, c, pkg]
+test_upgradesPackageToPrereleaseWhenNeccesary =
+  maybeResolvedPackages (resolve defaultConfig pkg db) -=- Just [b110b1, c, pkg]
   where pkg = cPackage "A" (0, 0, 1, Nothing) [cDep "C" "= 1.2.0"]
         b109 = cPackage "B" (1, 0, 9, Nothing) []
         b110b1 = cPackage "B" (1, 1, 0, Just "b1") []
@@ -657,7 +661,8 @@ test_upgradesPackageToPrereleaseWhenNeccesary = maybeResolvedPackages (resolve p
         db = cDB [b109, b110b1, c]
 
 test_prefersLocalPackageCacheEvenIfOlder :: Test.EasyCheck.Prop
-test_prefersLocalPackageCacheEvenIfOlder = maybeResolvedPackages (resolve pkg db) -=- Just [b101, pkg]
+test_prefersLocalPackageCacheEvenIfOlder =
+  maybeResolvedPackages (resolve defaultConfig pkg db) -=- Just [b101, pkg]
   where pkg = cPackage "A" (0, 0, 1, Nothing) [cDep "B" ">= 1.0.0"]
         b101 = cPackage "B" (1, 0, 1, Nothing) []
         b105 = cPackage "B" (1, 0, 5, Nothing) []
@@ -665,7 +670,7 @@ test_prefersLocalPackageCacheEvenIfOlder = maybeResolvedPackages (resolve pkg db
 
 test_reportsCompilerIncompatibility :: Test.EasyCheck.Prop
 test_reportsCompilerIncompatibility = showResult result -=- "The package json-1.0.0, dependency constraint json = 1.0.0, is not compatible to the current compiler. It was activated because:\nsample\n  |- json (json = 1.0.0)"
-  where result = resolve pkg db
+  where result = resolve defaultConfig pkg db
         pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "json" "= 1.0.0"]
         json = cPackageCC "json" (1, 0, 0, Nothing) [cCC "nocompiler" "= 1.0.0"]
         db = cDB [json]

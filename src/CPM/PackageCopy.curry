@@ -52,7 +52,7 @@ resolveDependenciesForPackageCopy :: Config -> Package -> Repository
                                   -> IO (ErrorLogger ResolutionResult)
 resolveDependenciesForPackageCopy cfg pkg repo gc dir = 
   lookupSetForPackageCopy cfg pkg repo gc dir |>= \lookupSet ->
-  resolveDependenciesFromLookupSet pkg lookupSet
+  resolveDependenciesFromLookupSet cfg pkg lookupSet
 
 --- Calculates the lookup set needed for dependency resolution on a package
 --- copy.
@@ -78,10 +78,11 @@ lookupSetForPackageCopy cfg _ repo gc dir =
       else Just p
 
 --- Resolves dependencies for a package.
-resolveDependenciesForPackage :: Package -> Repository -> GC.GlobalCache 
+resolveDependenciesForPackage :: Config -> Package -> Repository
+                              -> GC.GlobalCache 
                               -> IO (ErrorLogger ResolutionResult)
-resolveDependenciesForPackage pkg repo gc = 
-  resolveDependenciesFromLookupSet pkg lookupSet
+resolveDependenciesForPackage cfg pkg repo gc = 
+  resolveDependenciesFromLookupSet cfg pkg lookupSet
  where
   lsRepo = LS.addPackages LS.emptySet (allPackages repo) LS.FromRepository
   -- Find all packages that are in the global cache, but not in the repo
@@ -95,7 +96,7 @@ acquireAndInstallPackageWithDependencies :: Config -> Repository
                                          -> GC.GlobalCache -> Package 
                                          -> IO (ErrorLogger ())
 acquireAndInstallPackageWithDependencies cfg repo gc pkg = 
-  resolveDependenciesForPackage pkg repo gc |>=
+  resolveDependenciesForPackage cfg pkg repo gc |>=
   \result -> GC.installMissingDependencies cfg gc (resolvedPackages result) |>
   GC.acquireAndInstallPackage cfg pkg
 
@@ -129,7 +130,8 @@ upgradeSinglePackage :: Config -> Repository -> GC.GlobalCache -> String
 upgradeSinglePackage cfg repo gc dir pkgName = loadPackageSpec dir |>=
   \pkgSpec -> lookupSetForPackageCopy cfg pkgSpec repo gc dir |>=
   \originalLS -> let transitiveDeps = pkgName : allTransitiveDependencies originalLS pkgName in
-  resolveDependenciesFromLookupSet pkgSpec (LS.setLocallyIgnored originalLS transitiveDeps) |>=
+  resolveDependenciesFromLookupSet cfg pkgSpec
+                        (LS.setLocallyIgnored originalLS transitiveDeps) |>=
   \result -> GC.installMissingDependencies cfg gc (resolvedPackages result) |>
   log Info (showDependencies result) |>
   copyDependencies cfg gc pkgSpec (resolvedPackages result) dir

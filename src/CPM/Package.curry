@@ -562,7 +562,8 @@ dependenciesFromJObject kv = if any isLeft dependencies
 
 --- Reads the compiler compatibility constraints of a package from the 
 --- key-value-pairs of a JObject.
-compilerCompatibilityFromJObject :: [(String, JValue)] -> Either String [CompilerCompatibility]
+compilerCompatibilityFromJObject :: [(String, JValue)]
+                                 -> Either String [CompilerCompatibility]
 compilerCompatibilityFromJObject kv = if any isLeft compilerCompats
   then Left $ intercalate "; " (lefts compilerCompats)
   else Right $ rights compilerCompats
