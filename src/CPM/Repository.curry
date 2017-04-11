@@ -26,10 +26,11 @@ import List
 import FilePath
 import System (system)
 
-import CPM.Config (Config, repositoryDir, packageIndexRepository)
+import CPM.Config     (Config, repositoryDir, packageIndexRepository)
 import CPM.ErrorLogger
 import CPM.Package
-import CPM.FileUtil ( checkAndGetDirectoryContents, inDirectory )
+import CPM.FileUtil   ( checkAndGetDirectoryContents, inDirectory )
+import CPM.Resolution ( isCompatibleToCompiler )
 
 data Repository = Repository [Package]
 
@@ -82,19 +83,22 @@ listPackages (Repository ps) =
 
 --- Finds the latest version of a package.
 ---
+--- @param cfg  - the current CPM configuration
 --- @param repo - the central package index
 --- @param p - the package to search for
 --- @param pre - include pre-release versions
-findLatestVersion :: Repository -> String -> Bool -> Maybe Package
-findLatestVersion repo p pre = case findAllVersions repo p pre of
-  [] -> Nothing
-  (x:_) -> Just x
+findLatestVersion :: Config -> Repository -> String -> Bool -> Maybe Package
+findLatestVersion cfg repo pn pre =
+ case filter (isCompatibleToCompiler cfg) (findAllVersions repo pn pre) of
+  []    -> Nothing
+  (p:_) -> Just p
 
 --- Finds a specific version of a package.
 findVersion :: Repository -> String -> Version -> Maybe Package
-findVersion repo p v = maybeHead $ filter ((== v) . version) $ findAllVersions repo p True
-  where maybeHead []    = Nothing
-        maybeHead (x:_) = Just x
+findVersion repo p v =
+  maybeHead $ filter ((== v) . version) $ findAllVersions repo p True
+ where maybeHead []    = Nothing
+       maybeHead (x:_) = Just x
 
 --- Get all packages in the central package index.
 allPackages :: Repository -> [Package]

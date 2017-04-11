@@ -172,7 +172,8 @@ findLatestVersion ls p pre = case findAllVersions ls p pre of
 --- @param p the name of the package
 --- @param v the package version
 findVersion :: LookupSet -> String -> Version -> Maybe Package
-findVersion ls p v = maybeHead $ filter ((== v) . version) $ findAllVersions ls p True
+findVersion ls p v =
+  maybeHead $ filter ((== v) . version) $ findAllVersions ls p True
 
 maybeHead :: [a] -> Maybe a
 maybeHead []    = Nothing

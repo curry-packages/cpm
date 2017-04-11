@@ -570,7 +570,8 @@ the configuration options of CPM, see Section~\ref{sec:config}.
 package's name, author, synopsis and its dependency specifications.
 
 \item[\fbox{\code{info $package$ [--all]}}]
-Prints information on the newest known version of the given package.
+Prints information on the newest known version (compatible to the
+current compiler) of the given package.
 The option \code{--all} shows more information.
 
 \item[\fbox{\code{info $package$ $version$ [--all]}}]
@@ -599,7 +600,8 @@ Furthermore, if the current package contains an executable application,
 the application is compiled and the executable is installed
 (unless the option \code{-n} or \code{--noexec} is set).
 
-\item[\fbox{\code{install $package$ [--$pre$]}}] Installs the newest version of 
+\item[\fbox{\code{install $package$ [--$pre$]}}] Installs the newest version
+(compatible to the current compiler) of 
 a package to the global package cache. \code{--$pre$} enables the installation
 of pre-release versions.
 
@@ -618,8 +620,8 @@ for this package.
 of a package from the global package cache.
 
 \item[\fbox{\code{checkout $package$ [--$pre$]}}]
-Checks out the newest version of a package
-into the local directory \code{$package$}
+Checks out the newest version (compatible to the current compiler)
+of a package into the local directory \code{$package$}
 in order to test its operations or install a binary of the package.
 \code{--$pre$} enables the installation of pre-release versions.
 
@@ -629,7 +631,8 @@ into the local directory \code{$package$}
 in order to test its operations or install a binary of the package..
 
 \item[\fbox{\code{installbin $package$ [--$pre$]}}]
-Install the binary provided by the newest version of a package.
+Install the binary provided by the newest version
+(compatible to the current compiler) of a package.
 The binary is installed into the directory \code{\$HOME/.cpm/bin}
 (this location can be changed via the \code{\$HOME/.cpmrc} configuration file
 or by the CPM option \code{--define}, see Section~\ref{sec:config}).
@@ -781,6 +784,19 @@ names and the values are version constraints. Currently, the supported compiler
 names are \code{pakcs} and \code{kics2}. If this field is missing or contains
 an empty JSON object, the package is assumed to be compatible to all compilers
 in all versions.
+
+The compiler compatibility of a package is also relevant when
+some version of a package should be examined or installed
+(with CPM commands \code{info}, \code{checkout}, \code{install},
+\code{installbin}).
+If a newest package should be installed, i.e., no specific version
+number is provided, then only the newest version
+which is compatible to the current Curry compiler
+(see also Section~\ref{sec:config} for configuration option \code{curry_bin})
+is considered.
+Similarly, the current package is executed
+(CPM commands \code{curry} and \code{test})
+only if the current Curry compiler is compatible to this package.
 
 \item[\fbox{\code{source}}] A JSON object specifying where the version of the
 package described in the specification can be obtained. See 

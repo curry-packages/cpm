@@ -504,8 +504,8 @@ info :: InfoOptions -> Config -> Repository -> GlobalCache
 info (InfoOptions Nothing Nothing allinfos) _ repo gc =
   tryFindLocalPackageSpec "." |>= \specDir ->
   loadPackageSpec specDir |>= printInfo allinfos repo gc
-info (InfoOptions (Just pkg) Nothing allinfos) _ repo gc =
-  case findLatestVersion repo pkg False of
+info (InfoOptions (Just pkg) Nothing allinfos) cfg repo gc =
+  case findLatestVersion cfg repo pkg False of
    Nothing -> failIO $
                 "Package '" ++ pkg ++ "' not found in package repository."
    Just p  -> printInfo allinfos repo gc p
@@ -524,9 +524,11 @@ printInfo allinfos repo gc pkg =
 compiler :: CompilerOptions -> Config -> IO Repository -> IO GlobalCache
          -> IO (ErrorLogger ())
 compiler o cfg getRepo getGC =
-  tryFindLocalPackageSpec "." |>= \specDir ->
-  loadCurryPathFromCache specDir |>=
-  maybe (computePackageLoadPath specDir) succeedIO |>= \currypath ->
+  tryFindLocalPackageSpec "." |>= \pkgdir ->
+  loadPackageSpec pkgdir |>= \pkg ->
+  checkCompiler cfg pkg >>
+  loadCurryPathFromCache pkgdir |>=
+  maybe (computePackageLoadPath pkgdir pkg) succeedIO |>= \currypath ->
   log Info ("Starting '" ++ currybin ++ "' with") |>
   log Info ("CURRYPATH=" ++ currypath) |>
   do setEnviron "CURRYPATH" $ currypath
@@ -537,10 +539,9 @@ compiler o cfg getRepo getGC =
  where
   currybin = curryExec cfg
 
-  computePackageLoadPath pkgdir =
-    getRepo >>= \repo -> getGC >>= \gc ->
-    loadPackageSpec pkgdir |>= \pkg ->
-    checkCompiler cfg pkg >>
+  computePackageLoadPath pkgdir pkg =
+    getRepo >>= \repo ->
+    getGC >>= \gc ->
     resolveAndCopyDependenciesForPackage cfg repo gc pkgdir pkg |>= \pkgs ->
     getAbsolutePath pkgdir >>= \abs -> succeedIO () |>
     let srcdirs = map (abs </>) (sourceDirsOf pkg)
@@ -551,7 +552,7 @@ compiler o cfg getRepo getGC =
 checkout :: CheckoutOptions -> Config -> Repository -> GlobalCache
          -> IO (ErrorLogger ())
 checkout (CheckoutOptions pkg Nothing pre) cfg repo gc =
- case findLatestVersion repo pkg pre of
+ case findLatestVersion cfg repo pkg pre of
   Nothing -> failIO $ "Package '" ++ pkg ++
                       "' not found in package repository."
   Just  p -> acquireAndInstallPackageWithDependencies cfg repo gc p |>
@@ -588,15 +589,15 @@ installbin opts cfg repo gc = do
 install :: InstallOptions -> Config -> Repository -> GlobalCache
         -> IO (ErrorLogger ())
 install (InstallOptions Nothing Nothing _ instexec) cfg repo gc =
-  tryFindLocalPackageSpec "." |>= \specDir ->
-  cleanCurryPathCache specDir |>
-  installLocalDependencies cfg repo gc specDir |>= \ (pkg,_) ->
-  if instexec then installExecutable cfg repo pkg specDir else succeedIO ()
+  tryFindLocalPackageSpec "." |>= \pkgdir ->
+  cleanCurryPathCache pkgdir |>
+  installLocalDependencies cfg repo gc pkgdir |>= \ (pkg,_) ->
+  if instexec then installExecutable cfg repo pkg pkgdir else succeedIO ()
 install (InstallOptions (Just pkg) Nothing pre _) cfg repo gc = do
   fileExists <- doesFileExist pkg
   if fileExists
     then installFromZip cfg pkg
-    else case findLatestVersion repo pkg pre of
+    else case findLatestVersion cfg repo pkg pre of
       Nothing -> failIO $ "Package '" ++ pkg ++
                           "' not found in package repository."
       Just  p -> acquireAndInstallPackageWithDependencies cfg repo gc p
@@ -666,8 +667,8 @@ uninstall (UninstallOptions (Just _) Nothing) _ _ _ =
 uninstall (UninstallOptions Nothing (Just _)) _ _ _ =
   log Error "Please provide a package and version number!"
 uninstall (UninstallOptions Nothing Nothing) cfg _ _ =
-  tryFindLocalPackageSpec "." |>= \specDir ->
-  loadPackageSpec specDir |>= \pkg ->
+  tryFindLocalPackageSpec "." |>= \pkgdir ->
+  loadPackageSpec pkgdir |>= \pkg ->
   maybe (succeedIO ())
         (\ (PackageExecutable name _) ->
            let binexec = binInstallDir cfg </> name
@@ -765,10 +766,11 @@ test :: TestOptions -> Config -> IO Repository -> IO GlobalCache
      -> IO (ErrorLogger ())
 test opts cfg getRepo getGC =
   tryFindLocalPackageSpec "." |>= \specDir ->
-  loadPackageSpec specDir |>= \localSpec -> do
+  loadPackageSpec specDir |>= \pkg -> do
+    checkCompiler cfg pkg
     aspecDir <- getAbsolutePath specDir
     mainprogs <- curryModulesInDir (aspecDir </> "src")
-    let tests = testsuites localSpec mainprogs
+    let tests = testsuites pkg mainprogs
     if null tests
       then putStrLn "No modules to be tested!" >> succeedIO ()
       else foldEL (\_ -> execTest aspecDir) () tests
@@ -839,7 +841,7 @@ diff opts cfg repo gc =
          diffBehaviorIfEnabled specDir localSpec diffv
  where
   getDiffVersion localname = case diffVersion opts of
-    Nothing -> case findLatestVersion repo localname False of
+    Nothing -> case findLatestVersion cfg repo localname False of
                  Nothing -> failIO $ "No other version of local package '" ++
                                  localname ++ "' found in package repository."
                  Just p  -> succeedIO (version p)
