@@ -684,60 +684,73 @@ tryFindVersion pkg ver repo = case findVersion repo pkg ver of
                       "' not found in package repository."
   Just  p -> succeedIO $ p
 
---- Lists all packages in the given repository.
+--- Lists all (compiler-compatible) packages in the given repository.
 listCmd :: ListOptions -> Config -> Repository -> IO (ErrorLogger ())
-listCmd (ListOptions lv csv cat) _ repo =
+listCmd (ListOptions lv csv cat) cfg repo =
   if cat then putStr (renderCats catgroups) >> succeedIO ()
          else putStr (renderPkgs allpkgs)   >> succeedIO ()
  where
   -- all packages (and versions if `lv`)
   allpkgs = concatMap (if lv then id else ((:[]) . head))
                       (sortBy (\ps1 ps2 -> name (head ps1) <= name (head ps2))
-                              (listPackages repo))
+                              (listPackages cfg repo))
 
   -- all categories together with their package names:
   catgroups =
-    let newpkgs = map head (listPackages repo)
-        catpkgs = concatMap (\p -> map (\c -> (c, name p)) (category p)) newpkgs
-        nocatps = map name (filter (null . category) newpkgs)
+    let pkgid p = name p ++ '-' : showVersion (version p)
+        newpkgs = map head (listPackages cfg repo)
+        catpkgs = concatMap (\p -> map (\c -> (c, pkgid p)) (category p))
+                            newpkgs
+        nocatps = map pkgid (filter (null . category) newpkgs)
     in map (\cg -> (fst (head cg), map snd cg))
            (groupBy (\ (c1,_) (c2,_) -> c1==c2) (nub $ sortBy (<=) catpkgs)) ++
        if null nocatps then []
                        else [("???", nub $ sortBy (<=) nocatps)]
 
   renderPkgs pkgs =
-    let namelen = foldl max 4 $ map (length . name) pkgs
-        header = [ ["Name", "Synopsis", "Version"]
-                 , ["----", "--------", "-------"]]
-        formatPkg p = [name p, synopsis p, showVersion (version p)]
-        columns = header ++ map formatPkg pkgs
-    in renderTable [namelen + 4, 66 - namelen, 10] columns
+    let (colsizes,rows) = packageVersionAsTable pkgs
+    in renderTable colsizes rows
 
   renderCats catgrps =
     let namelen = foldl max 8 $ map (length . fst) catgrps
         header = [ ["Category", "Packages"]
                  , ["--------", "--------"]]
-        columns = header ++ map (\ (c,ns) -> [c, unwords ns]) catgrps
-    in renderTable [namelen + 4, 76 - namelen] columns
+        rows   = header ++ map (\ (c,ns) -> [c, unwords ns]) catgrps
+    in renderTable [namelen + 4, 76 - namelen] rows
   
-  renderTable colsizes cols =
-    if csv then showCSV (head cols : drop 2 cols)
-           else render (table cols colsizes) ++ cpmInfo
+  renderTable colsizes rows =
+    if csv then showCSV (head rows : drop 2 rows)
+           else unlines [render (table rows colsizes), cpmInfo, cpmUpdate]
 
-  cpmInfo = "\nUse 'cpm info PACKAGE' for more information about a package." ++
-            "\nUse 'cpm update' to download the newest package index.\n"
-
-
-search :: SearchOptions -> Config -> Repository -> IO (ErrorLogger ())
-search (SearchOptions q) _ repo = putStr rendered >> succeedIO ()
+-- Format a list of packages by showing their names, synopsis, and versions
+-- as table rows. Returns also the column sizes.
+packageVersionAsTable :: [Package] -> ([Int],[[String]])
+packageVersionAsTable pkgs = (colsizes, rows)
  where
-  results = sortBy (\p1 p2 -> name p1 <= name p2) (searchPackages repo q)
-  rendered = if length results == 0
-    then "No packages found for '" ++ q ++ "'\n"
-    else render $ table columns [nameLen + 4, 76 - nameLen]
-  header = [["Name", "Synopsis"], ["----", "--------"], [" ", " "]]
-  columns = header ++ map (\p -> [name p, synopsis p]) results
-  nameLen = foldl max 0 $ map (length . name) results
+  namelen = foldl max 4 $ map (length . name) pkgs
+  colsizes = [namelen + 4, 66 - namelen, 10]
+  header  = [ ["Name", "Synopsis", "Version"]
+            , ["----", "--------", "-------"]]
+  rows    = header ++ map formatPkg pkgs
+  formatPkg p = [name p, synopsis p, showVersion (version p)]
+        
+cpmInfo :: String
+cpmInfo = "Use 'cpm info PACKAGE' for more information about a package."
+
+cpmUpdate :: String
+cpmUpdate = "Use 'cpm update' to download the newest package index."
+
+
+--- Search in all (compiler-compatible) packages in the given repository.
+search :: SearchOptions -> Config -> Repository -> IO (ErrorLogger ())
+search (SearchOptions q) cfg repo = putStr rendered >> succeedIO ()
+ where
+  results = sortBy (\p1 p2 -> name p1 <= name p2) (searchPackages cfg repo q)
+  (colsizes,rows) = packageVersionAsTable results
+  rendered = unlines $
+               if null results
+                 then ["No packages found for '" ++ q, "", cpmUpdate]
+                 else [ render (table rows colsizes), cpmInfo, cpmUpdate ]
 
 upgrade :: UpgradeOptions -> Config -> Repository -> GlobalCache
         -> IO (ErrorLogger ())

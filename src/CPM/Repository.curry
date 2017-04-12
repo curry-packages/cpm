@@ -53,31 +53,37 @@ findAllVersions (Repository ps) p pre =
   sameName = filter ((== p) . name) 
   filterPre p' = pre || (not . isPreRelease . version) p'
 
---- Search the names and synopses of all packages in the repository for a 
---- particular term. Lower/upercase is ignored for the search.
+--- Search the names and synopses of all compiler-compatbile packages
+--- in the repository for a particular term.
+--- Lower/upercase is ignored for the search.
 --- Returns the newest matching version of each package.
 ---
+--- @param cfg  - the current CPM configuration
 --- @param repo - the repository
 --- @param q - the term to search for
-searchPackages :: Repository -> String -> [Package]
-searchPackages (Repository ps) searchstring =
+searchPackages :: Config -> Repository -> String -> [Package]
+searchPackages cfg (Repository ps) searchstring =
   map (head . sortedByVersion) groupedResults
  where
   groupedResults = groupBy namesEqual allResults
-  allResults = filter (matches (lowerS searchstring)) ps
+  allResults = filter (isCompatibleToCompiler cfg)
+                      (filter (matches (lowerS searchstring)) ps)
   matches q p = q `isInfixOf` (lowerS $ name p) ||
                 q `isInfixOf` (lowerS $ synopsis p)
   namesEqual a b = (name a) == (name b)
   sortedByVersion = sortBy (\a b -> (version a) `vgt` (version b))
   lowerS = map toLower
 
---- Get all packages in the repository and group them by versions
---- (newest first).
+--- Get all packages in the repository (which are compatible to the
+--- current compiler) and group them by versions (newest first).
 ---
+--- @param cfg  - the current CPM configuration
 --- @param repo - the repository
-listPackages :: Repository -> [[Package]]
-listPackages (Repository ps) =
-  map sortedByVersion (groupBy (\a b -> name a == name b) ps)
+listPackages :: Config -> Repository -> [[Package]]
+listPackages cfg (Repository ps) =
+  map sortedByVersion
+      (groupBy (\a b -> name a == name b)
+               (filter (isCompatibleToCompiler cfg) ps))
  where
   sortedByVersion = sortBy (\a b -> (version a) `vgt` (version b))
 
