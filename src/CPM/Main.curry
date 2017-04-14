@@ -44,7 +44,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 10/04/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 14/04/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -791,14 +791,15 @@ test opts cfg getRepo getGC =
   currycheck = curryExec cfg ++ " check"
   
   execTest apkgdir (PackageTest dir mods ccopts script) = do
-    let scriptcmd = "." </> script ++ if null ccopts then "" else ' ' : ccopts
+    let scriptcmd = "CURRYBIN=" ++ curryExec cfg ++ " && export CURRYBIN && " ++
+                    "." </> script ++ if null ccopts then "" else ' ' : ccopts
         checkcmd  = currycheck ++ if null ccopts then "" else ' ' : ccopts
     unless (null mods) $ putStrLn $
       "Running CurryCheck (" ++ checkcmd ++ ")\n" ++
       "(in directory '" ++ dir ++ "', showing raw output) on modules:\n" ++
       unwords mods ++ "\n"
     unless (null script) $ putStrLn $
-      "Executing test script '" ++ scriptcmd ++ "'\n" ++
+      "Executing test script with command:\n" ++ scriptcmd ++ "\n" ++
       "(in directory '" ++ dir ++ "', showing raw output):\n"
     let currysubdir = apkgdir </> addCurrySubdir dir
         testcmd = if not (null mods)
