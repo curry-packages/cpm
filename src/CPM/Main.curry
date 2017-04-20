@@ -7,7 +7,7 @@ module CPM.Main where
 import Char         ( toLower )
 import CSV          ( showCSV )
 import Directory    ( doesFileExist, getAbsolutePath, doesDirectoryExist
-                    , createDirectory, createDirectoryIfMissing
+                    , copyFile, createDirectory, createDirectoryIfMissing
                     , getDirectoryContents, getModificationTime
                     , renameFile, removeFile, setCurrentDirectory )
 import Distribution ( stripCurrySuffix, addCurrySubdir )
@@ -38,13 +38,14 @@ import CPM.PackageCache.Runtime ( dependencyPathsSeparate, writePackageConfig )
 import CPM.PackageCopy
 import CPM.Diff.API as APIDiff
 import qualified CPM.Diff.Behavior as BDiff
+import CPM.ConfigPackage (packagePath)
 
 -- Banner of this tool:
 cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 14/04/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 20/04/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -86,7 +87,7 @@ runWithArgs opts = do
     Exec o      -> exec     o config getRepo getGC
     Test o      -> test     o config getRepo getGC
     Clean       -> cleanPackage Info
-    New         -> newPackage
+    New o       -> newPackage o
     _ -> do repo <- getRepo
             case optCommand opts of
               List   o -> listCmd o config repo
@@ -150,7 +151,7 @@ data Command
   | Test       TestOptions
   | Diff       DiffOptions
   | Clean
-  | New
+  | New        NewOptions
 
 data CheckoutOptions = CheckoutOptions
   { coPackage    :: String
@@ -186,6 +187,9 @@ data UpgradeOptions = UpgradeOptions
 
 data LinkOptions = LinkOptions
   { lnkSource :: String }
+
+data NewOptions = NewOptions
+  { projectName :: String }
 
 data ExecOptions = ExecOptions
   { exeCommand :: String   -- command to be executed
@@ -244,6 +248,11 @@ linkOpts :: Options -> LinkOptions
 linkOpts s = case optCommand s of
   Link opts -> opts
   _         -> LinkOptions ""
+
+newOpts :: Options -> NewOptions
+newOpts s = case optCommand s of
+  New opts -> opts
+  _        -> NewOptions ""
 
 execOpts :: Options -> ExecOptions
 execOpts s = case optCommand s of
@@ -372,8 +381,11 @@ optionParser = optParser
                            (\a -> Right $ a { optCommand = Deps }) [] 
         <|> command "clean" (help "Clean the current package")
                           (\a -> Right $ a { optCommand = Clean }) []
-        <|> command "new" (help "Create a new package")
-                          (\a -> Right $ a { optCommand = New }) []
+        <|> command "new" (help "Create a new package") Right
+              ( arg (\s a -> Right $ a { optCommand = New (newOpts a)
+                                                          { projectName = s } })
+                    (  metavar "PROJECT"
+                    <> help "The name of the new project" ) )
         <|> command "update" (help "Update the package index")
                              (\a -> Right $ a { optCommand = Update }) []
         <|> command "curry" (help "Load package spec from current directory and start Curry with correct dependencies.")
@@ -467,7 +479,8 @@ optionParser = optParser
               (   arg (\s a -> Right $ a { optCommand = Search (searchOpts a) { searchQuery = s } }) 
                     (  metavar "QUERY"
                     <> help "The search term" ) ) 
-        <|> command "upgrade" (help "Upgrade one or more packages") (\a -> Right $ a { optCommand = Upgrade (upgradeOpts a) })
+        <|> command "upgrade" (help "Upgrade one or more packages")
+                    (\a -> Right $ a { optCommand = Upgrade (upgradeOpts a) })
               (   arg (\s a -> Right $ a { optCommand = Upgrade (upgradeOpts a) { upgrTarget = Just s } })
                     (  metavar "PACKAGE"
                     <> help "The package to upgrade" 
@@ -927,55 +940,53 @@ cleanPackage ll =
      (system (unwords (["rm", "-rf"] ++ rmdirs)) >> succeedIO ())
 
 --- Creates a new package by asking some questions.
-newPackage :: IO (ErrorLogger ())
-newPackage = do
-  putStrLn "Create a new package"
-  putStrLn "--------------------"
-  inpName <- askMandatory "What is the name of the new package?"
-  exists <- doesDirectoryExist inpName
-  if exists
-    then do putStrLn $ "There is already a directory with that name. " ++
-                       "I can't overwrite directories!"
-            exitWith 1
-    else return ()
-  inpVersionS <- askDefault "What is the first version of the package?" "0.0.1"
-  inpVersion <- case readVersion inpVersionS of
-    Nothing -> putStrLn "Not a valid version!" >> exitWith 1
-    Just  v -> return v
-  inpAuthor <- askMandatory "Who is the author of the package?"
-  inpSynopsis <- askMandatory
-     "Please provide a short (one line) summary of what the package does:\n>"
-  createDirectory inpName
-  let pkgSpec = emptyPackage { name         = inpName
-                             , version      = inpVersion
-                             , author       = inpAuthor
-                             , synopsis     = inpSynopsis
-                             , category     = []
-                             , dependencies = [] 
+newPackage :: NewOptions -> IO (ErrorLogger ())
+newPackage (NewOptions pname) = do
+  exists <- doesDirectoryExist pname
+  when exists $ do
+    putStrLn $ "There is already a directory with the new project name. " ++
+               "I cannot create new project!"
+    exitWith 1
+  let emptyAuthor   = "YOUR NAME <YOUR EMAIL ADDRESS>"
+      emptySynopsis = "PLEASE PROVIDE A ONE-LINE SUMMARY ABOUT THE PACKAGE"
+  createDirectory pname
+  let pkgSpec = emptyPackage { name            = pname
+                             , version         = initialVersion
+                             , author          = emptyAuthor
+                             , synopsis        = emptySynopsis
+                             , category        = ["Programming"]
+                             , dependencies    = [] 
                              , exportedModules = []
+                             , license         = Just "BSD-3-Clause"
+                             , licenseFile     = Just "LICENSE"
                              }
-  writePackageSpec pkgSpec (inpName </> "package.json") 
-  createDirectory (inpName </> "src")
-  putStrLn $
-    "A new package in the directory '" ++ inpName ++ "' has been created.\n" ++
-    "Please go into this directory, add dependencies in 'package.json',\n" ++
-    "and run 'cpm install' to install all dependencies."
+  writePackageSpec pkgSpec (pname </> "package.json")
+  copyFile (packagePath </> "templates" </> "LICENSE") (pname </> "LICENSE")
+  createDirectory (pname </> "src")
+  let cmain = "Main.curry"
+  copyFile (packagePath </> "templates" </> cmain) (pname </> "src" </> cmain)
+  writeFile (pname </> "README.md") readme
+  putStr $ unlines todo
   succeedIO ()
  where
-  askMandatory question = do
-    putStr $ question ++ " "
-    hFlush stdout
-    val <- getLine
-    if val == ""
-      then askMandatory question
-      else return val
-  askDefault question def = do
-    putStr $ question ++ " [" ++ def ++ "] "
-    hFlush stdout
-    val <- getLine
-    if val == ""
-      then return def
-      else return val
+  readme = unlines [pname, take (length pname) (repeat '=')]
+
+  todo =
+    [ "A new package in the directory '" ++ pname ++ "' has been created!"
+    , ""
+    , "Please go into this directory and edit the file 'package.json':"
+    , "- enter correct values for the fields 'author', 'synopsis', 'category'"
+    , "- add dependencies in the field 'dependencies'"
+    , "- add further fields (e.g., 'description')"
+    , "- review field 'license' (and adapt file 'LICENSE')"
+    , ""
+    , "Then run 'cpm install' to install all dependencies and"
+    , "put your program code in directory 'src'"
+    , "(where you find a template file 'Main.curry')"
+    , ""
+    , "Run the main program with:"
+    , "> cpm curry :load Main :eval main :quit"
+    ]
 
 ---------------------------------------------------------------------------
 -- Caching the current CURRYPATH of a package for faster startup.

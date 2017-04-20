@@ -14,7 +14,7 @@ export REPL_OPTS = --noreadline :set -time
 DEPS = src/CPM/*.curry src/CPM/*/*.curry
 
 .PHONY: build
-build: fetchdeps $(DEPS)
+build: fetchdeps src/CPM/ConfigPackage.curry $(DEPS)
 	@echo Root location of Curry system: $(CURRYROOT)
 	@if [ ! -d "$(CURRYROOT)" ] ; then echo "Error: not a valid directory!" ; exit 1; fi
 	@export CURRYPATH="";						\
@@ -28,6 +28,12 @@ build: fetchdeps $(DEPS)
 	cd $(dir $(TOOL)) && ln -s $(CURDIR)/src/CPM.Main $(notdir $(TOOL))
 	@echo Tool installed into: $(TOOL)
 	@echo Please add \"$(dir $(TOOL))\" to your path!
+
+src/CPM/ConfigPackage.curry: Makefile
+	@echo "module CPM.ConfigPackage where" > $@
+	@echo "packagePath :: String" >> $@
+	@echo "packagePath = \"$(CURDIR)\"" >> $@
+	@echo "Curry configuration module '$@' written."
 
 .PHONY: buildperf
 buildperf: fetchdeps

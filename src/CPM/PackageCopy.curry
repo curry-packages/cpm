@@ -210,7 +210,7 @@ renderPackageInfo allinfos _ gc pkg = pPrint doc
                , cats, deps, compilers, descr ] ++
                if allinfos
                  then [ srcdirs, expmods, cfgmod, execspec] ++ testsuites ++
-                      [ src, licns, copyrt, homepg, reposy, bugrep]
+                      [ src, licns, licfl, copyrt, homepg, reposy, bugrep]
                  else []
 
   pkgId = packageId pkg
@@ -222,7 +222,8 @@ renderPackageInfo allinfos _ gc pkg = pPrint doc
   ver       = fill maxLen (bold (text "Version")) <+>
               (text $ showVersion $ version pkg)
   auth      = fill maxLen (bold (text "Author")) <+> (text $ author pkg)
-  synop     = fill maxLen (bold (text "Synopsis")) <+> (text $ synopsis pkg)
+  synop     = fill maxLen (bold (text "Synopsis")) <+>
+              indent 0 (fillSep (map text (words (synopsis pkg))))
   deps      = (bold $ text "Dependencies") <$$>
               (vcat $ map (indent 4 . text . showDependency) $ dependencies pkg)
 
@@ -233,8 +234,8 @@ renderPackageInfo allinfos _ gc pkg = pPrint doc
   cats =
     if null (category pkg)
       then empty
-      else bold (text "Category") <+>
-           indent 4 (fillSep (map text (category pkg)))
+      else fill maxLen (bold (text "Category")) <+>
+           indent 0 (fillSep (map text (category pkg)))
 
   execspec = case executableSpec pkg of
     Nothing -> empty
@@ -264,7 +265,8 @@ renderPackageInfo allinfos _ gc pkg = pPrint doc
           tests
 
   descr  = showParaField description  "Description"
-  licns  = showParaField license      "License"
+  licns  = showLineField license      "License"
+  licfl  = showLineField licenseFile  "License file"
   copyrt = showParaField copyright    "Copyright"
   homepg = showLineField homepage     "Homepage"
   reposy = showLineField repository   "Repository"
@@ -273,9 +275,12 @@ renderPackageInfo allinfos _ gc pkg = pPrint doc
 
   src = case source pkg of
     Nothing              -> empty
-    Just  (Http s)       -> bold (text "Source") <$$> indent 4 (text s)
-    Just  (Git s _)      -> bold (text "Source") <$$> indent 4 (text s)
-    Just  (FileSource s) -> bold (text "Source") <$$> indent 4 (text s)
+    Just  (Http s)       -> showSource s
+    Just  (Git s _)      -> showSource s
+    Just  (FileSource s) -> showSource s
+   where
+     showSource s = bold (text "Source") <$$> indent 4 (text s)
+
 
   srcdirs =
     if null (sourceDirs pkg)

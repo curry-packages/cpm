@@ -4,6 +4,7 @@
 bin/*
 !bin/perftest
 vendor
+src/CPM/ConfigPackage.curry
 TEST*.curry
 *_PUBLIC.curry
 CPM.Main

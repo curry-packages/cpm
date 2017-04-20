@@ -5,6 +5,8 @@
     "maintainer": "Michael Hanus <mh@informatik.uni-kiel.de>",
     "synopsis": "Curry Package Manager: a tool to distribute and install Curry libraries and applications",
     "category": [ "Packaging", "Programming" ],
+    "license": "BSD-3-Clause",
+    "licenseFile": "LICENSE",
     "dependencies": {
         "det-parse"    : ">= 0.0.1",
         "opt-parse"    : ">= 0.0.3",
@@ -13,6 +15,7 @@
         "cass-analysis": ">= 0.0.3",
         "cass"         : ">= 0.0.1"
     },
+    "configModule": "CPM.ConfigPackage",
     "executable": {
         "name": "cpm",
         "main": "CPM.Main"

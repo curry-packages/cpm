@@ -5,7 +5,7 @@
 --------------------------------------------------------------------------------
 
 module CPM.Package
-  ( Version
+  ( Version, initialVersion
   , Dependency
   , VersionConstraint (..)
   , CompilerCompatibility (..)
@@ -57,6 +57,10 @@ import CPM.FileUtil (ifFileExists)
 --- A Version. Tuple components are major, minor, patch, prerelease, e.g.
 --- 3.1.1-rc5
 type Version = (Int, Int, Int, Maybe String)
+
+--- The initial version of a new package.
+initialVersion :: Version
+initialVersion = (0,0,1,Nothing)
 
 type Conjunction = [VersionConstraint]
 type Disjunction = [Conjunction]
@@ -152,7 +156,7 @@ data Package = Package {
 emptyPackage :: Package
 emptyPackage = Package {
     name                  = ""
-  , version               = (0,0,1,Nothing)
+  , version               = initialVersion
   , author                = ""
   , maintainer            = Nothing
   , synopsis              = ""
@@ -174,20 +178,24 @@ emptyPackage = Package {
   , testSuite             = Nothing
   }
 
---- Translates the basic package element to a JSON object.
+--- Translates the basic package elements to a JSON object.
 packageSpecToJSON :: Package -> JValue
-packageSpecToJSON pkg = JObject [
+packageSpecToJSON pkg = JObject $ [
     ("name", JString $ name pkg)
   , ("version", JString $ showVersion $ version pkg)
   , ("author", JString $ author pkg)
   , ("synopsis", JString $ synopsis pkg)
   , ("category", stringListToJSON $ category pkg)
   , ("dependencies", dependenciesToJSON $ dependencies pkg)
-  , ("exportedModules", stringListToJSON $ exportedModules pkg) ]
+  , ("exportedModules", stringListToJSON $ exportedModules pkg) ] ++
+  maybeStringToJSON "license" (license pkg) ++
+  maybeStringToJSON "licenseFile" (licenseFile pkg)
  where
   dependenciesToJSON deps = JObject $ map dependencyToJSON deps
   dependencyToJSON (Dependency p vc) = (p, JString $ showVersionConstraints vc)
   stringListToJSON exps = JArray $ map JString exps
+  maybeStringToJSON fname mbcont =
+    maybe [] (\s -> [(fname, JString s)]) mbcont
 
 --- Writes a basic package specification to a JSON file.
 ---
