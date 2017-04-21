@@ -6,7 +6,7 @@
 
 module CPM.Config 
   ( Config ( Config, packageInstallDir, binInstallDir, repositoryDir
-           , binPackageDir, packageIndexRepository, curryExec
+           , appPackageDir, packageIndexRepository, curryExec
            , compilerVersion )
   , readConfiguration, readConfigurationWithDefault, defaultConfig
   , showCompilerVersion ) where
@@ -41,8 +41,8 @@ data Config = Config {
   , binInstallDir :: String
     --- Directory where the package repository is stored
   , repositoryDir :: String
-    --- Directory where the packages with binary installation only are stored
-  , binPackageDir :: String
+    --- Directory where the application packages are stored (cmd 'installapp')
+  , appPackageDir :: String
     --- URL to the package index repository
   , packageIndexRepository :: String
     --- The executable of the Curry system used to compile and check packages
@@ -58,7 +58,7 @@ defaultConfig = Config
   { packageInstallDir      = "$HOME/.cpm/packages"
   , binInstallDir          = "$HOME/.cpm/bin"
   , repositoryDir          = "$HOME/.cpm/index" 
-  , binPackageDir          = "$HOME/.cpm/bin_packages" 
+  , appPackageDir          = "$HOME/.cpm/app_packages" 
   , packageIndexRepository = packageIndexURI
   , curryExec              = installDir </> "bin" </> curryCompiler
   , compilerVersion        = (curryCompiler, curryCompilerMajorVersion,
@@ -124,7 +124,7 @@ replaceHome cfg = do
       packageInstallDir = replaceHome' homeDir (packageInstallDir cfg)
     , binInstallDir     = replaceHome' homeDir (binInstallDir cfg)
     , repositoryDir     = replaceHome' homeDir (repositoryDir cfg)
-    , binPackageDir     = replaceHome' homeDir (binPackageDir cfg)
+    , appPackageDir     = replaceHome' homeDir (appPackageDir cfg)
   }
  where
   replaceHome' h s = concat $ intersperse h $ splitOn "$HOME" s
@@ -134,7 +134,7 @@ createDirectories cfg = do
   createDirectoryIfMissing True (packageInstallDir cfg)
   createDirectoryIfMissing True (binInstallDir cfg)
   createDirectoryIfMissing True (repositoryDir cfg)
-  createDirectoryIfMissing True (binPackageDir cfg)
+  createDirectoryIfMissing True (appPackageDir cfg)
 
 --- Merges configuration options from a configuration file or argument options
 --- into a configuration record. May return an error using Left.
@@ -168,7 +168,7 @@ keySetters =
   [ ("repository_path"     , \v c -> c { repositoryDir     = v })
   , ("package_install_path", \v c -> c { packageInstallDir = v})
   , ("bin_install_path"    , \v c -> c { binInstallDir     = v})
-  , ("bin_package_path"    , \v c -> c { binPackageDir     = v})
+  , ("app_package_path"    , \v c -> c { appPackageDir     = v})
   , ("curry_bin"           , \v c -> c { curryExec         = v})
   ]
 

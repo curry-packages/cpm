@@ -25,7 +25,7 @@ import CPM.ErrorLogger
 import CPM.FileUtil ( fileInPath, joinSearchPath, safeReadFile, whenFileExists
                     , ifFileExists, inDirectory, removeDirectoryComplete )
 import CPM.Config   ( Config ( packageInstallDir, binInstallDir
-                             , binPackageDir, curryExec )
+                             , appPackageDir, curryExec )
                     , readConfigurationWithDefault, showCompilerVersion )
 import CPM.PackageCache.Global ( GlobalCache, readInstalledPackagesFromDir
                                , installFromZip, checkoutPackage
@@ -97,7 +97,7 @@ runWithArgs opts = do
                         Deps         -> deps         config repo globalCache
                         PkgInfo o    -> info       o config repo globalCache
                         Checkout o   -> checkout   o config repo globalCache
-                        InstallBin o -> installbin o config repo globalCache
+                        InstallApp o -> installapp o config repo globalCache
                         Install o    -> install    o config repo globalCache
                         Diff o       -> diff       o config repo globalCache
                         Uninstall o  -> uninstall  o config repo globalCache
@@ -137,7 +137,7 @@ data Command
   = Deps 
   | NoCommand
   | Checkout   CheckoutOptions
-  | InstallBin CheckoutOptions
+  | InstallApp CheckoutOptions
   | Install    InstallOptions
   | Uninstall  UninstallOptions
   | PkgInfo    InfoOptions
@@ -150,8 +150,8 @@ data Command
   | Exec       ExecOptions
   | Test       TestOptions
   | Diff       DiffOptions
-  | Clean
   | New        NewOptions
+  | Clean
 
 data CheckoutOptions = CheckoutOptions
   { coPackage    :: String
@@ -322,173 +322,222 @@ optionParser = optParser
         <> help "Overwrite definition of cpmrc file with 'option=value'." )
   <.> commands (metavar "COMMAND")
         (   command "checkout" (help "Checkout a package.") Right
-              (   arg (\s a -> Right $ a { optCommand = Checkout
-                                           (checkoutOpts a) { coPackage = s } })
-                    (  metavar "PACKAGE"
-                    <> help "The package name" )
-              <.> arg (\s a -> readVersion' s >.> \v -> a { optCommand = Checkout (checkoutOpts a) { coVersion = Just v } })
-                    (  metavar "VERSION"
-                    <> help "The package version"
-                    <> optional )
-              <.> flag (\a -> Right $ a { optCommand = Checkout (checkoutOpts a) { coPrerelease = True } })
-                    (  short "p"
-                    <> long "pre"
-                    <> help "Try pre-release versions when searching for newest version.") )
-        <|> command "installbin" (help "Install the binary provided by a package.") 
+                    (checkoutArgs Checkout)
+        <|> command "installapp"
+                     (help "Install the application provided by a package.") 
                      Right
-              (   arg (\s a -> Right $ a { optCommand = InstallBin
-                                           (checkoutOpts a) { coPackage = s } })
-                    (  metavar "PACKAGE"
-                    <> help "The package name" )
-              <.> arg (\s a -> readVersion' s >.> \v -> a { optCommand = InstallBin (checkoutOpts a) { coVersion = Just v } })
-                    (  metavar "VERSION"
-                    <> help "The package version"
-                    <> optional)
-              <.> flag (\a -> Right $ a { optCommand = InstallBin (checkoutOpts a) { coPrerelease = True } })
-                    (  short "p"
-                    <> long "pre"
-                    <> help "Try pre-release versions when searching for newest version.") )
+                     (checkoutArgs InstallApp)
+        <|> command "installbin" -- deprecated: TODO: remove in the future
+           (help "Deprecated, use command 'installapp'.") 
+                     Right
+                     (checkoutArgs InstallApp)
         <|> command "install" (help "Install a package.")
                      (\a -> Right $ a { optCommand = Install (installOpts a) })
-              (   arg (\s a -> Right $ a { optCommand = Install (installOpts a) { instTarget = Just s } })
-                    (  metavar "TARGET"
-                    <> help "A package name or the path to a file"
-                    <> optional)
-              <.> arg (\s a -> readVersion' s >.> \v -> a { optCommand = Install (installOpts a) { instVersion = Just v } })
-                    (  metavar "VERSION"
-                    <> help "The package version"
-                    <> optional)
-              <.> flag (\a -> Right $ a { optCommand = Install (installOpts a) { instPrerelease = True } })
-                    (  short "p"
-                    <> long "pre"
-                    <> help "Try pre-release versions when searching for newest version.")
-              <.> flag (\a -> Right $ a { optCommand = Install (installOpts a) { instExecutable = False } })
-                    (  short "n"
-                    <> long "noexec"
-                    <> help "Do not install executable.") )
+                     installArgs
         <|> command "uninstall" (help "Uninstall package")
-                    (\a -> Right $ a { optCommand = Uninstall (uninstallOpts a) })
-              (   arg (\s a -> Right $ a { optCommand =
-                                Uninstall (uninstallOpts a) { uninstPackage = Just s } })
-                    (  metavar "PACKAGE"
-                    <> help "The package to be uninstalled"
-                    <> optional)
-              <.> arg (\s a -> readVersion' s >.> \v -> a { optCommand = Uninstall (uninstallOpts a) { uninstVersion = Just v } })
-                    (  metavar "VERSION"
-                    <> help "The version to be uninstalled"
-                    <> optional) )
+                 (\a -> Right $ a { optCommand = Uninstall (uninstallOpts a) })
+                 uninstallArgs
         <|> command "deps" (help "Calculate dependencies")
                            (\a -> Right $ a { optCommand = Deps }) [] 
         <|> command "clean" (help "Clean the current package")
                           (\a -> Right $ a { optCommand = Clean }) []
-        <|> command "new" (help "Create a new package") Right
-              ( arg (\s a -> Right $ a { optCommand = New (newOpts a)
-                                                          { projectName = s } })
-                    (  metavar "PROJECT"
-                    <> help "The name of the new project" ) )
+        <|> command "new" (help "Create a new package") Right newArgs
         <|> command "update" (help "Update the package index")
                              (\a -> Right $ a { optCommand = Update }) []
-        <|> command "curry" (help "Load package spec from current directory and start Curry with correct dependencies.")
-                            (\a -> Right $ a { optCommand = Compiler (compOpts a) })
-              (   rest (\s a -> Right $ a { optCommand = Compiler (compOpts a) { comCommand = s } })
-                    (  metavar "ARGS"
-                    <> help "The options to pass to the compiler"
-                    <> optional) )
-        <|> command "exec" (help "Execute a command with the CURRYPATH set") (\a -> Right $ a { optCommand = Exec (execOpts a) })
-              (   rest (\s a -> Right $ a { optCommand = Exec (execOpts a) { exeCommand = s } })
-                    (  metavar "CMD"
-                    <> help "The command to execute. Don't forget the quotes!"
-                    <> optional) ) 
+        <|> command "curry"
+           (help "Load package spec and start Curry with correct dependencies.")
+                    (\a -> Right $ a { optCommand = Compiler (compOpts a) })
+                    curryArgs
+        <|> command "exec"
+                    (help "Execute a command with the CURRYPATH set")
+                    (\a -> Right $ a { optCommand = Exec (execOpts a) })
+                    execArgs
         <|> command "info" (help "Print package information")
-                       (\a -> Right $ a { optCommand = PkgInfo (infoOpts a) })
-              (   arg (\s a -> Right $ a { optCommand = PkgInfo (infoOpts a)
-                                                    { infoPackage = Just s } })
-                    (  metavar "PACKAGE"
-                    <> help "The package name. If no name is specified, cpm tries to read a package specification in the current directory."
-                    <> optional) 
-              <.> arg (\s a -> readVersion' s >.> \v -> a
-                                           { optCommand = PkgInfo (infoOpts a)
-                                                    { infoVersion = Just v } })
-                    (  metavar "VERSION"
-                    <> help "The package version. If no version is specified, cpm uses the latest version of the specified package."
-                    <> optional )
-              <.> flag (\a -> Right $ a { optCommand = PkgInfo (infoOpts a)
-                                                         { infoAll = True } })
-                    (  short "a"
-                    <> long "all"
-                    <> help "Show all infos"
-                    <> optional ) )
+                    (\a -> Right $ a { optCommand = PkgInfo (infoOpts a) })
+                    infoArgs
         <|> command "test" (help "Test the current package (with CurryCheck)")
                     (\a -> Right $ a { optCommand = Test (testOpts a) })
-              (   option (\s a -> Right $ a { optCommand = Test (testOpts a)
-                                     { testModules = Just $ splitOn "," s } })
-                    (  long "modules"
-                    <> short "m"
-                    <> help
-                "The modules to be tested, separate multiple modules by comma"
-                    <> optional ) )
+                    testArgs
         <|> command "diff"
                     (help "Diff the current package against another version")
                     (\a -> Right $ a { optCommand = Diff (diffOpts a) })
-              (   arg (\s a -> readVersion' s >.> \v -> a
-                                { optCommand = Diff (diffOpts a)
-                                                     { diffVersion = Just v } })
-                    (  metavar "VERSION"
-                    <> help "The other package version. If no version is specified, cpm diffs against the latest repository version."
-                    <> optional )
-              <.> option (\s a -> Right $ a { optCommand = Diff (diffOpts a)
-                                      { diffModules = Just $ splitOn "," s } })
-                    (  long "modules"
-                    <> short "m"
-                    <> help "The modules to compare, separate multiple modules by comma"
-                    <> optional )
-              <.> flag (\a -> Right $ a { optCommand = Diff (diffOpts a)
-                                     { diffAPI = True, diffBehavior = False } })
-                    (  long "api-only"
-                    <> short "a"
-                    <> help "Diff only the API")
-              <.> flag (\a -> Right $ a { optCommand = Diff (diffOpts a)
-                                     { diffAPI = False, diffBehavior = True } })
-                    (  long "behavior-only"
-                    <> short "b"
-                    <> help "Diff only the behavior")
-              <.> flag (\a -> Right $ a { optCommand = Diff (diffOpts a)
-                                                       { diffUseAna = False } })
-                    (  long "unsafe"
-                    <> short "u"
-                    <> help "Do not use automatic termination analysis for safe behavior checking") )
+                    diffArgs
         <|> command "list" (help "List all packages of the repository")
-                           (\a -> Right $ a { optCommand = List (listOpts a) })
-              (   flag (\a -> Right $ a { optCommand = List (listOpts a)
-                                                         { listAll = True } })
-                    (  short "a"
-                    <> long "all"
-                    <> help "Show all versions" ) 
-              <.> flag (\a -> Right $ a { optCommand = List (listOpts a)
-                                                      { listCSV = True } })
-                    (  short "t"
-                    <> long "csv"
-                    <> help "Show in CSV table format" )
-              <.> flag (\a -> Right $ a { optCommand = List (listOpts a)
-                                                      { listCat = True } })
-                    (  short "c"
-                    <> long "category"
-                    <> help "Show all categories" )
-              )
+                    (\a -> Right $ a { optCommand = List (listOpts a) })
+                    listArgs
         <|> command "search" (help "Search the package repository") Right
-              (   arg (\s a -> Right $ a { optCommand = Search (searchOpts a) { searchQuery = s } }) 
-                    (  metavar "QUERY"
-                    <> help "The search term" ) ) 
+                    searchArgs
         <|> command "upgrade" (help "Upgrade one or more packages")
                     (\a -> Right $ a { optCommand = Upgrade (upgradeOpts a) })
-              (   arg (\s a -> Right $ a { optCommand = Upgrade (upgradeOpts a) { upgrTarget = Just s } })
-                    (  metavar "PACKAGE"
-                    <> help "The package to upgrade" 
-                    <> optional) )
+                    upgradeArgs
         <|> command "link" (help "Link a package to the local cache") Right
-              (   arg (\s a -> Right $ a { optCommand = Link (linkOpts a) { lnkSource = s } })
-                    (  metavar "SOURCE"
-                    <> help "The directory to link" ) ) ) )
+                    linkArgs ) )
+ where
+  checkoutArgs cmd =
+        arg (\s a -> Right $ a { optCommand = cmd (checkoutOpts a)
+                                                  { coPackage = s } })
+          (  metavar "PACKAGE"
+          <> help "The package name" )
+    <.> arg (\s a -> readVersion' s >.> \v ->
+                     a { optCommand = cmd (checkoutOpts a)
+                                          { coVersion = Just v } })
+          (  metavar "VERSION"
+          <> help "The package version"
+          <> optional)
+    <.> flag (\a -> Right $ a { optCommand = cmd (checkoutOpts a)
+                                                 { coPrerelease = True } })
+          (  short "p"
+          <> long "pre"
+          <> help "Try pre-release versions when searching for newest version.")
+
+  installArgs =
+        arg (\s a -> Right $ a { optCommand = Install (installOpts a)
+                                                      { instTarget = Just s } })
+          (  metavar "TARGET"
+          <> help "A package name or the path to a file"
+          <> optional)
+    <.> arg (\s a -> readVersion' s >.> \v ->
+             a { optCommand = Install (installOpts a) { instVersion = Just v } })
+          (  metavar "VERSION"
+          <> help "The package version"
+          <> optional)
+    <.> flag (\a -> Right $ a { optCommand = Install (installOpts a)
+                                               { instPrerelease = True } })
+          (  short "p"
+          <> long "pre"
+          <> help "Try pre-release versions when searching for newest version.")
+    <.> flag (\a -> Right $ a { optCommand = Install (installOpts a)
+                                               { instExecutable = False } })
+          (  short "n"
+          <> long "noexec"
+          <> help "Do not install executable.")
+
+  uninstallArgs =
+        arg (\s a -> Right $ a { optCommand =
+             Uninstall (uninstallOpts a) { uninstPackage = Just s } })
+          (  metavar "PACKAGE"
+          <> help "The package to be uninstalled"
+          <> optional)
+    <.> arg (\s a -> readVersion' s >.> \v ->
+                     a { optCommand = Uninstall (uninstallOpts a)
+                                                { uninstVersion = Just v } })
+          (  metavar "VERSION"
+          <> help "The version to be uninstalled"
+          <> optional)
+
+  newArgs =
+   arg (\s a -> Right $ a { optCommand = New (newOpts a)
+                                             { projectName = s } })
+       (  metavar "PROJECT"
+       <> help "The name of the new project" )
+
+  curryArgs =
+    rest (\s a -> Right $ a { optCommand = Compiler (compOpts a)
+                                                    { comCommand = s } })
+         (  metavar "ARGS"
+         <> help "The options to pass to the compiler"
+         <> optional )
+
+  execArgs =
+    rest (\s a -> Right $ a { optCommand = Exec (execOpts a)
+                                                { exeCommand = s } })
+         (  metavar "CMD"
+         <> help "The command to execute. Don't forget the quotes!"
+         <> optional )
+
+  infoArgs =
+        arg (\s a -> Right $ a { optCommand = PkgInfo (infoOpts a)
+                                                { infoPackage = Just s } })
+          (  metavar "PACKAGE"
+          <> help ("The package name. If no name is specified, cpm tries " ++
+                   "to read a package specification in the current directory.")
+          <> optional) 
+    <.> arg (\s a -> readVersion' s >.> \v -> a
+                                 { optCommand = PkgInfo (infoOpts a)
+                                                  { infoVersion = Just v } })
+          (  metavar "VERSION"
+          <> help ("The package version. If no version is specified, " ++
+                   "cpm uses the latest version of the specified package.")
+          <> optional )
+    <.> flag (\a -> Right $ a { optCommand = PkgInfo (infoOpts a)
+                                               { infoAll = True } })
+          (  short "a"
+          <> long "all"
+          <> help "Show all infos"
+          <> optional )
+
+  testArgs =
+    option (\s a -> Right $ a { optCommand = Test (testOpts a)
+                                      { testModules = Just $ splitOn "," s } })
+          (  long "modules"
+          <> short "m"
+          <> help "The modules to be tested, separate multiple modules by comma"
+          <> optional )
+
+  diffArgs =
+       arg (\s a -> readVersion' s >.> \v ->
+                 a { optCommand = Diff (diffOpts a) { diffVersion = Just v } })
+           (  metavar "VERSION"
+           <> help ("The other package version. If no version is specified, " ++
+                    "cpm diffs against the latest repository version.")
+           <> optional )
+   <.> option (\s a -> Right $ a { optCommand = Diff (diffOpts a)
+                                     { diffModules = Just $ splitOn "," s } })
+         (  long "modules"
+         <> short "m"
+         <> help "The modules to compare, separate multiple modules by comma"
+         <> optional )
+   <.> flag (\a -> Right $ a { optCommand = Diff (diffOpts a)
+                          { diffAPI = True, diffBehavior = False } })
+         (  long "api-only"
+         <> short "a"
+         <> help "Diff only the API")
+   <.> flag (\a -> Right $ a { optCommand = Diff (diffOpts a)
+                          { diffAPI = False, diffBehavior = True } })
+         (  long "behavior-only"
+         <> short "b"
+         <> help "Diff only the behavior")
+   <.> flag (\a -> Right $ a { optCommand = Diff (diffOpts a)
+                                            { diffUseAna = False } })
+         (  long "unsafe"
+         <> short "u"
+         <> help
+         "Do not use automatic termination analysis for safe behavior checking")
+
+  listArgs =
+        flag (\a -> Right $ a { optCommand = List (listOpts a)
+                                               { listAll = True } })
+          (  short "a"
+          <> long "all"
+          <> help "Show all versions" ) 
+    <.> flag (\a -> Right $ a { optCommand = List (listOpts a)
+                                               { listCSV = True } })
+          (  short "t"
+          <> long "csv"
+          <> help "Show in CSV table format" )
+    <.> flag (\a -> Right $ a { optCommand = List (listOpts a)
+                                               { listCat = True } })
+          (  short "c"
+          <> long "category"
+          <> help "Show all categories" )
+
+  searchArgs =
+    arg (\s a -> Right $ a { optCommand = Search (searchOpts a)
+                                            { searchQuery = s } }) 
+        (  metavar "QUERY"
+        <> help "The search term" )
+
+  upgradeArgs =
+    arg (\s a -> Right $ a { optCommand = Upgrade (upgradeOpts a)
+                                            { upgrTarget = Just s } })
+        (  metavar "PACKAGE"
+        <> help "The package to upgrade" 
+        <> optional )
+
+  linkArgs =
+    arg (\s a -> Right $ a { optCommand = Link (linkOpts a) { lnkSource = s } })
+        (  metavar "SOURCE"
+        <> help "The directory to link" )
 
 -- Check if operating system executables we depend on are present on the current
 -- system.
@@ -577,27 +626,27 @@ checkout (CheckoutOptions pkg (Just ver) _) cfg repo gc =
   Just  p -> acquireAndInstallPackageWithDependencies cfg repo gc p |>
              checkoutPackage cfg repo gc p
 
---- Installs the binary provided by a package.
+--- Installs the application (i.e., binary) provided by a package.
 --- This is done by checking out the package into CPM's bin_packages
 --- cache (default: $HOME/.cpm/bin_packages, see bin_package_path
 --- in .cpmrc configuration file) and then install this package.
 ---
---- Note: the installed package should not be cleaned or removed
+--- Internal note: the installed package should not be cleaned or removed
 --- after the installation since its execution might refer (via the
 --- config module) to some data stored in the package.
-installbin :: CheckoutOptions -> Config -> Repository -> GlobalCache
+installapp :: CheckoutOptions -> Config -> Repository -> GlobalCache
            -> IO (ErrorLogger ())
-installbin opts cfg repo gc = do
+installapp opts cfg repo gc = do
   removeDirectoryComplete copkgdir
-  debugMessage ("Change into directory " ++ binpkgdir)
-  inDirectory binpkgdir
+  debugMessage ("Change into directory " ++ apppkgdir)
+  inDirectory apppkgdir
     (checkout opts cfg repo gc |>
      log Debug ("Change into directory " ++ copkgdir) |>
      (setCurrentDirectory copkgdir >> succeedIO ()) |>
      install (InstallOptions Nothing Nothing False True) cfg repo gc )
  where
-  binpkgdir = binPackageDir cfg
-  copkgdir  = binpkgdir </> coPackage opts
+  apppkgdir = appPackageDir cfg
+  copkgdir  = apppkgdir </> coPackage opts
 
 install :: InstallOptions -> Config -> Repository -> GlobalCache
         -> IO (ErrorLogger ())
