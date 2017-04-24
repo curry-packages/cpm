@@ -774,11 +774,11 @@ listCmd (ListOptions lv csv cat) cfg repo =
     in renderTable colsizes rows
 
   renderCats catgrps =
-    let namelen = foldl max 8 $ map (length . fst) catgrps
+    let namelen = foldl max 2 $ map (length . fst) catgrps
         header = [ ["Category", "Packages"]
                  , ["--------", "--------"]]
         rows   = header ++ map (\ (c,ns) -> [c, unwords ns]) catgrps
-    in renderTable [namelen + 4, 76 - namelen] rows
+    in renderTable [namelen + 2, 78 - namelen] rows
   
   renderTable colsizes rows =
     if csv then showCSV (head rows : drop 2 rows)
@@ -789,8 +789,8 @@ listCmd (ListOptions lv csv cat) cfg repo =
 packageVersionAsTable :: [Package] -> ([Int],[[String]])
 packageVersionAsTable pkgs = (colsizes, rows)
  where
-  namelen = foldl max 4 $ map (length . name) pkgs
-  colsizes = [namelen + 4, 66 - namelen, 10]
+  namelen = foldl max 2 $ map (length . name) pkgs
+  colsizes = [namelen + 2, 68 - namelen, 10]
   header  = [ ["Name", "Synopsis", "Version"]
             , ["----", "--------", "-------"]]
   rows    = header ++ map formatPkg pkgs
