@@ -178,24 +178,77 @@ emptyPackage = Package {
   , testSuite             = Nothing
   }
 
---- Translates the basic package elements to a JSON object.
+--- Translates a package to a JSON object.
 packageSpecToJSON :: Package -> JValue
-packageSpecToJSON pkg = JObject $ [
-    ("name", JString $ name pkg)
+packageSpecToJSON pkg = JObject $
+  [ ("name", JString $ name pkg)
   , ("version", JString $ showVersion $ version pkg)
-  , ("author", JString $ author pkg)
-  , ("synopsis", JString $ synopsis pkg)
-  , ("category", stringListToJSON $ category pkg)
-  , ("dependencies", dependenciesToJSON $ dependencies pkg)
-  , ("exportedModules", stringListToJSON $ exportedModules pkg) ] ++
-  maybeStringToJSON "license" (license pkg) ++
-  maybeStringToJSON "licenseFile" (licenseFile pkg)
+  , ("author", JString $ author pkg) ] ++
+  maybeStringToJSON "maintainer" (maintainer pkg) ++
+  [ ("synopsis", JString $ synopsis pkg) ] ++
+  maybeStringToJSON "description" (description pkg) ++
+  stringListToJSON  "category"    (category pkg) ++
+  maybeStringToJSON "license"     (license pkg) ++
+  maybeStringToJSON "licenseFile" (licenseFile pkg) ++
+  maybeStringToJSON "copyright"   (copyright   pkg) ++
+  maybeStringToJSON "homepage"    (homepage    pkg) ++
+  maybeStringToJSON "bugReports"  (bugReports  pkg) ++
+  maybeStringToJSON "repository"  (repository  pkg) ++
+  [ ("dependencies", dependenciesToJSON $ dependencies pkg) ] ++
+  compilerCompatibilityToJSON (compilerCompatibility pkg) ++
+  maybeSourceToJSON (source pkg) ++
+  stringListToJSON "sourceDirs"      (sourceDirs pkg) ++
+  stringListToJSON "exportedModules" (exportedModules pkg) ++
+  maybeStringToJSON "configModule" (configModule pkg) ++
+  maybeExecToJSON (executableSpec pkg) ++
+  maybeTestToJSON (testSuite pkg)
  where
   dependenciesToJSON deps = JObject $ map dependencyToJSON deps
-  dependencyToJSON (Dependency p vc) = (p, JString $ showVersionConstraints vc)
-  stringListToJSON exps = JArray $ map JString exps
-  maybeStringToJSON fname mbcont =
-    maybe [] (\s -> [(fname, JString s)]) mbcont
+   where dependencyToJSON (Dependency p vc) =
+           (p, JString $ showVersionConstraints vc)
+
+  compilerCompatibilityToJSON deps =
+    if null deps
+      then []
+      else [("compilerCompatibility", JObject $ map compatToJSON deps)]
+   where compatToJSON (CompilerCompatibility p vc) =
+           (p, JString $ showVersionConstraints vc)
+
+  maybeSourceToJSON =
+    maybe [] (\src -> [("source", JObject (pkgSourceToJSON src))])
+   where
+    pkgSourceToJSON (FileSource _) =
+      error "Internal error: FileSource in package specification"
+    pkgSourceToJSON (Http url) = [("http", JString url)]
+    pkgSourceToJSON (Git url mbrev) =
+      [("git", JString url)] ++ maybe [] revToJSON mbrev
+     where
+      revToJSON (Ref t)      = [("ref", JString t)]
+      revToJSON (Tag t)      = [("tag", JString t)]
+      revToJSON VersionAsTag = [("tag", JString "$version")]
+
+  maybeExecToJSON =
+    maybe [] (\ (PackageExecutable ename emain) ->
+                  [("executable", JObject [ ("name", JString ename)
+                                          , ("main", JString emain)])])
+
+  maybeTestToJSON = maybe [] (\tests -> [("testsuite", testsToJSON tests)])
+   where
+    testsToJSON tests = if length tests == 1
+                          then testToJSON (head tests)
+                          else JArray $ map testToJSON tests
+    testToJSON (PackageTest dir mods opts script) = JObject $
+      [ ("src-dir", JString dir) ] ++
+      (if null opts then [] else [("options", JString opts)]) ++
+      stringListToJSON "modules" mods ++
+      (if null script then [] else [("script", JString script)])
+
+  stringListToJSON fname exps =
+    if null exps then []
+                 else [(fname, JArray $ map JString exps)]
+
+  maybeStringToJSON fname = maybe [] (\s -> [(fname, JString s)])
+
 
 --- Writes a basic package specification to a JSON file.
 ---
@@ -203,6 +256,7 @@ packageSpecToJSON pkg = JObject $ [
 --- @param file the file name to write to
 writePackageSpec :: Package -> String -> IO ()
 writePackageSpec pkg file = writeFile file $ ppJSON $ packageSpecToJSON pkg
+
 
 --- Loads a package specification from a package directory.
 ---
@@ -673,7 +727,7 @@ getOptStringList optional key kv = case lookup (key++"s") kv of
 --- a list of lists of version constraints. The inner lists are conjunctions of
 --- version constraints, the outer list is a disjunction of conjunctions.
 readVersionConstraints :: String -> Maybe [[VersionConstraint]]
-readVersionConstraints s = parse pVersionConstraints s
+readVersionConstraints s = parse pVersionConstraints (dropWhile isSpace s)
 
 test_readVersionConstraints_single :: Test.EasyCheck.Prop
 test_readVersionConstraints_single = readVersionConstraints "=1.2.3" -=- Just [[VExact (1, 2, 3, Nothing)]]
