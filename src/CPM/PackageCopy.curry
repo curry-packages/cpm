@@ -202,9 +202,10 @@ resolveDependencies cfg repo gc dir = loadPackageSpec dir |->
   \pkgSpec -> resolveDependenciesForPackageCopy cfg pkgSpec repo gc dir
 
 --- Renders information on a package.
-renderPackageInfo :: Bool -> Repository -> GC.GlobalCache -> Package -> String
-renderPackageInfo allinfos _ gc pkg = pPrint doc
+renderPackageInfo :: Bool -> Bool -> GC.GlobalCache -> Package -> String
+renderPackageInfo allinfos plain gc pkg = pPrint doc
  where
+  boldText s = (if plain then id else bold) $ text s
   maxLen = 12
   doc = vcat $ [ heading, rule, installed, ver, auth, maintnr, synop
                , cats, deps, compilers, descr ] ++
@@ -217,50 +218,51 @@ renderPackageInfo allinfos _ gc pkg = pPrint doc
   isInstalled = GC.isPackageInstalled gc pkg
 
   heading   = text pkgId 
-  installed = if isInstalled then empty else red $ text "Not installed"
+  installed = if isInstalled || plain then empty
+                                      else red $ text "Not installed"
   rule      = text (take (length pkgId) $ repeat '-')
-  ver       = fill maxLen (bold (text "Version")) <+>
+  ver       = fill maxLen (boldText "Version") <+>
               (text $ showVersion $ version pkg)
-  auth      = fill maxLen (bold (text "Author")) <+> (text $ author pkg)
-  synop     = fill maxLen (bold (text "Synopsis")) <+>
+  auth      = fill maxLen (boldText "Author") <+> (text $ author pkg)
+  synop     = fill maxLen (boldText "Synopsis") <+>
               indent 0 (fillSep (map text (words (synopsis pkg))))
-  deps      = (bold $ text "Dependencies") <$$>
+  deps      = boldText "Dependencies" <$$>
               (vcat $ map (indent 4 . text . showDependency) $ dependencies pkg)
 
   maintnr = case maintainer pkg of
     Nothing -> empty
-    Just  s -> fill maxLen (bold (text "Maintainer")) <+> text s
+    Just  s -> fill maxLen (boldText "Maintainer") <+> text s
 
   cats =
     if null (category pkg)
       then empty
-      else fill maxLen (bold (text "Category")) <+>
+      else fill maxLen (boldText "Category") <+>
            indent 0 (fillSep (map text (category pkg)))
 
   execspec = case executableSpec pkg of
     Nothing -> empty
     Just  (PackageExecutable n m) ->
-      bold (text "Executable") <$$>
-      indent 4 (bold (text "Name         ") <+> text n) <$$>
-      indent 4 (bold (text "Main module  ") <+> text m)
+      boldText "Executable" <$$>
+      indent 4 (boldText "Name         " <+> text n) <$$>
+      indent 4 (boldText "Main module  " <+> text m)
 
   testsuites = case testSuite pkg of
     Nothing -> []
     Just  tests ->
       map (\ (PackageTest dir mods opts script) ->
             let check = if null script then "Check" else "Test" in
-            bold (text "Test suite") <$$>
-            indent 4 (bold (text "Directory    ") <+> text dir) <$$>
+            boldText "Test suite" <$$>
+            indent 4 (boldText "Directory    " <+> text dir) <$$>
             (if null script
                then empty
-               else indent 4 (bold (text "Test script  ") <+> text script)) <$$>
+               else indent 4 (boldText "Test script  " <+> text script)) <$$>
             (if null opts
                then empty
-               else indent 4 (bold (text $ check++" options") <+>
+               else indent 4 (boldText (check++" options") <+>
                               text opts)) <$$>
             (if null mods
                then empty
-               else indent 4 (bold (text "Test modules ") <+>
+               else indent 4 (boldText "Test modules " <+>
                     align (fillSep (map text mods)))))
           tests
 
@@ -279,34 +281,34 @@ renderPackageInfo allinfos _ gc pkg = pPrint doc
     Just  (Git s _)      -> showSource s
     Just  (FileSource s) -> showSource s
    where
-     showSource s = bold (text "Source") <$$> indent 4 (text s)
+     showSource s = boldText "Source" <$$> indent 4 (text s)
 
 
   srcdirs =
     if null (sourceDirs pkg)
       then empty
-      else bold (text "Source directories") <$$>
+      else boldText "Source directories" <$$>
            indent 4 (fillSep (map text (sourceDirs pkg)))
 
   expmods =
     if null (exportedModules pkg)
       then empty
-      else bold (text "Exported modules") <$$>
+      else boldText "Exported modules" <$$>
            indent 4 (fillSep (map text (exportedModules pkg)))
 
   compilers =
     if null (compilerCompatibility pkg)
       then empty
-      else bold (text "Compiler compatibility") <$$>
+      else boldText "Compiler compatibility" <$$>
            (vcat $ map (indent 4 . text . showCompilerDependency)
                  $ compilerCompatibility pkg)
 
   showLineField fgetter fname = case fgetter pkg of
     Nothing -> empty
-    Just  s -> bold (text fname) <$$> indent 4 (text s)
+    Just  s -> boldText fname <$$> indent 4 (text s)
 
   showParaField fgetter fname = case fgetter pkg of
     Nothing -> empty
-    Just  s -> bold (text fname) <$$>
+    Just  s -> boldText fname <$$>
                indent 4 (fillSep (map text (words s)))
 

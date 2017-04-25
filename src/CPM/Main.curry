@@ -13,6 +13,7 @@ import Directory    ( doesFileExist, getAbsolutePath, doesDirectoryExist
 import Distribution ( stripCurrySuffix, addCurrySubdir )
 import Either
 import FilePath     ( (</>), splitSearchPath, takeExtension )
+import qualified HTML as H
 import IO           ( hFlush, stdout )
 import List         ( groupBy, intercalate, nub, split, splitOn )
 import Sort         ( sortBy )
@@ -45,7 +46,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 20/04/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 25/04/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -171,12 +172,15 @@ data UninstallOptions = UninstallOptions
 data InfoOptions = InfoOptions
   { infoPackage :: Maybe String
   , infoVersion :: Maybe Version
-  , infoAll     :: Bool }
+  , infoAll     :: Bool
+  , infoPlain   :: Bool  -- plain output, no bold/color
+  }
 
 data ListOptions = ListOptions
-  { listAll :: Bool   -- list all versions of each package
-  , listCSV :: Bool   -- list in CSV format
-  , listCat :: Bool   -- list all categories
+  { listAll  :: Bool   -- list all versions of each package
+  , listCSV  :: Bool   -- list in CSV format
+  , listHTML :: Bool   -- list in HTML format
+  , listCat  :: Bool   -- list all categories
   }
 
 data SearchOptions = SearchOptions
@@ -227,12 +231,12 @@ uninstallOpts s = case optCommand s of
 infoOpts :: Options -> InfoOptions
 infoOpts s = case optCommand s of
   PkgInfo opts -> opts
-  _            -> InfoOptions Nothing Nothing False
+  _            -> InfoOptions Nothing Nothing False False
 
 listOpts :: Options -> ListOptions
 listOpts s = case optCommand s of
   List opts -> opts
-  _         -> ListOptions False False False
+  _         -> ListOptions False False False False
 
 searchOpts :: Options -> SearchOptions
 searchOpts s = case optCommand s of
@@ -463,7 +467,12 @@ optionParser = optParser
                                                { infoAll = True } })
           (  short "a"
           <> long "all"
-          <> help "Show all infos"
+          <> help "Show all infos" )
+    <.> flag (\a -> Right $ a { optCommand = PkgInfo (infoOpts a)
+                                               { infoPlain = True } })
+          (  short "p"
+          <> long "plain"
+          <> help "Plain output (no control characters for bold or colors)"
           <> optional )
 
   testArgs =
@@ -505,18 +514,23 @@ optionParser = optParser
          "Do not use automatic termination analysis for safe behavior checking")
 
   listArgs =
-        flag (\a -> Right $ a { optCommand = List (listOpts a)
-                                               { listAll = True } })
+        flag (\a -> Right $ a { optCommand =
+                                  List (listOpts a) { listAll = True } })
           (  short "a"
           <> long "all"
           <> help "Show all versions" ) 
-    <.> flag (\a -> Right $ a { optCommand = List (listOpts a)
-                                               { listCSV = True } })
+    <.> flag (\a -> Right $ a { optCommand =
+                                  List (listOpts a) { listCSV = True } })
           (  short "t"
           <> long "csv"
           <> help "Show in CSV table format" )
-    <.> flag (\a -> Right $ a { optCommand = List (listOpts a)
-                                               { listCat = True } })
+    <.> flag (\a -> Right $ a { optCommand =
+                                  List (listOpts a) { listHTML = True } })
+          (  short "x"
+          <> long "html"
+          <> help "Show in HTML format" )
+    <.> flag (\a -> Right $ a { optCommand =
+                                  List (listOpts a) { listCat = True } })
           (  short "c"
           <> long "category"
           <> help "Show all categories" )
@@ -563,24 +577,26 @@ deps cfg repo gc =
 
 info :: InfoOptions -> Config -> Repository -> GlobalCache
      -> IO (ErrorLogger ())
-info (InfoOptions Nothing Nothing allinfos) _ repo gc =
+info (InfoOptions Nothing Nothing allinfos plain) _ _ gc =
   tryFindLocalPackageSpec "." |>= \specDir ->
-  loadPackageSpec specDir |>= printInfo allinfos repo gc
-info (InfoOptions (Just pkg) Nothing allinfos) cfg repo gc =
+  loadPackageSpec specDir |>= printInfo allinfos plain gc
+info (InfoOptions (Just pkg) Nothing allinfos plain) cfg repo gc =
   case findLatestVersion cfg repo pkg False of
    Nothing -> failIO $
                 "Package '" ++ pkg ++ "' not found in package repository."
-   Just p  -> printInfo allinfos repo gc p
-info (InfoOptions (Just pkg) (Just v) allinfos) _ repo gc =
+   Just p  -> printInfo allinfos plain gc p
+info (InfoOptions (Just pkg) (Just v) allinfos plain) _ repo gc =
  case findVersion repo pkg v of
    Nothing -> failIO $ "Package '" ++ pkg ++ "-" ++ (showVersion v) ++
                        "' not found in package repository."
-   Just p  -> printInfo allinfos repo gc p
-info (InfoOptions Nothing (Just _) _) _ _ _ = failIO "Must specify package name"
+   Just p  -> printInfo allinfos plain gc p
+info (InfoOptions Nothing (Just _) _ _) _ _ _ =
+  failIO "Must specify package name"
 
-printInfo :: Bool -> Repository -> GlobalCache -> Package -> IO (ErrorLogger ())
-printInfo allinfos repo gc pkg =
-  putStrLn (renderPackageInfo allinfos repo gc pkg) >> succeedIO ()
+printInfo :: Bool -> Bool -> GlobalCache -> Package
+          -> IO (ErrorLogger ())
+printInfo allinfos plain gc pkg =
+  putStrLn (renderPackageInfo allinfos plain gc pkg) >> succeedIO ()
 
 
 compiler :: CompilerOptions -> Config -> IO Repository -> IO GlobalCache
@@ -748,9 +764,14 @@ tryFindVersion pkg ver repo = case findVersion repo pkg ver of
 
 --- Lists all (compiler-compatible) packages in the given repository.
 listCmd :: ListOptions -> Config -> Repository -> IO (ErrorLogger ())
-listCmd (ListOptions lv csv cat) cfg repo =
-  if cat then putStr (renderCats catgroups) >> succeedIO ()
-         else putStr (renderPkgs allpkgs)   >> succeedIO ()
+listCmd (ListOptions lv csv html cat) cfg repo =
+  let listresult = if cat then renderCats catgroups
+                          else
+          if html
+           then  renderHtml "Curry Packages in the CPM Repository"
+                            [packageVersionsAsHtmlTable allpkgs]
+           else renderPkgs allpkgs
+  in putStr listresult >> succeedIO ()
  where
   -- all packages (and versions if `lv`)
   allpkgs = concatMap (if lv then id else ((:[]) . head))
@@ -768,6 +789,8 @@ listCmd (ListOptions lv csv cat) cfg repo =
            (groupBy (\ (c1,_) (c2,_) -> c1==c2) (nub $ sortBy (<=) catpkgs)) ++
        if null nocatps then []
                        else [("???", nub $ sortBy (<=) nocatps)]
+
+  renderHtml title hexps = H.showHtmlPage (H.standardPage title hexps)
 
   renderPkgs pkgs =
     let (colsizes,rows) = packageVersionAsTable pkgs
@@ -793,6 +816,16 @@ packageVersionAsTable pkgs = (colsizes, rows)
   colsizes = [namelen + 2, 68 - namelen, 10]
   header  = [ ["Name", "Synopsis", "Version"]
             , ["----", "--------", "-------"]]
+  rows    = header ++ map formatPkg pkgs
+  formatPkg p = [name p, synopsis p, showVersion (version p)]
+        
+-- Format a list of packages by showing their names, synopsis, and versions
+-- as an HTML table
+packageVersionsAsHtmlTable :: [Package] -> H.HtmlExp
+packageVersionsAsHtmlTable pkgs = H.headedTable $
+  map (\r -> map (\c -> [H.htxt c]) r) rows
+ where
+  header  = [ ["Name", "Synopsis", "Version"] ]
   rows    = header ++ map formatPkg pkgs
   formatPkg p = [name p, synopsis p, showVersion (version p)]
         
