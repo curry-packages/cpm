@@ -331,10 +331,6 @@ optionParser = optParser
                      (help "Install the application provided by a package.") 
                      Right
                      (checkoutArgs InstallApp)
-        <|> command "installbin" -- deprecated: TODO: remove in the future
-           (help "Deprecated, use command 'installapp'.") 
-                     Right
-                     (checkoutArgs InstallApp)
         <|> command "install" (help "Install a package.")
                      (\a -> Right $ a { optCommand = Install (installOpts a) })
                      installArgs
