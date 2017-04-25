@@ -984,7 +984,7 @@ cleanPackage ll =
                      (maybe []
                             (map (\ (PackageTest m _ _ _) -> m))
                             (testSuite pkg))
-      rmdirs   = dotcpm : map addCurrySubdir (srcdirs ++ testdirs)
+      rmdirs   = nub (dotcpm : map addCurrySubdir (srcdirs ++ testdirs))
   in log ll ("Removing directories: " ++ unwords rmdirs) |>
      (system (unwords (["rm", "-rf"] ++ rmdirs)) >> succeedIO ())
 
