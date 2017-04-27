@@ -13,7 +13,6 @@ import Directory    ( doesFileExist, getAbsolutePath, doesDirectoryExist
 import Distribution ( stripCurrySuffix, addCurrySubdir )
 import Either
 import FilePath     ( (</>), splitSearchPath, takeExtension )
-import qualified HTML as H
 import IO           ( hFlush, stdout )
 import List         ( groupBy, intercalate, nub, split, splitOn )
 import Sort         ( sortBy )
@@ -179,7 +178,6 @@ data InfoOptions = InfoOptions
 data ListOptions = ListOptions
   { listAll  :: Bool   -- list all versions of each package
   , listCSV  :: Bool   -- list in CSV format
-  , listHTML :: Bool   -- list in HTML format
   , listCat  :: Bool   -- list all categories
   }
 
@@ -236,7 +234,7 @@ infoOpts s = case optCommand s of
 listOpts :: Options -> ListOptions
 listOpts s = case optCommand s of
   List opts -> opts
-  _         -> ListOptions False False False False
+  _         -> ListOptions False False False
 
 searchOpts :: Options -> SearchOptions
 searchOpts s = case optCommand s of
@@ -521,11 +519,6 @@ optionParser = optParser
           <> long "csv"
           <> help "Show in CSV table format" )
     <.> flag (\a -> Right $ a { optCommand =
-                                  List (listOpts a) { listHTML = True } })
-          (  short "x"
-          <> long "html"
-          <> help "Show in HTML format" )
-    <.> flag (\a -> Right $ a { optCommand =
                                   List (listOpts a) { listCat = True } })
           (  short "c"
           <> long "category"
@@ -760,13 +753,9 @@ tryFindVersion pkg ver repo = case findVersion repo pkg ver of
 
 --- Lists all (compiler-compatible) packages in the given repository.
 listCmd :: ListOptions -> Config -> Repository -> IO (ErrorLogger ())
-listCmd (ListOptions lv csv html cat) cfg repo =
+listCmd (ListOptions lv csv cat) cfg repo =
   let listresult = if cat then renderCats catgroups
-                          else
-          if html
-           then  renderHtml "Curry Packages in the CPM Repository"
-                            [packageVersionsAsHtmlTable allpkgs]
-           else renderPkgs allpkgs
+                          else renderPkgs allpkgs
   in putStr listresult >> succeedIO ()
  where
   -- all packages (and versions if `lv`)
@@ -785,8 +774,6 @@ listCmd (ListOptions lv csv html cat) cfg repo =
            (groupBy (\ (c1,_) (c2,_) -> c1==c2) (nub $ sortBy (<=) catpkgs)) ++
        if null nocatps then []
                        else [("???", nub $ sortBy (<=) nocatps)]
-
-  renderHtml title hexps = H.showHtmlPage (H.standardPage title hexps)
 
   renderPkgs pkgs =
     let (colsizes,rows) = packageVersionAsTable pkgs
@@ -812,16 +799,6 @@ packageVersionAsTable pkgs = (colsizes, rows)
   colsizes = [namelen + 2, 68 - namelen, 10]
   header  = [ ["Name", "Synopsis", "Version"]
             , ["----", "--------", "-------"]]
-  rows    = header ++ map formatPkg pkgs
-  formatPkg p = [name p, synopsis p, showVersion (version p)]
-        
--- Format a list of packages by showing their names, synopsis, and versions
--- as an HTML table
-packageVersionsAsHtmlTable :: [Package] -> H.HtmlExp
-packageVersionsAsHtmlTable pkgs = H.headedTable $
-  map (\r -> map (\c -> [H.htxt c]) r) rows
- where
-  header  = [ ["Name", "Synopsis", "Version"] ]
   rows    = header ++ map formatPkg pkgs
   formatPkg p = [name p, synopsis p, showVersion (version p)]
         
