@@ -691,6 +691,7 @@ install (InstallOptions Nothing Nothing _ instexec) cfg repo gc =
   tryFindLocalPackageSpec "." |>= \pkgdir ->
   cleanCurryPathCache pkgdir |>
   installLocalDependencies cfg repo gc pkgdir |>= \ (pkg,_) ->
+  writePackageConfig cfg pkgdir pkg |>
   if instexec then installExecutable cfg repo pkg pkgdir else succeedIO ()
 install (InstallOptions (Just pkg) Nothing pre _) cfg repo gc = do
   fileExists <- doesFileExist pkg
@@ -733,8 +734,7 @@ installExecutable cfg repo pkg pkgdir =
                         ":load", mainmod, ":save", ":quit"]
                bindir     = binInstallDir cfg
                binexec    = bindir </> name
-           in writePackageConfig cfg pkgdir pkg |>
-              compiler CompilerOptions { comCommand = cmd }
+           in compiler CompilerOptions { comCommand = cmd }
                        cfg (return repo) (return gc) |>
               log Info ("Installing executable '" ++ name ++ "' into '" ++
                         bindir ++ "'") |>
