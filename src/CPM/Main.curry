@@ -45,7 +45,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 25/04/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 27/04/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -85,6 +85,7 @@ runWithArgs opts = do
     Update      -> updateRepository config
     Compiler o  -> compiler o config getRepo getGC
     Exec o      -> exec     o config getRepo getGC
+    Doc  o      -> docCmd   o config getRepo getGC
     Test o      -> test     o config getRepo getGC
     Clean       -> cleanPackage Info
     New o       -> newPackage o
@@ -148,6 +149,7 @@ data Command
   | Upgrade    UpgradeOptions
   | Link       LinkOptions
   | Exec       ExecOptions
+  | Doc        DocOptions
   | Test       TestOptions
   | Diff       DiffOptions
   | New        NewOptions
@@ -200,6 +202,11 @@ data ExecOptions = ExecOptions
 
 data CompilerOptions = CompilerOptions
   { comCommand :: String }
+
+data DocOptions = DocOptions
+  { docDir     :: Maybe String     -- documentation directory
+  , docModules :: Maybe [String]   -- modules to be documented
+  }
 
 data TestOptions = TestOptions
   { testModules :: Maybe [String] }
@@ -265,6 +272,11 @@ compOpts :: Options -> CompilerOptions
 compOpts s = case optCommand s of
   Compiler opts -> opts
   _             -> CompilerOptions ""
+
+docOpts :: Options -> DocOptions
+docOpts s = case optCommand s of
+  Doc opts -> opts
+  _        -> DocOptions Nothing Nothing
 
 testOpts :: Options -> TestOptions
 testOpts s = case optCommand s of
@@ -353,6 +365,10 @@ optionParser = optParser
         <|> command "info" (help "Print package information")
                     (\a -> Right $ a { optCommand = PkgInfo (infoOpts a) })
                     infoArgs
+        <|> command "doc"
+           (help "Generation documentation for current package (with CurryDoc)")
+                    (\a -> Right $ a { optCommand = Doc (docOpts a) })
+                    docArgs
         <|> command "test" (help "Test the current package (with CurryCheck)")
                     (\a -> Right $ a { optCommand = Test (testOpts a) })
                     testArgs
@@ -467,6 +483,22 @@ optionParser = optParser
           (  short "p"
           <> long "plain"
           <> help "Plain output (no control characters for bold or colors)"
+          <> optional )
+
+  docArgs =
+    option (\s a -> Right $ a { optCommand =
+                                  Doc (docOpts a) { docDir = Just $ s } })
+          (  long "docdir"
+          <> short "d"
+          <> help "The documentation directory (default: 'cdoc')"
+          <> optional )
+    <.>
+    option (\s a -> Right $ a { optCommand = Doc (docOpts a)
+                                      { docModules = Just $ splitOn "," s } })
+          (  long "modules"
+          <> short "m"
+          <> help ("The modules to be documented, " ++
+                   "separate multiple modules by comma")
           <> optional )
 
   testArgs =
@@ -841,8 +873,51 @@ link (LinkOptions src) _ _ _ =
   log Info ("Linking '" ++ src ++ "' into local package cache") |>
   linkToLocalCache src specDir
 
---- `test` command: run `curry check` on exported or top-level modules
---- of the package, or on the modules provided as an argument.
+--- `doc` command: run `curry doc` on the modules provided as an argument
+--- or, if they are not given, on exported modules (if specified in the
+--- package), on the main executable (if specified in the package),
+--- or on all source modules of the package.
+docCmd :: DocOptions -> Config -> IO Repository -> IO GlobalCache
+       -> IO (ErrorLogger ())
+docCmd opts cfg getRepo getGC =
+  tryFindLocalPackageSpec "." |>= \specDir ->
+  loadPackageSpec specDir |>= \pkg -> do
+    checkCompiler cfg pkg
+    let docdir  = maybe "cdoc" id (docDir opts)
+        exports = exportedModules pkg
+        mainmod = maybe Nothing
+                        (\ (PackageExecutable _ emain) -> Just emain)
+                        (executableSpec pkg)
+    docmods <- maybe (if null exports
+                        then maybe (curryModulesInDir (specDir </> "src"))
+                                   (\m -> return [m])
+                                   mainmod
+                        else return exports)
+                     return
+                     (docModules opts)
+    if null docmods
+      then putStrLn "No modules to be documented!" >> succeedIO ()
+      else
+        if length docmods == 1
+          then runDocCmd specDir [currydoc, docdir, head docmods]
+          else foldEL (\_ -> docModule specDir docdir) () docmods |>
+               runDocCmd specDir
+                         ([currydoc, "--onlyindexhtml", docdir] ++ docmods) |>
+               log Info ("Documentation generated in '"++docdir++"'")
+ where
+  currydoc = curryExec cfg ++ " doc"
+
+  docModule pkgdir docdir mod =
+    runDocCmd pkgdir [currydoc, "--noindexhtml", docdir, mod]
+
+  runDocCmd pkgdir doccmd = do
+    let cmd = unwords doccmd
+    infoMessage $ "Running CurryDoc: " ++ cmd
+    execWithPkgDir (ExecOptions cmd []) cfg getRepo getGC pkgdir
+
+--- `test` command: run `curry check` on the modules provided as an argument
+--- or, if they are not provided, on the exported (if specified)
+--- or all source modules of the package.
 test :: TestOptions -> Config -> IO Repository -> IO GlobalCache
      -> IO (ErrorLogger ())
 test opts cfg getRepo getGC =
@@ -889,7 +964,7 @@ test opts cfg getRepo getGC =
                      (testSuite spec)
     Just ms -> [PackageTest "src" ms "" ""]
 
---- Get the names of all Curry modules containing in a directory.
+--- Get the names of all Curry modules contained in a directory.
 --- Modules in subdirectories are returned as hierarchical modules.
 curryModulesInDir :: String -> IO [String]
 curryModulesInDir dir = getModules "" dir
