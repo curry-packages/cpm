@@ -178,7 +178,8 @@ data InfoOptions = InfoOptions
   }
 
 data ListOptions = ListOptions
-  { listAll  :: Bool   -- list all versions of each package
+  { listAll  :: Bool   -- list all packages independent of compiler constraints
+  , listVers :: Bool   -- list all versions of each package
   , listCSV  :: Bool   -- list in CSV format
   , listCat  :: Bool   -- list all categories
   }
@@ -241,7 +242,7 @@ infoOpts s = case optCommand s of
 listOpts :: Options -> ListOptions
 listOpts s = case optCommand s of
   List opts -> opts
-  _         -> ListOptions False False False
+  _         -> ListOptions False False False False
 
 searchOpts :: Options -> SearchOptions
 searchOpts s = case optCommand s of
@@ -544,6 +545,11 @@ optionParser = optParser
                                   List (listOpts a) { listAll = True } })
           (  short "a"
           <> long "all"
+          <> help "Show all packages (independent of compiler constraints)" ) 
+    <.> flag (\a -> Right $ a { optCommand =
+                                  List (listOpts a) { listVers = True } })
+          (  short "v"
+          <> long "versions"
           <> help "Show all versions" ) 
     <.> flag (\a -> Right $ a { optCommand =
                                   List (listOpts a) { listCSV = True } })
@@ -692,7 +698,7 @@ install (InstallOptions Nothing Nothing _ instexec) cfg repo gc =
   cleanCurryPathCache pkgdir |>
   installLocalDependencies cfg repo gc pkgdir |>= \ (pkg,_) ->
   writePackageConfig cfg pkgdir pkg |>
-  if instexec then installExecutable cfg repo pkg pkgdir else succeedIO ()
+  if instexec then installExecutable cfg repo pkg else succeedIO ()
 install (InstallOptions (Just pkg) Nothing pre _) cfg repo gc = do
   fileExists <- doesFileExist pkg
   if fileExists
@@ -717,9 +723,8 @@ checkCompiler cfg pkg =
 
 --- Installs the executable specified in the package in the
 --- bin directory of CPM (compare .cpmrc).
-installExecutable :: Config -> Repository -> Package -> String
-                  -> IO (ErrorLogger ())
-installExecutable cfg repo pkg pkgdir =
+installExecutable :: Config -> Repository -> Package -> IO (ErrorLogger ())
+installExecutable cfg repo pkg =
   checkCompiler cfg pkg >>
   -- we read the global cache again since it might be modified by
   -- the installation of the package:
@@ -783,9 +788,10 @@ tryFindVersion pkg ver repo = case findVersion repo pkg ver of
                       "' not found in package repository."
   Just  p -> succeedIO $ p
 
---- Lists all (compiler-compatible) packages in the given repository.
+--- Lists all (compiler-compatible if `lall` is false) packages
+--- in the given repository.
 listCmd :: ListOptions -> Config -> Repository -> IO (ErrorLogger ())
-listCmd (ListOptions lv csv cat) cfg repo =
+listCmd (ListOptions lall lv csv cat) cfg repo =
   let listresult = if cat then renderCats catgroups
                           else renderPkgs allpkgs
   in putStr listresult >> succeedIO ()
@@ -793,12 +799,12 @@ listCmd (ListOptions lv csv cat) cfg repo =
   -- all packages (and versions if `lv`)
   allpkgs = concatMap (if lv then id else ((:[]) . head))
                       (sortBy (\ps1 ps2 -> name (head ps1) <= name (head ps2))
-                              (listPackages cfg repo))
+                              (listPackages cfg repo lall))
 
   -- all categories together with their package names:
   catgroups =
     let pkgid p = name p ++ '-' : showVersion (version p)
-        newpkgs = map head (listPackages cfg repo)
+        newpkgs = map head (listPackages cfg repo lall)
         catpkgs = concatMap (\p -> map (\c -> (c, pkgid p)) (category p))
                             newpkgs
         nocatps = map pkgid (filter (null . category) newpkgs)

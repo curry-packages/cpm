@@ -79,12 +79,13 @@ searchPackages cfg (Repository ps) searchstring =
 ---
 --- @param cfg  - the current CPM configuration
 --- @param repo - the repository
-listPackages :: Config -> Repository -> [[Package]]
-listPackages cfg (Repository ps) =
+listPackages :: Config -> Repository -> Bool -> [[Package]]
+listPackages cfg (Repository ps) listall =
   map sortedByVersion
       (groupBy (\a b -> name a == name b)
-               (filter (isCompatibleToCompiler cfg) ps))
+               (filter filterPred ps))
  where
+  filterPred = if listall then const True else isCompatibleToCompiler cfg
   sortedByVersion = sortBy (\a b -> (version a) `vgt` (version b))
 
 --- Finds the latest version of a package.

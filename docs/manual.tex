@@ -581,16 +581,19 @@ The option \code{--all} shows more information.
 Prints basic information on the given package version.
 The option \code{--all} shows more information.
 
-\item[\fbox{\code{list [--all] [--csv]}}] List the names and synopses of all 
-packages (compatible to the current compiler) of the central package index.
-The option \code{--all} shows also all package versions.
+\item[\fbox{\code{list [--all] [--versions] [--csv]}}]
+List the names and synopses of all packages
+(compatible to the current compiler) of the central package index.
+The option \code{--all} shows all packages independent
+of their compiler compatibility.
+The option \code{--versions} shows also all versions of the packages.
 The option \code{--csv} shows the information in CSV format.
 
-\item[\fbox{\code{list --category [--csv]}}]
+\item[\fbox{\code{list --category [--all] [--csv]}}]
 List the category names together with the packages belonging to this
 category (see Section~\ref{sec:reference})
 of the central package index.
-The option \code{--csv} shows the information in CSV format.
+The options \code{--all} and \code{--csv} are as above.
 
 \item[\fbox{\code{search $query$}}] Searches the names and synopses of all 
 packages (compatible to the current compiler)
