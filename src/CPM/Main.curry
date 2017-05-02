@@ -894,23 +894,25 @@ docCmd opts cfg getRepo getGC =
         mainmod = maybe Nothing
                         (\ (PackageExecutable _ emain) -> Just emain)
                         (executableSpec pkg)
-    docmods <- maybe (if null exports
-                        then maybe (curryModulesInDir (specDir </> "src"))
-                                   (\m -> return [m])
-                                   mainmod
-                        else return exports)
-                     return
-                     (docModules opts)
+    (docmods,apidoc) <-
+       maybe (if null exports
+                then maybe (curryModulesInDir (specDir </> "src") >>=
+                            \ms -> return (ms,True))
+                           (\m -> return ([m],False))
+                           mainmod
+                else return (exports,True))
+             (\ms -> return (ms,True))
+             (docModules opts)
     if null docmods
       then putStrLn "No modules to be documented!" >> succeedIO ()
       else
-        if length docmods == 1
-          then runDocCmd specDir [currydoc, docdir, head docmods]
-          else foldEL (\_ -> docModule specDir docdir) () docmods |>
+        if apidoc
+          then foldEL (\_ -> docModule specDir docdir) () docmods |>
                runDocCmd specDir
                          ([currydoc, "--title", apititle pkg, "--onlyindexhtml",
                            docdir] ++ docmods) |>
                log Info ("Documentation generated in '"++docdir++"'")
+          else runDocCmd specDir [currydoc, docdir, head docmods]
  where
   apititle pkg = "\"API Documentation of Package '" ++ name pkg ++ "'\""
 
