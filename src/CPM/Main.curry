@@ -908,9 +908,12 @@ docCmd opts cfg getRepo getGC =
           then runDocCmd specDir [currydoc, docdir, head docmods]
           else foldEL (\_ -> docModule specDir docdir) () docmods |>
                runDocCmd specDir
-                         ([currydoc, "--onlyindexhtml", docdir] ++ docmods) |>
+                         ([currydoc, "--title", apititle pkg, "--onlyindexhtml",
+                           docdir] ++ docmods) |>
                log Info ("Documentation generated in '"++docdir++"'")
  where
+  apititle pkg = "\"API Documentation of Package '" ++ name pkg ++ "'\""
+
   currydoc = curryExec cfg ++ " doc"
 
   docModule pkgdir docdir mod =
