@@ -1,7 +1,7 @@
 {
     "name": "cpm",
-    "version": "0.1.0",
-    "author": "Jonas Oberschweiber, Michael Hanus",
+    "version": "0.1.1",
+    "author": "Jonas Oberschweiber <jonas@oberschweiber.com>, Michael Hanus <mh@informatik.uni-kiel.de>",
     "maintainer": "Michael Hanus <mh@informatik.uni-kiel.de>",
     "synopsis": "Curry Package Manager: a tool to distribute and install Curry libraries and applications",
     "category": [ "Packaging", "Programming" ],

@@ -19,12 +19,13 @@ module CPM.ErrorLogger
   , log
   , showLogEntry
   , infoMessage, debugMessage, fromErrorLogger
+  , showExecCmd, execQuietCmd
   ) where
 
 import Global
 import Pretty
 import Profile -- for show run-time
-import System (exitWith)
+import System (exitWith, system)
 
 infixl 0 |>=
 infixl 0 |>
@@ -196,3 +197,15 @@ fromErrorLogger a = do
   case err of
     Right v -> return v
     Left  m -> showLogEntry m >> exitWith 1
+
+--- Executes a system command and show the command as debug message.
+showExecCmd :: String -> IO Int
+showExecCmd cmd = debugMessage ("Executing: " ++ cmd) >> system cmd
+
+--- Executes a parameterized system command.
+--- The parameter is set to `-q` unless the LogLevel is Debug.
+execQuietCmd :: (String -> String) -> IO Int
+execQuietCmd cmd = do
+  ll <- getLogLevel
+  debugMessage $ "Executing: " ++ cmd ""
+  system $ cmd (if ll == Debug then "" else "-q")

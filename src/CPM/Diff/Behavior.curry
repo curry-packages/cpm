@@ -32,10 +32,10 @@ import Distribution (lookupModuleSource)
 import FilePath ((</>), joinPath)
 import Function (both)
 import List   ( intercalate, intersect, nub, splitOn, isPrefixOf, isInfixOf
-              , find, delete, (\\), nubBy)
-import Maybe  (isJust, fromJust, fromMaybe, listToMaybe)
-import Pretty (pPrint, text, indent, vcat, (<+>), (<$$>))
-import System (system, getEnviron, setEnviron, unsetEnviron)
+              , find, delete, (\\), nubBy )
+import Maybe  ( isJust, fromJust, fromMaybe, listToMaybe )
+import Pretty ( pPrint, text, indent, vcat, (<+>), (<$$>) )
+import System ( getEnviron, setEnviron, unsetEnviron )
 
 import Analysis.Types       ( Analysis )
 import Analysis.ProgInfo    ( ProgInfo, emptyProgInfo, combineProgInfo
@@ -213,7 +213,7 @@ callCurryCheck cfg info baseTmp = do
   setEnviron "CURRYPATH" currypath
   log Debug ("Run `curry check Compare' in `" ++ baseTmp ++ "' with") |>
    log Debug ("CURRYPATH=" ++ currypath) |> succeedIO ()
-  ecode <- inDirectory baseTmp $ system (currybin ++ " check Compare")
+  ecode <- inDirectory baseTmp $ showExecCmd (currybin ++ " check Compare")
   setEnviron "CURRYPATH" oldPath
   log Debug "CurryCheck finished" |> succeedIO ()
   if ecode==0

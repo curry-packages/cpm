@@ -11,7 +11,7 @@ module CPM.Config
   , readConfiguration, readConfigurationWithDefault, defaultConfig
   , showCompilerVersion ) where
 
-import Char         (isSpace, toLower)
+import Char         (toLower)
 import Directory    (getHomeDirectory, createDirectoryIfMissing)
 import Distribution (installDir, curryCompiler, curryCompilerMinorVersion
                     , curryCompilerMajorVersion)
@@ -25,6 +25,7 @@ import Read         (readInt)
 
 import CPM.ErrorLogger
 import CPM.FileUtil (ifFileExists)
+import CPM.Helpers  (strip)
 
 --- The location of the central package index.
 packageIndexURI :: String
@@ -157,9 +158,6 @@ mergeConfigSettings cfg props = applyEither setters cfg
 --- @param opts - the options
 stripProps :: [(String, String)] -> [(String, String)]
 stripProps = map ((map toLower . strip) *** strip) 
-
-strip :: String -> String
-strip = reverse . dropWhile isSpace . reverse . dropWhile isSpace
 
 --- A map from option names to functions that will update a configuration
 --- record with a value for that option.

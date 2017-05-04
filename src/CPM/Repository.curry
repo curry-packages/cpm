@@ -24,7 +24,6 @@ import Directory
 import Either
 import List
 import FilePath
-import System (system)
 
 import CPM.Config     (Config, repositoryDir, packageIndexRepository)
 import CPM.ErrorLogger
@@ -58,37 +57,36 @@ findAllVersions (Repository ps) p pre =
 --- Lower/upercase is ignored for the search.
 --- Returns the newest matching version of each package.
 ---
---- @param cfg  - the current CPM configuration
 --- @param repo - the repository
+--- @searchmod - search for some module?
 --- @param q - the term to search for
-searchPackages :: Config -> Repository -> String -> [Package]
-searchPackages cfg (Repository ps) searchstring =
+searchPackages :: Repository -> Bool -> String -> [Package]
+searchPackages (Repository ps) searchmod searchstring =
   map (head . sortedByVersion) groupedResults
  where
   groupedResults = groupBy namesEqual allResults
-  allResults = filter (isCompatibleToCompiler cfg)
-                      (filter (matches (lowerS searchstring)) ps)
+  allResults = if searchmod
+                 then filter (\p -> searchstring `elem` (exportedModules p)) ps
+                 else filter (matches (lowerS searchstring)) ps
   matches q p = q `isInfixOf` (lowerS $ name p) ||
-                q `isInfixOf` (lowerS $ synopsis p)
+                q `isInfixOf` (lowerS $ synopsis p) ||
+                q `isInfixOf` (lowerS $ unwords (exportedModules p))
   namesEqual a b = (name a) == (name b)
   sortedByVersion = sortBy (\a b -> (version a) `vgt` (version b))
   lowerS = map toLower
 
---- Get all packages in the repository (which are compatible to the
---- current compiler) and group them by versions (newest first).
+--- Get all packages in the repository and group them by versions
+--- (newest first).
 ---
 --- @param cfg  - the current CPM configuration
 --- @param repo - the repository
-listPackages :: Config -> Repository -> Bool -> [[Package]]
-listPackages cfg (Repository ps) listall =
-  map sortedByVersion
-      (groupBy (\a b -> name a == name b)
-               (filter filterPred ps))
+listPackages :: Repository -> [[Package]]
+listPackages (Repository ps) =
+  map sortedByVersion (groupBy (\a b -> name a == name b) ps)
  where
-  filterPred = if listall then const True else isCompatibleToCompiler cfg
   sortedByVersion = sortBy (\a b -> (version a) `vgt` (version b))
 
---- Finds the latest version of a package.
+--- Finds the latest compiler-compatbile version of a package.
 ---
 --- @param cfg  - the current CPM configuration
 --- @param repo - the central package index
@@ -148,15 +146,17 @@ updateRepository cfg = do
   gitExists <- doesDirectoryExist $ (repositoryDir cfg) </> ".git"
   if gitExists 
     then do
-      c <- inDirectory (repositoryDir cfg) $ system $ "git pull origin master" 
+      c <- inDirectory (repositoryDir cfg) $
+             execQuietCmd $ (\q -> "git pull " ++ q ++ " origin master")
       if c == 0
         then log Info "Successfully updated repository"
         else failIO $ "Failed to update git repository, return code " ++ show c
     else do
-      c <- inDirectory (repositoryDir cfg) $ system $ cloneCommand
+      c <- inDirectory (repositoryDir cfg) $ execQuietCmd cloneCommand
       if c == 0
         then log Info "Successfully updated repository"
         else failIO $ "Failed to update git repository, return code " ++ show c
  where
-  cloneCommand = "git clone " ++ packageIndexRepository cfg ++ " ."
+  cloneCommand q = unwords ["git clone", q, packageIndexRepository cfg, "."]
+
 

@@ -33,18 +33,19 @@ import CPM.Config (Config, packageInstallDir)
 import CPM.Repository (Repository, allPackages)
 import qualified CPM.LookupSet as LS
 import CPM.ErrorLogger
+import CPM.FileUtil ( copyDirectory, recreateDirectory )
+import CPM.Helpers  ( strip )
 import qualified CPM.PackageCache.Global as GC
 import qualified CPM.PackageCache.Runtime as RuntimeCache
 import qualified CPM.PackageCache.Local as LocalCache
 import CPM.Package ( Package (..)
                    , readPackageSpec, packageId, readVersion, Version 
                    , showVersion, PackageSource (..), showDependency
-                   , showCompilerDependency
+                   , showCompilerDependency, showPackageSource
                    , Dependency, GitRevision (..), PackageExecutable (..)
                    , PackageTest (..)
                    , packageIdEq, loadPackageSpec)
 import CPM.Resolution
-import CPM.FileUtil (copyDirectory, recreateDirectory)
 
 --- Resolves dependencies for a package copy.
 resolveDependenciesForPackageCopy :: Config -> Package -> Repository 
@@ -223,7 +224,8 @@ renderPackageInfo allinfos plain gc pkg = pPrint doc
   rule      = text (take (length pkgId) $ repeat '-')
   ver       = fill maxLen (boldText "Version") <+>
               (text $ showVersion $ version pkg)
-  auth      = fill maxLen (boldText "Author") <+> (text $ author pkg)
+  auth      = fill maxLen (boldText "Author") <+>
+              indent 0 (fillSep (map (text . strip) (splitOn "," $ author pkg)))
   synop     = fill maxLen (boldText "Synopsis") <+>
               indent 0 (fillSep (map text (words (synopsis pkg))))
   deps      = boldText "Dependencies" <$$>
@@ -231,7 +233,8 @@ renderPackageInfo allinfos plain gc pkg = pPrint doc
 
   maintnr = case maintainer pkg of
     Nothing -> empty
-    Just  s -> fill maxLen (boldText "Maintainer") <+> text s
+    Just  s -> fill maxLen (boldText "Maintainer") <+>
+               indent 0 (fillSep (map (text . strip) (splitOn "," s)))
 
   cats =
     if null (category pkg)
@@ -275,14 +278,10 @@ renderPackageInfo allinfos plain gc pkg = pPrint doc
   bugrep = showLineField bugReports   "Bug reports"
   cfgmod = showLineField configModule "Config module"
 
-  src = case source pkg of
-    Nothing              -> empty
-    Just  (Http s)       -> showSource s
-    Just  (Git s _)      -> showSource s
-    Just  (FileSource s) -> showSource s
-   where
-     showSource s = boldText "Source" <$$> indent 4 (text s)
-
+  src = maybe empty
+              (\_ -> boldText "Source" <$$>
+                     indent 4 (text $ showPackageSource pkg))
+              (source pkg)
 
   srcdirs =
     if null (sourceDirs pkg)

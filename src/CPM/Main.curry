@@ -16,8 +16,7 @@ import FilePath     ( (</>), splitSearchPath, takeExtension )
 import IO           ( hFlush, stdout )
 import List         ( groupBy, intercalate, nub, split, splitOn )
 import Sort         ( sortBy )
-import System       ( getArgs, getEnviron, setEnviron, system, unsetEnviron
-                    , exitWith )
+import System       ( getArgs, getEnviron, setEnviron, unsetEnviron, exitWith )
 
 import Boxes (table, render)
 import OptParse
@@ -45,7 +44,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 02/05/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 04/05/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -178,14 +177,15 @@ data InfoOptions = InfoOptions
   }
 
 data ListOptions = ListOptions
-  { listAll  :: Bool   -- list all packages independent of compiler constraints
-  , listVers :: Bool   -- list all versions of each package
+  { listVers :: Bool   -- list all versions of each package
   , listCSV  :: Bool   -- list in CSV format
   , listCat  :: Bool   -- list all categories
   }
 
 data SearchOptions = SearchOptions
-  { searchQuery :: String }
+  { searchQuery  :: String
+  , searchModule :: Bool
+  }
 
 data UpgradeOptions = UpgradeOptions
   { upgrTarget :: Maybe String }
@@ -242,12 +242,12 @@ infoOpts s = case optCommand s of
 listOpts :: Options -> ListOptions
 listOpts s = case optCommand s of
   List opts -> opts
-  _         -> ListOptions False False False False
+  _         -> ListOptions False False False
 
 searchOpts :: Options -> SearchOptions
 searchOpts s = case optCommand s of
   Search opts -> opts
-  _           -> SearchOptions ""
+  _           -> SearchOptions "" False
 
 upgradeOpts :: Options -> UpgradeOptions
 upgradeOpts s = case optCommand s of
@@ -542,11 +542,6 @@ optionParser = optParser
 
   listArgs =
         flag (\a -> Right $ a { optCommand =
-                                  List (listOpts a) { listAll = True } })
-          (  short "a"
-          <> long "all"
-          <> help "Show all packages (independent of compiler constraints)" ) 
-    <.> flag (\a -> Right $ a { optCommand =
                                   List (listOpts a) { listVers = True } })
           (  short "v"
           <> long "versions"
@@ -563,10 +558,15 @@ optionParser = optParser
           <> help "Show all categories" )
 
   searchArgs =
-    arg (\s a -> Right $ a { optCommand = Search (searchOpts a)
-                                            { searchQuery = s } }) 
-        (  metavar "QUERY"
-        <> help "The search term" )
+        flag (\a -> Right $ a { optCommand = Search (searchOpts a)
+                                               { searchModule = True } })
+             (  short "m"
+             <> long "module"
+             <> help "Search an exported module" )
+    <.> arg (\s a -> Right $ a { optCommand = Search (searchOpts a)
+                                                { searchQuery = s } }) 
+            (  metavar "QUERY"
+            <> help "The search term" )
 
   upgradeArgs =
     arg (\s a -> Right $ a { optCommand = Upgrade (upgradeOpts a)
@@ -580,8 +580,8 @@ optionParser = optParser
         (  metavar "SOURCE"
         <> help "The directory to link" )
 
--- Check if operating system executables we depend on are present on the current
--- system.
+-- Check if operating system executables we depend on are present on the
+-- current system.
 checkExecutables :: IO [String]
 checkExecutables = do
   present <- mapIO fileInPath listOfExecutables
@@ -637,7 +637,7 @@ compiler o cfg getRepo getGC =
   log Info ("Starting '" ++ currybin ++ "' with") |>
   log Info ("CURRYPATH=" ++ currypath) |>
   do setEnviron "CURRYPATH" $ currypath
-     ecode <- system $ currybin ++ " " ++ comCommand o
+     ecode <- showExecCmd $ currybin ++ " " ++ comCommand o
      unsetEnviron "CURRYPATH"
      unless (ecode==0) (exitWith ecode)
      succeedIO ()
@@ -745,13 +745,13 @@ installExecutable cfg repo pkg =
                         bindir ++ "'") |>
               (whenFileExists binexec (backupExistingBin binexec) >>
                -- renaming might not work across file systems, hence we move:
-               system (unwords ["mv", mainmod, binexec]) >>
+               showExecCmd (unwords ["mv", mainmod, binexec]) >>
                checkPath path bindir))
         (executableSpec pkg)
  where
   backupExistingBin binexec = do
     let binexecbak = binexec ++ ".bak"
-    system $ "rm -f " ++ binexecbak
+    showExecCmd $ "rm -f " ++ binexecbak
     renameFile binexec binexecbak
     infoMessage $ "Existing executable '" ++ binexec ++ "' saved to '" ++
                   binexecbak ++ "'."
@@ -791,20 +791,26 @@ tryFindVersion pkg ver repo = case findVersion repo pkg ver of
 --- Lists all (compiler-compatible if `lall` is false) packages
 --- in the given repository.
 listCmd :: ListOptions -> Config -> Repository -> IO (ErrorLogger ())
-listCmd (ListOptions lall lv csv cat) cfg repo =
+listCmd (ListOptions lv csv cat) cfg repo =
   let listresult = if cat then renderCats catgroups
                           else renderPkgs allpkgs
   in putStr listresult >> succeedIO ()
  where
+  -- filter all packages compatible to the current compiler but leave at least
+  -- one package
+  filterCompatPkgs pkgs =
+    let comppkgs = filter (isCompatibleToCompiler cfg) pkgs
+    in if null comppkgs then take 1 pkgs else comppkgs
+
   -- all packages (and versions if `lv`)
-  allpkgs = concatMap (if lv then id else ((:[]) . head))
+  allpkgs = concatMap (if lv then id else ((:[]) . head . filterCompatPkgs))
                       (sortBy (\ps1 ps2 -> name (head ps1) <= name (head ps2))
-                              (listPackages cfg repo lall))
+                              (listPackages repo))
 
   -- all categories together with their package names:
   catgroups =
-    let pkgid p = name p ++ '-' : showVersion (version p)
-        newpkgs = map head (listPackages cfg repo lall)
+    let pkgid p = name p ++ '-' : showVersionIfCompatible cfg p
+        newpkgs = map (head . filterCompatPkgs) (listPackages repo)
         catpkgs = concatMap (\p -> map (\c -> (c, pkgid p)) (category p))
                             newpkgs
         nocatps = map pkgid (filter (null . category) newpkgs)
@@ -814,11 +820,11 @@ listCmd (ListOptions lall lv csv cat) cfg repo =
                        else [("???", nub $ sortBy (<=) nocatps)]
 
   renderPkgs pkgs =
-    let (colsizes,rows) = packageVersionAsTable pkgs
+    let (colsizes,rows) = packageVersionAsTable cfg pkgs
     in renderTable colsizes rows
 
   renderCats catgrps =
-    let namelen = foldl max 2 $ map (length . fst) catgrps
+    let namelen = foldl max 8 $ map (length . fst) catgrps
         header = [ ["Category", "Packages"]
                  , ["--------", "--------"]]
         rows   = header ++ map (\ (c,ns) -> [c, unwords ns]) catgrps
@@ -830,16 +836,23 @@ listCmd (ListOptions lall lv csv cat) cfg repo =
 
 -- Format a list of packages by showing their names, synopsis, and versions
 -- as table rows. Returns also the column sizes.
-packageVersionAsTable :: [Package] -> ([Int],[[String]])
-packageVersionAsTable pkgs = (colsizes, rows)
+packageVersionAsTable :: Config -> [Package] -> ([Int],[[String]])
+packageVersionAsTable cfg pkgs = (colsizes, rows)
  where
-  namelen = foldl max 2 $ map (length . name) pkgs
+  namelen = foldl max 4 $ map (length . name) pkgs
   colsizes = [namelen + 2, 68 - namelen, 10]
   header  = [ ["Name", "Synopsis", "Version"]
             , ["----", "--------", "-------"]]
   rows    = header ++ map formatPkg pkgs
-  formatPkg p = [name p, synopsis p, showVersion (version p)]
-        
+  formatPkg p = [name p, synopsis p, showVersionIfCompatible cfg p]
+
+--- Shows the version of a package if it is compatible with the
+--- current compiler, otherwise shows "???".
+showVersionIfCompatible :: Config -> Package -> String
+showVersionIfCompatible cfg p =
+  if isCompatibleToCompiler cfg p then showVersion (version p)
+                                  else "???"
+
 cpmInfo :: String
 cpmInfo = "Use 'cpm info PACKAGE' for more information about a package."
 
@@ -849,10 +862,10 @@ cpmUpdate = "Use 'cpm update' to download the newest package index."
 
 --- Search in all (compiler-compatible) packages in the given repository.
 search :: SearchOptions -> Config -> Repository -> IO (ErrorLogger ())
-search (SearchOptions q) cfg repo = putStr rendered >> succeedIO ()
+search (SearchOptions q smod) cfg repo = putStr rendered >> succeedIO ()
  where
-  results = sortBy (\p1 p2 -> name p1 <= name p2) (searchPackages cfg repo q)
-  (colsizes,rows) = packageVersionAsTable results
+  results = sortBy (\p1 p2 -> name p1 <= name p2) (searchPackages repo smod q)
+  (colsizes,rows) = packageVersionAsTable cfg results
   rendered = unlines $
                if null results
                  then ["No packages found for '" ++ q, "", cpmUpdate]
@@ -960,7 +973,7 @@ test opts cfg getRepo getGC =
                     then unwords (checkcmd : mods)
                     else scriptcmd
     debugMessage $ "Removing directory: " ++ currysubdir
-    system (unwords ["rm", "-rf", currysubdir])
+    showExecCmd (unwords ["rm", "-rf", currysubdir])
     inDirectory (apkgdir </> dir) $
       execWithPkgDir (ExecOptions testcmd []) cfg getRepo getGC apkgdir
 
@@ -1050,7 +1063,7 @@ execWithPkgDir o cfg getRepo getGC specDir =
   let execpath = joinSearchPath (exePath o ++ splitSearchPath currypath)
   in log Debug ("Setting CURRYPATH to " ++ execpath) |>
   do setEnviron "CURRYPATH" execpath
-     ecode <- system (exeCommand o)
+     ecode <- showExecCmd (exeCommand o)
      unsetEnviron "CURRYPATH"
      unless (ecode==0) (exitWith ecode)
      succeedIO ()
@@ -1078,7 +1091,7 @@ cleanPackage ll =
                             (testSuite pkg))
       rmdirs   = nub (dotcpm : map addCurrySubdir (srcdirs ++ testdirs))
   in log ll ("Removing directories: " ++ unwords rmdirs) |>
-     (system (unwords (["rm", "-rf"] ++ rmdirs)) >> succeedIO ())
+     (showExecCmd (unwords $ ["rm", "-rf"] ++ rmdirs) >> succeedIO ())
 
 --- Creates a new package by asking some questions.
 newPackage :: NewOptions -> IO (ErrorLogger ())

@@ -12,8 +12,10 @@ module CPM.Package
   , Package (..), emptyPackage
   , Dependency (..)
   , showVersion
+  , replaceVersionInTag
   , readVersion
   , packageIdEq
+  , showPackageSource
   , readVersionConstraint
   , readVersionConstraints
   , readPackageSpec
@@ -40,7 +42,7 @@ module CPM.Package
   ) where
 
 import Char
-import List (intercalate, isInfixOf)
+import List (intercalate, intersperse, isInfixOf, splitOn)
 import FilePath ((</>))
 import SetFunctions
 import JSON.Data
@@ -120,7 +122,8 @@ data PackageSource = Http String
                    | FileSource String 
 
 --- A Git revision.
---- @cons Tag - A tag
+--- @cons Tag - A tag which might contain the string `$version$` which will
+---             be replaced by the package version
 --- @cons Ref - A Git 'commitish', i.e. a SHA, a branch name, a tag name etc.
 --- @cons VersionAsTag - Use the package version prefixed with a 'v' as the tag
 data GitRevision = Tag String
@@ -280,20 +283,41 @@ loadPackageSpec dir = do
 packageIdEq :: Package -> Package -> Bool
 packageIdEq p1 p2 = (name p1) == (name p2) && (version p1) == (version p2)
 
+--- Shows the package source in human-readable format.
+showPackageSource :: Package -> String
+showPackageSource pkg = case source pkg of
+  Nothing -> "No source specified"
+  Just  s -> showSource s
+ where
+  showSource (Git url rev)    = "Git " ++ url ++ showGitRev rev
+  showSource (Http url)       = url
+  showSource (FileSource url) = "File " ++ url
+
+  showGitRev (Just (Ref ref)) = "@" ++ ref
+  showGitRev (Just (Tag tag)) = "@" ++ replaceVersionInTag pkg tag
+  showGitRev (Just VersionAsTag) = "@v" ++ (showVersion $ version pkg)
+  showGitRev Nothing = ""
+
+--- Replace the string `$version$` in a tag string by the current version.
+replaceVersionInTag :: Package -> String -> String
+replaceVersionInTag pkg =
+  concat . intersperse (showVersion $ version pkg) . splitOn "$version$"
+
 --- Less than operator for versions.
 vlt :: Version -> Version -> Bool
-vlt (majorA, minorA, patchA, preA) (majorB, minorB, patchB, preB) = major || minor || patch || pre
-  where 
-    major = majorA < majorB
-    minor = majorA <= majorB && minorA < minorB
-    patch = majorA <= majorB && minorA <= minorB && patchA < patchB
-    pre   = case preA of
-      Nothing -> case preB of
-        Nothing -> patch
-        Just  _ -> majorA <= majorB && minorA <= minorB && patchA <= patchB
-      Just  a -> case preB of
-        Nothing -> False
-        Just b  -> a `ltPre` b
+vlt (majorA, minorA, patchA, preA) (majorB, minorB, patchB, preB) =
+  major || minor || patch || pre
+ where 
+  major = majorA < majorB
+  minor = majorA <= majorB && minorA < minorB
+  patch = majorA <= majorB && minorA <= minorB && patchA < patchB
+  pre   = case preA of
+    Nothing -> case preB of
+      Nothing -> patch
+      Just  _ -> majorA <= majorB && minorA <= minorB && patchA <= patchB
+    Just  a -> case preB of
+      Nothing -> False
+      Just b  -> a `ltPre` b
 
 ltPre :: String -> String -> Bool
 ltPre a b | isNumeric a && isNumeric b = readInt a < readInt b

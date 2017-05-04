@@ -28,7 +28,6 @@ import Either
 import List
 import Maybe (isJust)
 import FilePath
-import System (system)
 
 import CPM.Config (Config, packageInstallDir)
 import CPM.ErrorLogger
@@ -97,7 +96,7 @@ copyPackage :: Config -> Package -> String -> IO (ErrorLogger ())
 copyPackage cfg pkg dir = do
   exists <- doesDirectoryExist srcDir
   if not exists
-    then failIO $ "Package " ++ (packageId pkg) ++ " not installed"
+    then failIO $ "Package '" ++ packageId pkg ++ "' not installed"
     else copyDirectory srcDir dir >> succeedIO ()
  where
   srcDir = installedPackageDir cfg pkg
@@ -106,55 +105,47 @@ copyPackage cfg pkg dir = do
 --- installs it to the global package cache.
 acquireAndInstallPackage :: Config -> Package -> IO (ErrorLogger ())
 acquireAndInstallPackage cfg pkg = case (source pkg) of
-  Nothing -> failIO $ "No source specified for " ++ (packageId pkg)
-  Just  s -> log Info ("Installing package from " ++ showSource s) |> 
-    installFromSource cfg pkg s
- where
-  showSource (Git url rev) = "Git " ++ url ++ showGitRev rev
-  showSource (Http url) = url
-  showSource (FileSource url) = "File " ++ url
-  showGitRev (Just (Ref ref)) = "@" ++ ref
-  showGitRev (Just (Tag tag)) = "@" ++ tag
-  showGitRev (Just VersionAsTag) = "@v" ++ (showVersion $ version pkg)
-  showGitRev Nothing = ""
+  Nothing -> failIO $ "No source specified for " ++ packageId pkg
+  Just  s -> log Info ("Installing package from " ++ showPackageSource pkg) |> 
+             installFromSource cfg pkg s
 
 --- Installs a package from the given package source to the global package
 --- cache.
 installFromSource :: Config -> Package -> PackageSource -> IO (ErrorLogger ())
-
 installFromSource cfg pkg (Git url rev) = do
   pkgDirExists <- doesDirectoryExist pkgDir
   if pkgDirExists
     then
-      log Info $ "Package " ++ packageId pkg ++ " already installed, skipping"
+      log Info $ "Package '" ++ packageId pkg ++ "' already installed, skipping"
     else do
-      c <- inDirectory (packageInstallDir cfg) $ system cloneCommand
+      c <- inDirectory (packageInstallDir cfg) $ execQuietCmd cloneCommand
       if c == 0
         then case rev of
           Nothing           -> checkoutGitRef pkgDir "HEAD"
-          Just (Tag tag)    -> checkoutGitRef pkgDir tag
+          Just (Tag tag)    -> checkoutGitRef pkgDir
+                                              (replaceVersionInTag pkg tag)
           Just (Ref ref)    -> checkoutGitRef pkgDir ref
-          Just VersionAsTag -> let tag = "v" ++ (showVersion $ version pkg) 
-                                in checkoutGitRef pkgDir tag |> 
-                                  log Info ("Package " ++ (packageId pkg) ++
-                                            " installed")
+          Just VersionAsTag ->
+            let tag = "v" ++ (showVersion $ version pkg) 
+            in checkoutGitRef pkgDir tag |> 
+               log Info ("Package '" ++ packageId pkg ++ "' installed")
         else removeDirectoryComplete pkgDir >>
              failIO ("Failed to clone repository from '" ++ url ++
                      "', return code " ++ show c)
  where
-  pkgDir = (packageInstallDir cfg) </> (packageId pkg)
-  cloneCommand = "git clone " ++ (quote url) ++ " " ++ (quote $ packageId pkg)
+  pkgDir = packageInstallDir cfg </> packageId pkg
+  cloneCommand q = unwords ["git clone", q, quote url, quote $ packageId pkg]
 
 installFromSource cfg pkg (FileSource zip) = do
   absZip <- getAbsolutePath zip
   pkgDirExists <- doesDirectoryExist pkgDir
   if pkgDirExists
     then
-      log Info $ "Package " ++ packageId pkg ++ " already installed, skipping"
+      log Info $ "Package '" ++ packageId pkg ++ "' already installed, skipping"
     else do 
       createDirectory pkgDir
-      c <- inTempDir $ system $ "unzip -qq -d " ++ (quote pkgDir) ++
-                                " " ++ (quote absZip)
+      c <- inTempDir $ showExecCmd $ "unzip -qq -d " ++ quote pkgDir ++
+                                     " " ++ quote absZip
       if c == 0
         then log Info $ "Installed " ++ (packageId pkg)
         else removeDirectoryComplete pkgDir >>
@@ -163,22 +154,22 @@ installFromSource cfg pkg (FileSource zip) = do
   pkgDir = (packageInstallDir cfg) </> (packageId pkg)
 
 installFromSource cfg pkg (Http url) = do
-  c <- inTempDir $ system $ "curl -s -o package.zip " ++ (quote url)
+  c <- inTempDir $ showExecCmd $ "curl -s -o package.zip " ++ quote url
   if c == 0
     then do
       pkgDirExists <- doesDirectoryExist pkgDir
       if pkgDirExists
-        then log Info $ "Package " ++ packageId pkg ++
-                        " already installed, skipping"
+        then log Info $ "Package '" ++ packageId pkg ++
+                        "' already installed, skipping"
         else do
           createDirectory pkgDir
-          c' <- inTempDir $ system $ "unzip -qq -d " ++ (quote pkgDir) ++
-                                     " package.zip"
+          c' <- inTempDir $ showExecCmd $ "unzip -qq -d " ++ quote pkgDir ++
+                                          " package.zip"
           if c' == 0
             then do
-              c'' <- inTempDir $ system ("rm package.zip")
+              c'' <- inTempDir $ showExecCmd ("rm package.zip")
               if c'' == 0
-                then log Info ("Installed " ++ (packageId pkg))
+                then log Info ("Installed " ++ packageId pkg)
                 else failIO $ "failed to delete package.zip"
             else failIO $ "failed to unzip package.zip " ++ (show c')
     else failIO $ "curl failed with " ++ (show c)
@@ -191,7 +182,7 @@ installFromZip cfg zip = do
   t <- tempDir
   recreateDirectory (t </> "installtmp")
   absZip <- getAbsolutePath zip
-  c <- inTempDir $ system $ "unzip -qq -d installtmp " ++ (quote absZip)
+  c <- inTempDir $ showExecCmd $ "unzip -qq -d installtmp " ++ quote absZip
   if c == 0
     then do
       loadPackageSpec (t </> "installtmp") |>=
@@ -205,7 +196,7 @@ installFromZip cfg zip = do
 --- @param ref - the ref to check out
 checkoutGitRef :: String -> String -> IO (ErrorLogger ())
 checkoutGitRef dir ref = do
-  c <- inDirectory dir $ system $ "git checkout " ++ ref
+  c <- inDirectory dir $ execQuietCmd (\q -> unwords ["git checkout", q, ref])
   if c == 0
     then succeedIO ()
     else removeDirectoryComplete dir >>
@@ -253,18 +244,19 @@ uninstallPackage :: Config -> Repository -> GlobalCache -> String -> Version
 uninstallPackage cfg _ _ pkg ver = do
   exists <- doesDirectoryExist pkgDir
   if exists
-    then system ("rm -Rf " ++ (quote pkgDir)) >> log Info logMsg
+    then showExecCmd ("rm -Rf " ++ quote pkgDir) >> log Info logMsg
     else log Info $ "Package '" ++ pkgId ++ "' is not installed."
  where
   pkgDir = (packageInstallDir cfg) </> pkgId
-  pkgId = pkg ++ "-" ++ (showVersion ver)
+  pkgId = pkg ++ "-" ++ showVersion ver
   logMsg = "Package '" ++ pkgId ++ "' uninstalled."
 
 --- Tries to find a package in the global package cache.
 tryFindPackage :: GlobalCache -> String -> Version -> IO (ErrorLogger Package)
 tryFindPackage gc name ver = case findVersion gc name ver of
   Just pkg -> succeedIO pkg
-  Nothing -> failIO $ "Package " ++ name ++ "-" ++ (showVersion ver) ++ " could not be found."
+  Nothing -> failIO $ "Package " ++ name ++ "-" ++ showVersion ver ++
+                      " could not be found."
 
 --- Tries to read package specifications from a GC directory structure.
 readInstalledPackagesFromDir :: String -> IO (Either String GlobalCache)
