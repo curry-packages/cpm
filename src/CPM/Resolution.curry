@@ -134,6 +134,7 @@ data ResolutionResult = ResolutionSuccess Package [Package]
 --- dependency led to the current package version being chosen.
 data Activation = InitialA Package
                 | ChildA Package Dependency Activation
+ deriving Eq
 
 --- Each tree node is labeled with the current activation and all former 
 --- activations.
@@ -150,6 +151,7 @@ type State = (Activation, [Activation])
 data Conflict = SecondaryConflict Activation Activation
               | PrimaryConflict Activation
               | CompilerConflict Activation
+ deriving Eq
 
 --- A state and a potential conflict.
 type ConflictState = (State, Maybe Conflict)

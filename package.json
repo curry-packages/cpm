@@ -1,6 +1,6 @@
 {
     "name": "cpm",
-    "version": "0.1.1",
+    "version": "2.0.0",
     "author": "Jonas Oberschweiber <jonas@oberschweiber.com>, Michael Hanus <mh@informatik.uni-kiel.de>",
     "maintainer": "Michael Hanus <mh@informatik.uni-kiel.de>",
     "synopsis": "Curry Package Manager: a tool to distribute and install Curry libraries and applications",
@@ -10,14 +10,14 @@
     "dependencies": {
         "det-parse"    : ">= 0.0.1",
         "opt-parse"    : ">= 0.0.3",
-        "boxes"        : ">= 0.0.2",
-        "json"         : ">= 0.0.2",
-        "cass-analysis": ">= 0.0.3",
-        "cass"         : ">= 0.0.1"
+        "boxes"        : ">= 2.0.0",
+        "json"         : ">= 2.0.0",
+        "cass-analysis": ">= 2.0.0",
+        "cass"         : ">= 2.0.0"
     },
     "compilerCompatibility": {
-        "pakcs": ">= 1.14.0, < 2.0.0",
-        "kics2": ">= 0.5.0, < 2.0.0"
+        "pakcs": ">= 2.0.0",
+        "kics2": ">= 2.0.0"
     },
     "configModule": "CPM.ConfigPackage",
     "executable": {

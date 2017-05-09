@@ -48,6 +48,7 @@ data LogLevel = Info
               | Debug
               | Error
               | Critical
+ deriving Eq
 
 --- The global value for the log level.
 logLevel :: Global LogLevel

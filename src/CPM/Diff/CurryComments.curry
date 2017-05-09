@@ -23,6 +23,7 @@ data SourceLine = PragmaCmt String
                 | DataDef String
                 | FuncDef String
                 | OtherLine
+ deriving Eq
 
 classifyLine :: String -> SourceLine
 classifyLine line

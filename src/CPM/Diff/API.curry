@@ -189,6 +189,7 @@ showDifferences diffs verA verB = pPrint $
 
 --- A jump between two versions.
 data VersionJump = Major | Minor | Patch | None
+ deriving Eq
 
 --- Calculate the jump between two versions.
 versionJump :: Version -> Version -> VersionJump
@@ -209,8 +210,10 @@ showFuncDifference (Change a b) = "Change " ++ (showFuncDecl a) ++ " to " ++ (sh
 
 --- Renders a function declaration to a string.
 showFuncDecl :: CFuncDecl -> String
-showFuncDecl (CFunc (_, n) _ _ t _) = n ++ " :: " ++ (pPrint $ ppCTypeExpr defaultOptions t)
-showFuncDecl (CmtFunc _ (_, n) _ _ t _) = n ++ " :: " ++ (pPrint $ ppCTypeExpr defaultOptions t)
+showFuncDecl (CFunc (_, n) _ _ t _) =
+  n ++ " :: " ++ (pPrint $ ppCQualTypeExpr defaultOptions t)
+showFuncDecl (CmtFunc _ (_, n) _ _ t _) =
+  n ++ " :: " ++ (pPrint $ ppCQualTypeExpr defaultOptions t)
 
 --- Renders a type difference to a string.
 showTypeDifference :: Difference CTypeDecl -> String
@@ -220,15 +223,18 @@ showTypeDifference (Change a b) = "Changed " ++ (showTypeDecl a) ++ " to " ++ (s
 
 --- Renders a type declaration to a string.
 showTypeDecl :: CTypeDecl -> String
-showTypeDecl (CType (_, n) _ _ cs) = "data " ++  n ++ " (" ++ (show $ length cs) ++ " constructors)"
-showTypeDecl (CTypeSyn (_, n) _ _ t) = "type " ++ n ++ " = " ++ (pPrint $ ppCTypeExpr defaultOptions t)
-showTypeDecl (CNewType (_, n) _ _ _) = "newtype " ++ n
+showTypeDecl (CType (_, n) _ _ cs _) =
+  "data " ++  n ++ " (" ++ (show $ length cs) ++ " constructors)"
+showTypeDecl (CTypeSyn (_, n) _ _ t) =
+  "type " ++ n ++ " = " ++ (pPrint $ ppCTypeExpr defaultOptions t)
+showTypeDecl (CNewType (_, n) _ _ _ _) = "newtype " ++ n
 
 --- Renders an operator difference to a string.
 showOpDifference :: Difference COpDecl -> String
-showOpDifference (Addition f) = "Added " ++ (showOpDecl f)
-showOpDifference (Removal f)  = "Removed " ++ (showOpDecl f)
-showOpDifference (Change a b) = "Changed " ++ (showOpDecl a) ++ " to " ++ (showOpDecl b)
+showOpDifference (Addition f) = "Added " ++ showOpDecl f
+showOpDifference (Removal f)  = "Removed " ++ showOpDecl f
+showOpDifference (Change a b) = "Changed " ++ showOpDecl a ++ " to " ++
+                                showOpDecl b
 
 --- Renders an operator declaration to a string.
 showOpDecl :: COpDecl -> String
@@ -262,12 +268,12 @@ funcIsPublic _ (CmtFunc _ _ _ Private _ _) = False
 
 --- Is a type public?
 typeIsPublic :: CurryProg -> CTypeDecl -> Bool
-typeIsPublic _ (CType _ Public _ _) = True
-typeIsPublic _ (CType _ Private _ _) = False
+typeIsPublic _ (CType _ Public _ _ _) = True
+typeIsPublic _ (CType _ Private _ _ _) = False
 typeIsPublic _ (CTypeSyn _ Public _ _) = True
 typeIsPublic _ (CTypeSyn _ Private _ _) = False
-typeIsPublic _ (CNewType _ Public _ _) = True
-typeIsPublic _ (CNewType _ Private _ _) = False
+typeIsPublic _ (CNewType _ Public _ _ _) = True
+typeIsPublic _ (CNewType _ Private _ _ _) = False
 
 --- Creates a function that can compare elements in two versions of a module.
 --- 
@@ -299,17 +305,20 @@ funcEq (CmtFunc _ _ a1 v1 t1 _) (CmtFunc _ _ a2 v2 t2 _) = a1 == a2 && v1 == v2 
 funcEq (CFunc _ a1 v1 t1 _) (CmtFunc _ _ a2 v2 t2 _) = a1 == a2 && v1 == v2 && t1 == t2
 funcEq (CmtFunc _ _ a1 v1 t1 _) (CFunc _ a2 v2 t2 _) = a1 == a2 && v1 == v2 && t1 == t2
 
---- Are two type declarations equal?
+--- Are two type declarations equal? (We ignore `deriving` clauses)
 typeEq :: CTypeDecl -> CTypeDecl -> Bool
-typeEq (CType _ v1 tvs1 cs1) (CType _ v2 tvs2 cs2) = v1 == v2 && tvs1 == tvs2 && cs1 == cs2
-typeEq (CTypeSyn _ v1 tvs1 e1) (CTypeSyn _ v2 tvs2 e2) = v1 == v2 && tvs1 == tvs2 && e1 == e2
-typeEq (CNewType _ v1 tvs1 c1) (CNewType _ v2 tvs2 c2) = v1 == v2 && tvs1 == tvs2 && c1 == c2
-typeEq (CType _ _ _ _) (CTypeSyn _ _ _ _) = False
-typeEq (CType _ _ _ _) (CNewType _ _ _ _) = False
-typeEq (CTypeSyn _ _ _ _) (CType _ _ _ _) = False
-typeEq (CTypeSyn _ _ _ _) (CNewType _ _ _ _) = False
-typeEq (CNewType _ _ _ _) (CType _ _ _ _) = False
-typeEq (CNewType _ _ _ _) (CTypeSyn _ _ _ _) = False
+typeEq (CType _ v1 tvs1 cs1 _) (CType _ v2 tvs2 cs2 _) =
+  v1 == v2 && tvs1 == tvs2 && cs1 == cs2
+typeEq (CTypeSyn _ v1 tvs1 e1) (CTypeSyn _ v2 tvs2 e2) =
+  v1 == v2 && tvs1 == tvs2 && e1 == e2
+typeEq (CNewType _ v1 tvs1 c1 _) (CNewType _ v2 tvs2 c2 _) =
+  v1 == v2 && tvs1 == tvs2 && c1 == c2
+typeEq (CType _ _ _ _ _) (CTypeSyn _ _ _ _) = False
+typeEq (CType _ _ _ _ _) (CNewType _ _ _ _ _) = False
+typeEq (CTypeSyn _ _ _ _) (CType _ _ _ _ _) = False
+typeEq (CTypeSyn _ _ _ _) (CNewType _ _ _ _ _) = False
+typeEq (CNewType _ _ _ _ _) (CType _ _ _ _ _) = False
+typeEq (CNewType _ _ _ _ _) (CTypeSyn _ _ _ _) = False
 
 --- Are two operator declarations equal?
 opEq :: COpDecl -> COpDecl -> Bool
@@ -317,7 +326,7 @@ opEq (COp _ f1 a1) (COp _ f2 a2) = f1 == f2 && a1 == a2
 
 --- Select all operator declarations from a CurryProg.
 ops :: CurryProg -> [COpDecl]
-ops (CurryProg _ _ _ _ os) = os
+ops (CurryProg _ _ _ _ _ _ _ os) = os
 
 --- Get the name of an operator declaration. 
 opName :: COpDecl -> QName

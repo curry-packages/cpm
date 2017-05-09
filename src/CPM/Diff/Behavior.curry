@@ -15,12 +15,11 @@ module CPM.Diff.Behavior
   , findFunctionsToCompare
   ) where
 
-import AbstractCurry.Build  ( baseType, (~>), cmtfunc, cfunc, simpleRule
-                            , applyF, pVars, applyE)
-import AbstractCurry.Pretty (defaultOptions, ppCTypeExpr, showCProg)
-import AbstractCurry.Select (publicFuncNames, funcName, functions, funcArity
+import AbstractCurry.Build
+import AbstractCurry.Pretty ( defaultOptions, ppCTypeExpr, showCProg )
+import AbstractCurry.Select ( publicFuncNames, funcName, functions, funcArity
                             , funcType, argTypes, typeName, types, tconsOfType
-                            , resultType, isIOType)
+                            , resultType, isIOType, typeOfQualType )
 import AbstractCurry.Transform (updCFuncDecl)
 import AbstractCurry.Types ( CurryProg (..), CFuncDecl (..), CVisibility (..)
                            , CTypeExpr (..), CPattern (..), CExpr (..)
@@ -44,7 +43,8 @@ import Analysis.Termination ( productivityAnalysis, Productivity(..) )
 import Analysis.TypeUsage   ( typesInValuesAnalysis )
 import CASS.Server          ( analyzeGeneric )
 
-import CPM.AbstractCurry ( readAbstractCurryFromDeps, loadPathForPackage )
+import CPM.AbstractCurry ( readAbstractCurryFromDeps, loadPathForPackage
+                         , tcArgsOfType )
 import CPM.Config        ( Config (curryExec) )
 import CPM.Diff.API as APIDiff
 import CPM.Diff.CurryComments (readComments, getFuncComment)
@@ -246,8 +246,8 @@ genCurryCheckProgram cfg repo gc prodfuncs info acyCache loadpath =
   typeinfos <- analyzeModules "recursive type" typesInValuesAnalysis loadpath
                               limittcmods
   let limitFunctions = concatMap (genLimitFunction typeinfos) limittdecls
-      prog = CurryProg "Compare" imports []
-                       (testFunctions ++ transFunctions ++ limitFunctions) []
+      prog = simpleCurryProg "Compare" imports []
+                             (testFunctions ++ transFunctions ++ limitFunctions) []
   let prodops = map snd (filter fst prodfuncs)
   unless (null prodops) $ putStrLn $
     "Productive operations (currently not fully supported for all types):\n" ++
@@ -269,8 +269,9 @@ genCurryCheckProgram cfg repo gc prodfuncs info acyCache loadpath =
     , "export CURRYPATH=" ++ infDirA info ++ ":" ++ infDirB info
     ]
       
-  allReferencedTypes = nub ((concat $ map (argTypes . funcType . snd) prodfuncs)
-                            ++ map (resultType . funcType . snd) prodfuncs)
+  allReferencedTypes =
+    nub ((concat $ map (argTypes . typeOfQualType . funcType . snd) prodfuncs)
+         ++ map (resultType . typeOfQualType . funcType . snd) prodfuncs)
   translateTypes = filter (needToTranslatePart info) allReferencedTypes
 
   mods = map (fst . funcName . snd) prodfuncs
@@ -282,10 +283,10 @@ genCurryCheckProgram cfg repo gc prodfuncs info acyCache loadpath =
 --- the given data type.
 genLimitFunction :: ProgInfo [QName] -> CTypeDecl -> [CFuncDecl]
 genLimitFunction typeinfos tdecl = case tdecl of
-  CType tc _ tvs consdecls ->
-    [cmtfunc ("Limit operation for type " ++ tcname)
+  CType tc _ tvs consdecls _ ->
+    [stCmtFunc ("Limit operation for type " ++ tcname)
       (transCTCon2Limit tc) (length tvs + 2) Private
-      (foldr (~>) (limitFunType (CTCons tc (map CTVar tvs)))
+      (foldr (~>) (limitFunType (applyTC tc (map CTVar tvs)))
              (map (limitFunType . CTVar) tvs))
       (cdecls2rules tc tvs consdecls)]
   _ -> error $ "Cannot generate limit function for type " ++ tcname
@@ -303,11 +304,11 @@ genLimitFunction typeinfos tdecl = case tdecl of
    where
     nullaryConsOf [] = error $ "Cannot generate limit operation for types " ++
                                "without nullary constructors: " ++ showQName tc
-    nullaryConsOf (CCons qc _ []   : _ ) = qc
-    nullaryConsOf (CCons _ _ (_:_) : cs) = nullaryConsOf cs
-    nullaryConsOf (CRecord _ _ _   : cs) = nullaryConsOf cs
+    nullaryConsOf (CCons _ _ qc _ []   : _ ) = qc
+    nullaryConsOf (CCons _ _ _ _ (_:_) : cs) = nullaryConsOf cs
+    nullaryConsOf (CRecord _ _ _ _ _   : cs) = nullaryConsOf cs
 
-  cdecl2rules tvs tnull (CCons qc _ texps) =
+  cdecl2rules tvs tnull (CCons _ _ qc _ texps) =
     let lfunargs = map (CPVar . var2limitfun) tvs
         argvars  = map (\i -> (i,"x"++show i)) [0 .. length texps - 1]
         isRecursive t = t `elem` fromMaybe [] (lookupProgInfo t typeinfos)
@@ -324,13 +325,16 @@ genLimitFunction typeinfos tdecl = case tdecl of
                     CPComb qc (map CPVar argvars)])
       (applyF qc (map (\ (te,v) -> applyE (type2LimOp te)
                                  [CVar (0,"n"), CVar v]) (zip texps argvars)))]
-  cdecl2rules _ _ (CRecord qc _ _) =
+  cdecl2rules _ _ (CRecord _ _ qc _ _) =
     error $ "Cannot generate limit operation for record field " ++ showQName qc
 
-  type2LimOp (CTVar tv)      = CVar (var2limitfun tv)
-  type2LimOp (CFuncType _ _) =
-    error "type2LimOp: cannot generate limit operation for function type"
-  type2LimOp (CTCons tc ts)  = applyF (transCTCon2Limit tc) (map type2LimOp ts)
+  type2LimOp texp = case texp of
+    CTVar tv -> CVar (var2limitfun tv)
+    CFuncType _ _ ->
+      error "type2LimOp: cannot generate limit operation for function type"
+    _ -> maybe (error "type2LimOp: cannot generate limit operation for type application")
+               (\ (tc,ts) -> applyF (transCTCon2Limit tc) (map type2LimOp ts))
+               (tcArgsOfType texp)
 
 
 --- Generates a test function to compare two versions of the given function.
@@ -340,8 +344,8 @@ genTestFunction :: ComparisonInfo -> TransMap -> (Bool, CFuncDecl)
                 -> ([CTypeExpr], CFuncDecl)
 genTestFunction info tm (isprod,f) =
  (if isprod then [newResultType] else [],
-  cmtfunc ("Check equivalence of operation " ++ fmod ++ "." ++ fname ++
-           if isprod then " up to a depth limit" else "")
+  stCmtFunc ("Check equivalence of operation " ++ fmod ++ "." ++ fname ++
+             if isprod then " up to a depth limit" else "")
    (modName, testName) (realArity f) Private newType
    [if isprod
       then let limitvar = (100,"limit") in
@@ -358,9 +362,10 @@ genTestFunction info tm (isprod,f) =
   vars = pVars (realArity f)
   modA = (infPrefixA info) ++ "_" ++ fmod
   modB = (infPrefixB info) ++ "_" ++ fmod
-  instantiatedFunc = instantiateBool $ funcType f
+  instantiatedFunc = instantiateBool $ typeOfQualType $ funcType f
 
-  newResultType = mapTypes info (instantiateBool (resultType (funcType f)))
+  newResultType = mapTypes info
+                    (instantiateBool (resultType (typeOfQualType (funcType f))))
   
   newType = let ftype = mapTypes info $ genTestFuncType f
             in if isprod then baseType ("Nat","Nat") ~> ftype
@@ -380,29 +385,17 @@ genTestFunction info tm (isprod,f) =
                                    $ map (\(CPVar v) -> CVar v) vars
   callB = applyF (modB, fname) $ map transformedVar
                                $ zip (argTypes $ instantiatedFunc) vars
-  transformedVar (CTVar _, CPVar v) = CVar v
-  transformedVar (CFuncType _ _, CPVar v) = CVar v
-  transformedVar (t@(CTCons _ _), CPVar v) = case findTrans tm t of
-    Just  n -> applyF ("Compare", n) [CVar v]
-    Nothing -> CVar v
-  transformedVar (CTVar _, CPLit _) = error "CPM.Diff.Behavior.transformedVar: This case should be impossible to reach"
-  transformedVar (CTVar _, CPComb _ _) = error "CPM.Diff.Behavior.transformedVar: This case should be impossible to reach"
-  transformedVar (CTVar _, CPAs _ _) = error "CPM.Diff.Behavior.transformedVar: This case should be impossible to reach"
-  transformedVar (CTVar _, CPFuncComb _ _) = error "CPM.Diff.Behavior.transformedVar: This case should be impossible to reach"
-  transformedVar (CTVar _, CPLazy _) = error "CPM.Diff.Behavior.transformedVar: This case should be impossible to reach"
-  transformedVar (CTVar _, CPRecord _ _) = error "CPM.Diff.Behavior.transformedVar: This case should be impossible to reach"
-  transformedVar (CFuncType _ _, CPLit _) = error "CPM.Diff.Behavior.transformedVar: This case should be impossible to reach"
-  transformedVar (CFuncType _ _, CPComb _ _) = error "CPM.Diff.Behavior.transformedVar: This case should be impossible to reach"
-  transformedVar (CFuncType _ _, CPAs _ _) = error "CPM.Diff.Behavior.transformedVar: This case should be impossible to reach"
-  transformedVar (CFuncType _ _, CPFuncComb _ _) = error "CPM.Diff.Behavior.transformedVar: This case should be impossible to reach"
-  transformedVar (CFuncType _ _, CPLazy _) = error "CPM.Diff.Behavior.transformedVar: This case should be impossible to reach"
-  transformedVar (CFuncType _ _, CPRecord _ _) = error "CPM.Diff.Behavior.transformedVar: This case should be impossible to reach"
-  transformedVar (CTCons _ _, CPLit _) = error "CPM.Diff.Behavior.transformedVar: This case should be impossible to reach"
-  transformedVar (CTCons _ _, CPComb _ _) = error "CPM.Diff.Behavior.transformedVar: This case should be impossible to reach"
-  transformedVar (CTCons _ _, CPAs _ _) = error "CPM.Diff.Behavior.transformedVar: This case should be impossible to reach"
-  transformedVar (CTCons _ _, CPFuncComb _ _) = error "CPM.Diff.Behavior.transformedVar: This case should be impossible to reach"
-  transformedVar (CTCons _ _, CPLazy _) = error "CPM.Diff.Behavior.transformedVar: This case should be impossible to reach"
-  transformedVar (CTCons _ _, CPRecord _ _) = error "CPM.Diff.Behavior.transformedVar: This case should be impossible to reach"
+
+  transformedVar (texp,exp) = case (texp,exp) of
+    (CTVar _, CPVar v) -> CVar v
+    (CFuncType _ _, CPVar v) -> CVar v
+    (_, CPVar v) ->
+      maybe (CVar v)
+            (\_ -> case findTrans tm texp of
+                     Just  n -> applyF ("Compare", n) [CVar v]
+                     Nothing -> CVar v)
+            (tcArgsOfType texp)
+    _ -> error "CPM.Diff.Behavior.transformedVar: This case should be impossible to reach"
 
 -- encode a Curry identifier into an alphanum form:
 encodeCurryId :: String -> String
@@ -421,8 +414,10 @@ needToTranslatePart :: ComparisonInfo -> CTypeExpr -> Bool
 needToTranslatePart _    (CTVar _) = False
 needToTranslatePart info (CFuncType e1 e2) =
   needToTranslatePart info e1 || needToTranslatePart info e2
-needToTranslatePart info (CTCons n es) =
-  isMappedType info n || any (needToTranslatePart info) es
+needToTranslatePart info (CTApply e1 e2) =
+  needToTranslatePart info e1 || needToTranslatePart info e2
+needToTranslatePart info (CTCons n) =
+  isMappedType info n
 
 --- Checks if the module of the given type is one of the mapped modules, i.e.
 --- one that is present in two versions.
@@ -463,15 +458,15 @@ transFuncs (TransMap _ _ fs) = fs
 predefinedType :: (String, String) -> Maybe CTypeDecl
 predefinedType x = case x of
   ("Prelude", "[]") -> Just $ CType ("Prelude", "[]") Public [(0, "a")] [
-      CCons ("Prelude", "[]") Public []
-    , CCons ("Prelude", ":") Public
-            [CTVar (0, "a"), CTCons ("Prelude", "[]") [CTVar (0, "a")]]]
+      simpleCCons ("Prelude", "[]") Public []
+    , simpleCCons ("Prelude", ":") Public
+                  [CTVar (0, "a"), listType (CTVar (0, "a"))]] []
   ("Prelude", "(,)") -> Just $ CType ("Prelude", "(,)") Public [(0, "a"), (1, "b")] [
-    CCons ("Prelude", "(,)") Public [CTVar (0, "a"), CTVar (1, "b")]]
+    simpleCCons ("Prelude", "(,)") Public [CTVar (0, "a"), CTVar (1, "b")]] []
   ("Prelude", "(,,)") -> Just $ CType ("Prelude", "(,,)") Public [(0, "a"), (1, "b"), (2, "c")] [
-    CCons ("Prelude", "(,,)") Public [CTVar (0, "a"), CTVar (1, "b"), CTVar (2, "c")]]
+    simpleCCons ("Prelude", "(,,)") Public [CTVar (0, "a"), CTVar (1, "b"), CTVar (2, "c")]] []
   ("Prelude", "(,,,)") -> Just $ CType ("Prelude", "(,,,)") Public [(0, "a"), (1, "b"), (2, "c"), (3, "d")] [
-    CCons ("Prelude", "(,,,)") Public [CTVar (0, "a"), CTVar (1, "b"), CTVar (2, "c"), CTVar (3, "d")]]
+    simpleCCons ("Prelude", "(,,,)") Public [CTVar (0, "a"), CTVar (1, "b"), CTVar (2, "c"), CTVar (3, "d")]] []
   _ -> Nothing
 
 --- The ACYCache caches the AbstractCurry representations of Curry modules,
@@ -525,14 +520,14 @@ genTranslatorFunction :: Config
                       -> TransMap 
                       -> CTypeExpr 
                       -> IO (ErrorLogger (ACYCache, TransMap))
-genTranslatorFunction _   _    _  _    _   _  (CTVar _) =
-  error $ "CPM.Diff.Behavior.genTranslatorFunction: " ++
-          "Cannot generate translator function for CTVar"
-genTranslatorFunction _   _    _  _    _   _  te@(CFuncType _ _) =
-  error $ "CPM.Diff.Behavior.genTranslatorFunction: " ++
-          "Cannot generate translator function for CFuncType:\n" ++
-          pPrint (ppCTypeExpr defaultOptions te)
-genTranslatorFunction cfg repo gc info acy tm t@(CTCons (mod, n) _) =
+genTranslatorFunction cfg repo gc info acy tm texp =
+ let (mod, n) = maybe
+        (error $ "CPM.Diff.Behavior.genTranslatorFunction: " ++
+                 "Cannot generate translator function for type:\n" ++
+                 pPrint (ppCTypeExpr defaultOptions texp))
+        fst
+        (tcArgsOfType texp)
+ in
   -- Don't generate another translator if there already is one for the current
   -- type.
   if isJust $ findTrans tm t'
@@ -559,19 +554,20 @@ genTranslatorFunction cfg repo gc info acy tm t@(CTCons (mod, n) _) =
       mapIfNeededA = mapIfNeeded (infModMapA info)
       mapIfNeededB = mapIfNeeded (infModMapB info)
 
-      transformer (i, CTVar _) = CVar (i, "x" ++ (show i))
-      transformer (i, CFuncType _ _) = CVar (i, "x" ++ (show i))
-      transformer (i, e@(CTCons _ _)) = case findTrans tm'' e of
-        Nothing -> CVar (i, "x" ++ (show i))
-        Just tn -> applyF ("Compare", tn) [CVar (i, "x" ++ (show i))]
+      transformer (i,te) = case te of
+        CTVar _ -> CVar (i, "x" ++ show i)
+        CFuncType _ _ -> CVar (i, "x" ++ show i)
+        _ -> case findTrans tm'' te of
+               Nothing -> CVar (i, "x" ++ show i)
+               Just tn -> applyF ("Compare", tn) [CVar (i, "x" ++ show i)]
 
-      ruleForCons (CCons (m, cn) _ es) = simpleRule [pattern] call
+      ruleForCons (CCons _ _ (m, cn) _ es) = simpleRule [pattern] call
        where
         pattern = CPComb (mapIfNeededA m, cn) (pVars (length es))
         -- Apply constructor from B, calling translator functions if neccessary.
         call = applyF (mapIfNeededB m, cn) $ map transformer
                                            $ zip (take (length es) [0..]) es
-      ruleForCons (CRecord (m, cn) _ fs) = simpleRule [pattern] call
+      ruleForCons (CRecord _ _ (m, cn) _ fs) = simpleRule [pattern] call
        where
         pattern = CPComb (mapIfNeededA m, cn) (pVars (length fs))
         call = applyF (mapIfNeededB m, cn) $ map transformer
@@ -581,34 +577,36 @@ genTranslatorFunction cfg repo gc info acy tm t@(CTCons (mod, n) _) =
        where
         call = transformer (0, e)
     in case instTypeDecl of
-      CType _ _ _ cs -> succeedIO $
-        (acy'', addFunc tm'' (cfunc fName 1 Public fType (map ruleForCons cs)))
+      CType _ _ _ cs _ -> succeedIO $
+        (acy'', addFunc tm'' (stFunc fName 1 Public fType (map ruleForCons cs)))
       CTypeSyn _ _ _ e -> succeedIO $
-        (acy'', addFunc tm'' (cfunc fName 1 Public fType [synRule e]))
-      CNewType _ _ _ c -> succeedIO $
-        (acy'', addFunc tm'' (cfunc fName 1 Public fType [ruleForCons c]))
+        (acy'', addFunc tm'' (stFunc fName 1 Public fType [synRule e]))
+      CNewType _ _ _ c _ -> succeedIO $
+        (acy'', addFunc tm'' (stFunc fName 1 Public fType [ruleForCons c]))
  where
   -- Since our test functions always use polymorphic types instantiated to Bool,
   -- we generate our translator functions for Bool-instantiated types as well.
-  t' = instantiateBool t
+  t' = instantiateBool texp
 
   -- Finds all type expressions in the instantiated constructors that contain 
   -- types that need to be translated.
   transExprs cs = filter (needToTranslatePart info) $ nub $ extractExprs cs
-  extractExprs (CType _ _ _ es) = concat $ map extractExprsCons es
+  extractExprs (CType _ _ _ es _) = concat $ map extractExprsCons es
   extractExprs (CTypeSyn _ _ _ e) = [e]
-  extractExprs (CNewType _ _ _ c) = extractExprsCons c
-  extractExprsCons (CCons _ _ es) = es
-  extractExprsCons (CRecord _ _ fs) = map (\(CField _ _ es) -> es) fs
+  extractExprs (CNewType _ _ _ c _) = extractExprsCons c
+  extractExprsCons (CCons _ _ _ _ es) = es
+  extractExprsCons (CRecord _ _ _ _ fs) = map (\(CField _ _ es) -> es) fs
 
   -- Recursively prefixes those types which are present in two versions.
-  prefixMappedTypes pre (CTCons (mod', n') te') =
+  prefixMappedTypes pre (CTCons (mod', n')) =
     if isMappedType info (mod', n')
-      then CTCons (pre ++ "_" ++ mod', n') $ map (prefixMappedTypes pre) te'
-      else CTCons (mod', n') $ map (prefixMappedTypes pre) te'
+      then CTCons (pre ++ "_" ++ mod', n')
+      else CTCons (mod', n')
   prefixMappedTypes _   (CTVar v) = CTVar v
   prefixMappedTypes pre (CFuncType e1 e2) =
     CFuncType (prefixMappedTypes pre e1) (prefixMappedTypes pre e2)
+  prefixMappedTypes pre (CTApply e1 e2) =
+    CTApply (prefixMappedTypes pre e1) (prefixMappedTypes pre e2)
 
 -- Finds the type declaration for a given qualified type constructor.
 -- If the module is not in the ACYCache, it is read and added to the cache.
@@ -635,67 +633,79 @@ maybeReplaceVar :: [(CVarIName, CTypeExpr)] -> CTypeExpr -> CTypeExpr
 maybeReplaceVar vm (CTVar v) = case lookup v vm of
   Nothing -> CTVar v
   Just e' -> e'
-maybeReplaceVar vm (CTCons n es) = CTCons n $ map (maybeReplaceVar vm) es
+maybeReplaceVar _  (CTCons n) = CTCons n
 maybeReplaceVar vm (CFuncType e1 e2) =
   CFuncType (maybeReplaceVar vm e1) (maybeReplaceVar vm e2)
+maybeReplaceVar vm (CTApply e1 e2) =
+  CTApply (maybeReplaceVar vm e1) (maybeReplaceVar vm e2)
 
 --- Instantiates all constructors of a type declaration with the types from a
 --- constructor type expression. Type variables that are not used in the 
 --- constructor referenced by the type expression remain as they are.
 instantiate :: CTypeDecl -> CTypeExpr -> CTypeDecl
-instantiate (CType n v vs cs) (CTCons _ es) = CType n v vs $ map cons cs
+instantiate tdecl texp = case texp of
+  CTVar _ -> error "CPM.Diff.Behavior.instantiate: Cannot instantiate CTVar"
+  CFuncType _ _ -> error "CPM.Diff.Behavior.instantiate: Cannot instantiate CFuncType"
+  _ -> maybe (error "CPM.Diff.Behavior.instantiate: Cannot instantiate CTApply")
+             (\ (_,texps) -> instantiate' tdecl texps)
+             (tcArgsOfType texp)
  where
-  varMap = zip vs es
-  cons (CCons n' v' es') = CCons n' v' $ map (maybeReplaceVar varMap) es'
-  cons (CRecord n' v' fs') = CRecord n' v' $ map maybeReplaceField fs'
-  maybeReplaceField (CField n'' v'' e) =
-    CField n'' v'' $ maybeReplaceVar varMap e
-instantiate (CTypeSyn n v vs e) (CTCons _ es) =
-    CTypeSyn n v vs $ maybeReplaceVar varMap e
- where
-  varMap = zip vs es
-instantiate (CNewType n v vs c) (CTCons _ es) = CNewType n v vs $ cons c
- where
-  varMap = zip vs es
-  cons (CCons n' v' es') = CCons n' v' $ map (maybeReplaceVar varMap) es'
-  cons (CRecord n' v' fs') = CRecord n' v' $ map maybeReplaceField fs'
-  maybeReplaceField (CField n'' v'' e) = CField n'' v'' $ maybeReplaceVar varMap e
-instantiate (CType _ _ _ _) (CTVar _) = error "CPM.Diff.Behavior.instantiate: Cannot instantiate CTVar"
-instantiate (CTypeSyn _ _ _ _) (CTVar _) = error "CPM.Diff.Behavior.instantiate: Cannot instantiate CTVar"
-instantiate (CNewType _ _ _ _) (CTVar _) = error "CPM.Diff.Behavior.instantiate: Cannot instantiate CTVar"
-instantiate (CType _ _ _ _) (CFuncType _ _) = error "CPM.Diff.Behavior.instantiate: Cannot instantiate CFuncType"
-instantiate (CTypeSyn _ _ _ _) (CFuncType _ _) = error "CPM.Diff.Behavior.instantiate: Cannot instantiate CFuncType"
-instantiate (CNewType _ _ _ _) (CFuncType _ _) = error "CPM.Diff.Behavior.instantiate: Cannot instantiate CFuncType"
+  instantiate' (CType n v vs cs d) es = CType n v vs (map cons cs) d
+   where
+    varMap = zip vs es
+    cons (CCons tvs ct n' v' es') =
+          CCons tvs ct n' v' $ map (maybeReplaceVar varMap) es'
+    cons (CRecord tvs ct n' v' fs') =
+          CRecord tvs ct n' v' $ map maybeReplaceField fs'
+    maybeReplaceField (CField n'' v'' e) =
+      CField n'' v'' $ maybeReplaceVar varMap e
+  instantiate' (CTypeSyn n v vs e) es =
+      CTypeSyn n v vs $ maybeReplaceVar varMap e
+   where
+    varMap = zip vs es
+  instantiate' (CNewType n v vs c d) es = CNewType n v vs (cons c) d
+   where
+    varMap = zip vs es
+    cons (CCons tvs ct n' v' es') =
+          CCons tvs ct n' v' $ map (maybeReplaceVar varMap) es'
+    cons (CRecord tvs ct n' v' fs') =
+          CRecord tvs ct n' v' $ map maybeReplaceField fs'
+    maybeReplaceField (CField n'' v'' e) =
+      CField n'' v'' $ maybeReplaceVar varMap e
 
 --- Recursively transforms all module names of all constructor references in the
 --- type expression into the module names of version A.
 mapTypes :: ComparisonInfo -> CTypeExpr -> CTypeExpr
 mapTypes info (CFuncType a b) = CFuncType (mapTypes info a) (mapTypes info b)
+mapTypes info (CTApply a b)   = CTApply (mapTypes info a) (mapTypes info b)
 mapTypes _  v@(CTVar _) = v
-mapTypes info (CTCons (m, n) ts) = case lookup m mapA of
-  Nothing -> CTCons (m, n) $ map (mapTypes info) ts
-  Just m' -> CTCons (m', n) $ map (mapTypes info) ts
- where
-  mapA = infModMapA info
+mapTypes info (CTCons (m, n)) = case lookup m (infModMapA info) of
+  Nothing -> CTCons (m, n)
+  Just m' -> CTCons (m', n)
 
 realArity :: CFuncDecl -> Int
-realArity (CFunc _ _ _ t _) = arityOfType t
-realArity (CmtFunc _ _ _ _ t _) = arityOfType t
+realArity (CFunc _ _ _ t _) = arityOfType (typeOfQualType t)
+realArity (CmtFunc _ _ _ _ t _) = arityOfType (typeOfQualType t)
 
 arityOfType :: CTypeExpr -> Int
 arityOfType (CFuncType _ b) = 1 + arityOfType b
 arityOfType (CTVar _) = 0
-arityOfType (CTCons _ _) = 0
+arityOfType (CTCons _) = 0
+arityOfType (CTApply _ _) = 0
 
 -- Wrap an expression of a given type with a call to a corresponding
 -- depth-limit function:
 type2LimitFunc :: CTypeExpr -> CExpr
-type2LimitFunc (CTVar _) =
-  error "type2LimitFunc: cannot generate limit operation for type variable"
-type2LimitFunc (CFuncType _ _) =
-  error "type2LimitFunc: cannot generate limit operation for function type"
-type2LimitFunc (CTCons tc ts) =
-  applyF (transCTCon2Limit tc) (map type2LimitFunc ts)
+type2LimitFunc texp = case texp of
+  CTVar _ ->
+    error "type2LimitFunc: cannot generate limit operation for type variable"
+  CFuncType _ _ ->
+    error "type2LimitFunc: cannot generate limit operation for function type"
+  _ -> maybe
+        (error
+        "type2LimitFunc: cannot generate limit operation for type application")
+        (\ (tc,ts) -> applyF (transCTCon2Limit tc) (map type2LimitFunc ts))
+        (tcArgsOfType texp)
 
 -- Translate a type constructor name to the name of the corresponding limit
 -- operation:
@@ -711,21 +721,26 @@ transCTCon2Limit (_,tcn) = ("Compare", "limit" ++ trans tcn)
 --- type with `Test.EasyCheck.Prop`. Also instantiates polymorphic types to
 --- Bool.
 genTestFuncType :: CFuncDecl -> CTypeExpr
-genTestFuncType f = replaceResultType t (CTCons ("Test.EasyCheck", "Prop") [])
-  where t = instantiateBool $ funcType f
+genTestFuncType f = replaceResultType t (baseType ("Test.EasyCheck", "Prop"))
+  where t = instantiateBool $ typeOfQualType $ funcType f
 
 instantiateBool :: CTypeExpr -> CTypeExpr
-instantiateBool (CTVar _) = CTCons ("Prelude", "Bool") []
-instantiateBool (CTCons n ts) = CTCons n $ map instantiateBool ts
-instantiateBool (CFuncType a b) = CFuncType (instantiateBool a) (instantiateBool b)
+instantiateBool (CTVar _) = boolType
+instantiateBool (CTCons n) = CTCons n
+instantiateBool (CTApply a b) = CTApply (instantiateBool a) (instantiateBool b)
+instantiateBool (CFuncType a b) =
+  CFuncType (instantiateBool a) (instantiateBool b)
 
 --- Replaces the result type of a function type.
 replaceResultType :: CTypeExpr -> CTypeExpr -> CTypeExpr
 replaceResultType (CFuncType a (CTVar _)) z = CFuncType a z
-replaceResultType (CFuncType a (CTCons _ _)) z = CFuncType a z
-replaceResultType (CFuncType a b@(CFuncType _ _)) z = CFuncType a (replaceResultType b z)
+replaceResultType (CFuncType a (CTCons _)) z = CFuncType a z
+replaceResultType (CFuncType a (CTApply _ _)) z = CFuncType a z
+replaceResultType (CFuncType a b@(CFuncType _ _)) z =
+  CFuncType a (replaceResultType b z)
 replaceResultType (CTVar _) z = z
-replaceResultType (CTCons _ _) z = z
+replaceResultType (CTCons _) z = z
+replaceResultType (CTApply _ _) z = z
 
 combineTuple :: (String, String) -> String -> String
 combineTuple (a, b) s = a ++ s ++ b
@@ -736,7 +751,7 @@ showQName qn = combineTuple qn "."
 showFuncNames :: [CFuncDecl] -> String
 showFuncNames = intercalate ", " . map (showQName . funcName)
 
-replace' :: a -> a -> [a] -> [a]
+replace' :: Eq a => a -> a -> [a] -> [a]
 replace' _ _ [] = []
 replace' o n (x:xs) | x == o = n : replace' o n xs
                     | otherwise = x : replace' o n xs
@@ -908,7 +923,8 @@ filterFuncArg = filterFuncsDeep checkFunc
  where
   checkFunc (CFuncType _ _) = True
   checkFunc (CTVar _)       = False
-  checkFunc (CTCons _ _)    = False
+  checkFunc (CTCons _)      = False
+  checkFunc (CTApply _ _)   = False
 
 --- Filters functions via a predicate on their argument types. Checks the 
 --- predicates on nested types as well.
@@ -924,7 +940,7 @@ filterFuncsDeep tpred dirA _ deps acy allFuncs =
     Just ty -> Just ty
 
   checkFunc (a, c, fs) f =
-    (foldEL checkTypeExpr (a, c, False) $ argTypes $ funcType f) |>=
+    (foldEL checkTypeExpr (a, c, False) $ argTypes $ typeOfQualType $ funcType f) |>=
     \(a', c', r) -> if r then succeedIO (a', c', fs)
                          else succeedIO (a', c', f:fs)
 
@@ -936,25 +952,33 @@ filterFuncsDeep tpred dirA _ deps acy allFuncs =
              else checkTypeExpr (a, c, r) e1 |>=
                   \ (a', c', r') -> checkTypeExpr (a', e1:c', r') e2 |>=
                   \ (a'', c'', r'') -> succeedIO (a'', e2:c'', r || r' || r'')
-  checkTypeExpr (a, c, r) (CTVar _) = succeedIO (a, c, r)
-  checkTypeExpr (a, c, r) t@(CTCons n@(mod, _) es) =
+  checkTypeExpr (a, c, r) t@(CTApply e1 e2) =
     if t `elem` c
       then succeedIO (a, c, r)
       else if tpred t
              then succeedIO (a, c, True)
-             else foldEL checkTypeExpr (a, c, r) es |>=
+             else checkTypeExpr (a, c, r) e1 |>=
+                  \ (a', c', r') -> checkTypeExpr (a', e1:c', r') e2 |>=
+                  \ (a'', c'', r'') -> succeedIO (a'', e2:c'', r || r' || r'')
+  checkTypeExpr (a, c, r) (CTVar _) = succeedIO (a, c, r)
+  checkTypeExpr (a, c, r) t@(CTCons n@(mod, _)) =
+    if t `elem` c
+      then succeedIO (a, c, r)
+      else if tpred t
+             then succeedIO (a, c, True)
+             else succeedIO (a, c, r) |>=
                   \(a', c', _) -> readCached dirA deps a' mod |>=
                   \(a'', prog) -> case findType n prog of
                     Nothing -> failIO $ "Type '" ++ show n ++ "' not found."
                     Just t' -> checkType a'' (t:c') t' |>=
                            \(a''', c'', r'') -> succeedIO (a''', c'', r || r'')
 
-  checkType a ts (CType _ _ _ cs)   = foldEL checkCons (a, ts, False) cs
-  checkType a ts (CTypeSyn _ _ _ e) = checkTypeExpr (a, ts, False) e
-  checkType a ts (CNewType _ _ _ c) = checkCons (a, ts, False) c
+  checkType a ts (CType _ _ _ cs _)   = foldEL checkCons (a, ts, False) cs
+  checkType a ts (CTypeSyn _ _ _ e)   = checkTypeExpr (a, ts, False) e
+  checkType a ts (CNewType _ _ _ c _) = checkCons (a, ts, False) c
 
-  checkCons (a, ts, r) (CCons _ _ es) = foldEL checkTypeExpr (a, ts, r) es
-  checkCons (a, ts, r) (CRecord _ _ fs) =
+  checkCons (a, ts, r) (CCons _ _ _ _ es) = foldEL checkTypeExpr (a, ts, r) es
+  checkCons (a, ts, r) (CRecord _ _ _ _ fs) =
     let es = map (\(CField _ _ e) -> e) fs
     in foldEL checkTypeExpr (a, ts, r) es
 
@@ -989,12 +1013,12 @@ filterNoCompare dirA dirB _ a fs =
 --- Removes all functions that have more than five arguments (currently the 
 --- maximum number of parameters that CurryCheck supports in property tests).
 filterHighArity :: [CFuncDecl] -> [CFuncDecl]
-filterHighArity = filter ((<= 5) . length . argTypes . funcType) 
+filterHighArity = filter ((<= 5) . length . argTypes . typeOfQualType . funcType) 
 
 --- Removes all IO actions since they cannot be compared as
 --- properties in CurryCheck.
 filterIOAction :: [CFuncDecl] -> [CFuncDecl]
-filterIOAction = filter (not . isIOType . resultType . funcType) 
+filterIOAction = filter (not . isIOType . resultType . typeOfQualType . funcType) 
 
 --- Removes all functions that have a diff associated with their name from the
 --- given list of functions.
@@ -1023,7 +1047,8 @@ filterNonMatchingTypes dirA dirB deps acyCache allFuncs =
   foldEL funcTypesCompatible (acyCache, [], []) allFuncs |>=
   \(acy, _, fns) -> succeedIO (acy, fns)
  where
-  allTypes f = let ft = funcType f in (resultType ft):(argTypes ft)
+  allTypes f = let ft = typeOfQualType (funcType f)
+               in (resultType ft) : (argTypes ft)
   onlyCons = filter isConsType
   funcTypesCompatible (a, seen, fs) f =
     (foldEL typesCompatible (a, seen, True) $ onlyCons $ allTypes f) |>=
@@ -1039,23 +1064,26 @@ filterNonMatchingTypes dirA dirB deps acyCache allFuncs =
 --- recursively. Returns False if the types are different.
 typesEqual :: CTypeExpr -> String -> String -> [Package] -> ACYCache
            -> [CTypeExpr] -> IO (ErrorLogger (ACYCache, Bool))
-typesEqual t@(CTCons n _) dirA dirB deps acyCache checked = 
-  if t `elem` checked
+typesEqual texp dirA dirB deps acyCache checked =
+  maybe (failIO "typesEqual not called on type constructor")
+        (succeedIO . fst)
+        (tcArgsOfType texp) |>= \n -> let (mod,_) = n in
+  if texp `elem` checked
     then succeedIO (acyCache, True)
     else readCached dirA deps acyCache mod |>= \(acy',modA) ->
          readCached dirB deps acy' mod |>= \(acy'', modB) -> 
-         let typeA = findType modA
-             typeB = findType modB
+         let typeA = findType n modA
+             typeB = findType n modB
          in typesEqual' typeA typeB acy''
  where
-  (mod, _) = n
-  findType m = case predefinedType n of
+  findType n m = case predefinedType n of
     Nothing -> find ((== n) . typeName) $ filter isTypePublic $ types m
     Just ty -> Just ty
 
   typesEqual' :: Maybe CTypeDecl -> Maybe CTypeDecl -> ACYCache
               -> IO (ErrorLogger (ACYCache, Bool))
-  typesEqual' (Just (CType n1 v1 tvs1 cs1)) (Just (CType n2 v2 tvs2 cs2)) acy = 
+  typesEqual' (Just (CType n1 v1 tvs1 cs1 _)) (Just (CType n2 v2 tvs2 cs2 _))
+              acy = 
     if n1 == n2 && v1 == v2 && tvs1 == tvs2 && cs1 == cs2
       then foldEL (\(a, r) (c1, c2) -> consEqual a c1 c2 |>= \(a', r') ->
            succeedIO (a', r && r')) (acy, True) (zip cs1 cs2)
@@ -1064,25 +1092,25 @@ typesEqual t@(CTCons n _) dirA dirB deps acyCache checked =
               (Just (CTypeSyn n2 v2 tvs2 e2)) acy = 
     if n1 == n2 && v1 == v2 && tvs1 == tvs2 && e1 == e2
       then if isConsType e1
-        then typesEqual e1 dirA dirB deps acy (t:checked)
+        then typesEqual e1 dirA dirB deps acy (texp:checked)
         else succeedIO (acy, True)
       else succeedIO (acy, False)
-  typesEqual' (Just (CNewType n1 v1 tvs1 c1))
-              (Just (CNewType n2 v2 tvs2 c2)) acy = 
+  typesEqual' (Just (CNewType n1 v1 tvs1 c1 _))
+              (Just (CNewType n2 v2 tvs2 c2 _)) acy = 
     if n1 == n2 && v1 == v2 && tvs1 == tvs2 && c1 == c2
       then consEqual acy c1 c2
       else succeedIO (acy, False)
-  typesEqual' (Just (CType _ _ _ _)) (Just (CTypeSyn _ _ _ _)) acy =
+  typesEqual' (Just (CType _ _ _ _ _)) (Just (CTypeSyn _ _ _ _)) acy =
     succeedIO (acy, False)
-  typesEqual' (Just (CType _ _ _ _)) (Just (CNewType _ _ _ _)) acy =
+  typesEqual' (Just (CType _ _ _ _ _)) (Just (CNewType _ _ _ _ _)) acy =
     succeedIO (acy, False) 
-  typesEqual' (Just (CTypeSyn _ _ _ _)) (Just (CType _ _ _ _)) acy =
+  typesEqual' (Just (CTypeSyn _ _ _ _)) (Just (CType _ _ _ _ _)) acy =
     succeedIO (acy, False)
-  typesEqual' (Just (CTypeSyn _ _ _ _)) (Just (CNewType _ _ _ _)) acy =
+  typesEqual' (Just (CTypeSyn _ _ _ _)) (Just (CNewType _ _ _ _ _)) acy =
     succeedIO (acy, False)
-  typesEqual' (Just (CNewType _ _ _ _)) (Just (CType _ _ _ _)) acy =
+  typesEqual' (Just (CNewType _ _ _ _ _)) (Just (CType _ _ _ _ _)) acy =
     succeedIO (acy, False)
-  typesEqual' (Just (CNewType _ _ _ _)) (Just (CTypeSyn _ _ _ _)) acy =
+  typesEqual' (Just (CNewType _ _ _ _ _)) (Just (CTypeSyn _ _ _ _)) acy =
     succeedIO (acy, False)
   typesEqual' Nothing (Just _) acy = succeedIO (acy, False)
   typesEqual' (Just _) Nothing acy = succeedIO (acy, False)
@@ -1090,36 +1118,35 @@ typesEqual t@(CTCons n _) dirA dirB deps acyCache checked =
   
   consEqual :: ACYCache -> CConsDecl -> CConsDecl
             -> IO (ErrorLogger (ACYCache, Bool))
-  consEqual acy (CCons _ _ es1) (CCons _ _ es2) = 
+  consEqual acy (CCons _ _ _ _ es1) (CCons _ _ _ _ es2) = 
     foldEL esEqual (acy, True) (zip es1 es2)
    where
     esEqual (a, r) (e1, e2) = if e1 == e2
       then if isConsType e1
-        then typesEqual e1 dirA dirB deps a (t:checked)
+        then typesEqual e1 dirA dirB deps a (texp:checked)
         else succeedIO (acy, r)
       else succeedIO (acy, False)
-  consEqual acy (CRecord _ _ fs1) (CRecord _ _ fs2) = 
+  consEqual acy (CRecord _ _ _ _ fs1) (CRecord _ _ _ _ fs2) = 
     foldEL fEqual (acy, True) (zip fs1 fs2)
    where
     fEqual (a, r) (f1@(CField _ _ e1), f2@(CField _ _ _)) = if f1 == f2
       then if isConsType e1
-        then typesEqual e1 dirA dirB deps a (t:checked)
+        then typesEqual e1 dirA dirB deps a (texp:checked)
         else succeedIO (acy, r)
       else succeedIO (acy, False)
-  consEqual acy (CCons _ _ _) (CRecord _ _ _) = succeedIO (acy, False)
-  consEqual acy (CRecord _ _ _) (CCons _ _ _) = succeedIO (acy, False)
-typesEqual (CTVar _) _ _ _ _ _ = failIO "typesEqual called on CTVar"
-typesEqual (CFuncType _ _) _ _ _ _ _ = failIO "typesEqual called on CFuncType"
+  consEqual acy (CCons _ _ _ _ _) (CRecord _ _ _ _ _) = succeedIO (acy, False)
+  consEqual acy (CRecord _ _ _ _ _) (CCons _ _ _ _ _) = succeedIO (acy, False)
 
 isTypePublic :: CTypeDecl -> Bool
-isTypePublic (CType _ v _ _) = v == Public
-isTypePublic (CTypeSyn _ v _ _) = v == Public
-isTypePublic (CNewType _ v _ _) = v == Public
+isTypePublic (CType _ v _ _ _)    = v == Public
+isTypePublic (CTypeSyn _ v _ _)   = v == Public
+isTypePublic (CNewType _ v _ _ _) = v == Public
 
 isConsType :: CTypeExpr -> Bool
-isConsType (CTCons _ _) = True
+isConsType (CTCons _) = True
 isConsType (CTVar _) = False
 isConsType (CFuncType _ _) = False
+isConsType (CTApply t _) = isConsType t
 
 ------------------------------------------------------------------------------
 --- Reads a module in AbstractCurry form.
