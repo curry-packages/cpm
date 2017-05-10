@@ -11,7 +11,7 @@ module CPM.Config
   , readConfiguration, readConfigurationWithDefault, defaultConfig
   , showCompilerVersion ) where
 
-import Char         (toLower)
+import Char         (toUpper)
 import Directory    (getHomeDirectory, createDirectoryIfMissing)
 import Distribution (installDir, curryCompiler, curryCompilerMinorVersion
                     , curryCompilerMajorVersion)
@@ -152,22 +152,22 @@ mergeConfigSettings cfg props = applyEither setters cfg
                             unlines (map fst keySetters)
     Just  s -> \c -> Right $ s v c
 
---- Removes leading and trailing whitespace from option keys and values
---- and transforms option keys to lowercase.
+--- Removes leading and trailing whitespaces from option keys and values
+--- and transforms option keys to uppercase where underscores are removed.
 ---
 --- @param opts - the options
 stripProps :: [(String, String)] -> [(String, String)]
-stripProps = map ((map toLower . strip) *** strip) 
+stripProps = map ((map toUpper . filter (/='_') . strip) *** strip) 
 
 --- A map from option names to functions that will update a configuration
 --- record with a value for that option.
 keySetters :: [(String, String -> Config -> Config)]
 keySetters =
-  [ ("repository_path"     , \v c -> c { repositoryDir     = v })
-  , ("package_install_path", \v c -> c { packageInstallDir = v})
-  , ("bin_install_path"    , \v c -> c { binInstallDir     = v})
-  , ("app_package_path"    , \v c -> c { appPackageDir     = v})
-  , ("curry_bin"           , \v c -> c { curryExec         = v})
+  [ ("REPOSITORYPATH"     , \v c -> c { repositoryDir     = v })
+  , ("PACKAGEINSTALLPATH" , \v c -> c { packageInstallDir = v })
+  , ("BININSTALLPATH"     , \v c -> c { binInstallDir     = v })
+  , ("APPPACKAGEPATH"     , \v c -> c { appPackageDir     = v })
+  , ("CURRYBIN"           , \v c -> c { curryExec         = v })
   ]
 
 --- Sequentially applies a list of functions that transform a value to a value
