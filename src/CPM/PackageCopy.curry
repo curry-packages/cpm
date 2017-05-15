@@ -153,9 +153,9 @@ linkToLocalCache :: String -> String -> IO (ErrorLogger ())
 linkToLocalCache src pkgDir = do
   dirExists <- doesDirectoryExist src
   if dirExists
-    then loadPackageSpec src |>=
-      \pkgSpec -> LocalCache.createLink pkgDir src (packageId pkgSpec) True |> 
-        succeedIO ()
+    then loadPackageSpec src |>= \pkgSpec ->
+         LocalCache.createLink pkgDir src (packageId pkgSpec) True |> 
+         succeedIO ()
     else log Critical ("Directory '" ++ src ++ "' does not exist.") |>
          succeedIO ()
 
