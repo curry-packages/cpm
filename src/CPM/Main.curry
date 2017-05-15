@@ -847,11 +847,11 @@ packageVersionAsTable cfg pkgs = (colsizes, rows)
   formatPkg p = [name p, synopsis p, showVersionIfCompatible cfg p]
 
 --- Shows the version of a package if it is compatible with the
---- current compiler, otherwise shows "???".
+--- current compiler, otherwise shows the version in brackets.
 showVersionIfCompatible :: Config -> Package -> String
 showVersionIfCompatible cfg p =
-  if isCompatibleToCompiler cfg p then showVersion (version p)
-                                  else "???"
+  let s = showVersion (version p)
+  in if isCompatibleToCompiler cfg p then s else '(' : s ++ ")"
 
 cpmInfo :: String
 cpmInfo = "Use 'cpm info PACKAGE' for more information about a package."
@@ -868,7 +868,7 @@ search (SearchOptions q smod) cfg repo = putStr rendered >> succeedIO ()
   (colsizes,rows) = packageVersionAsTable cfg results
   rendered = unlines $
                if null results
-                 then ["No packages found for '" ++ q, "", cpmUpdate]
+                 then ["No packages found for '" ++ q, "'", cpmUpdate]
                  else [ render (table rows colsizes), cpmInfo, cpmUpdate ]
 
 upgrade :: UpgradeOptions -> Config -> Repository -> GlobalCache

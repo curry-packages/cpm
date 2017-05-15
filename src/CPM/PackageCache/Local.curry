@@ -65,7 +65,8 @@ allPackages pkgDir = do
 --- @param dir the package directory
 --- @param gc the global package cache
 --- @param pkg the package to copy
-createLinkToGlobalCache :: Config -> String -> GlobalCache -> Package -> IO (ErrorLogger ())
+createLinkToGlobalCache :: Config -> String -> GlobalCache -> Package
+                        -> IO (ErrorLogger ())
 createLinkToGlobalCache cfg pkgDir _ pkg = 
   createLink pkgDir (installedPackageDir cfg pkg) (packageId pkg) False
 
@@ -76,7 +77,8 @@ createLinkToGlobalCache cfg pkgDir _ pkg =
 --- @param dir the package directory
 --- @param gc the global package cache
 --- @param pkgs the list of packages
-linkPackages :: Config -> String -> GlobalCache -> [Package] -> IO (ErrorLogger ())
+linkPackages :: Config -> String -> GlobalCache -> [Package]
+             -> IO (ErrorLogger ())
 linkPackages cfg pkgDir gc pkgs = 
   mapEL (createLinkToGlobalCache cfg pkgDir gc) pkgs |> succeedIO ()
 
@@ -171,12 +173,13 @@ createLink :: String -> String -> String -> Bool -> IO (ErrorLogger ())
 createLink pkgDir from name replace = do
   ensureCacheDir pkgDir
   exists <- linkExists target
-  if exists && (not replace)
+  if exists && not replace
     then succeedIO ()
     else deleteIfLink target |> do
       rc <- createSymlink from target
       if rc == 0
         then succeedIO ()
-        else failIO $ "Failed to create symlink from '" ++ from ++ "' to '" ++ target ++ "', return code " ++ (show rc)
+        else failIO $ "Failed to create symlink from '" ++ from ++ "' to '" ++
+                      target ++ "', return code " ++ show rc
  where
-  target = (cacheDir pkgDir) </> name
+  target = cacheDir pkgDir </> name
