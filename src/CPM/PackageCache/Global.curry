@@ -33,8 +33,9 @@ import CPM.Config (Config, packageInstallDir)
 import CPM.ErrorLogger
 import CPM.FileUtil ( copyDirectory, inTempDir, recreateDirectory, inDirectory
                     , removeDirectoryComplete, tempDir
-                    , checkAndGetDirectoryContents )
+                    , checkAndGetDirectoryContents, quote )
 import CPM.Package
+import CPM.Repository
 
 --- The global package cache.
 data GlobalCache = GlobalCache [Package]
@@ -86,8 +87,8 @@ isPackageInstalled db p = isJust $ findVersion db (name p) (version p)
 --- The directory of a package in the global package cache. Does not check 
 --- whether the package is actually installed!
 installedPackageDir :: Config -> Package -> String
-installedPackageDir cfg pkg = base 
-  </> (name pkg ++ "-" ++ (showVersion $ version pkg))
+installedPackageDir cfg pkg =
+  base  </> (name pkg ++ "-" ++ (showVersion $ version pkg))
  where 
   base = packageInstallDir cfg
 
@@ -259,13 +260,18 @@ tryFindPackage gc name ver = case findVersion gc name ver of
                       " could not be found."
 
 --- Tries to read package specifications from a GC directory structure.
-readInstalledPackagesFromDir :: String -> IO (Either String GlobalCache)
-readInstalledPackagesFromDir path = do
+--- If some GC package directory has the same name as a package from
+--- the repository index, the package specification from the repository
+--- is used, otherwise (this case should not occur) the package specification
+--- stored in the directory is read.
+--- This should result in faster GC loading.
+readInstalledPackagesFromDir :: Repository -> String
+                             -> IO (Either String GlobalCache)
+readInstalledPackagesFromDir repo path = do
   debugMessage $ "Reading global package cache from '" ++ path ++ "'..."
   pkgDirs <- checkAndGetDirectoryContents path
-  pkgPaths <- return $ map (path </>) $ filter (not . isPrefixOf ".") pkgDirs
-  specPaths <- return $ map (</> "package.json") pkgPaths
-  specs <- mapIO readPackageSpecFromFile specPaths
+  pkgPaths <- return $ filter (not . isPrefixOf ".") pkgDirs
+  specs <- mapIO loadPackageSpecFromDir pkgPaths
   if null (lefts specs)
     then do debugMessage "Finished reading global package cache"
             return (Right $ GlobalCache (rights specs))
@@ -273,13 +279,28 @@ readInstalledPackagesFromDir path = do
  where
   readPackageSpecIO = liftIO readPackageSpec
 
-  readPackageSpecFromFile f = do
+  loadPackageSpecFromDir pkgdir = case packageVersionFromFile pkgdir of
+    Nothing -> readPackageSpecFromFile pkgdir
+    Just (pn,pv) -> case CPM.Repository.findVersion repo pn pv of
+      Nothing -> readPackageSpecFromFile pkgdir
+      Just p  -> do debugMessage $ "Package spec '" ++ packageId p ++
+                                   "' loaded from repository"
+                    return (Right p)
+
+  readPackageSpecFromFile pkgdir = do
+    let f = path </> pkgdir </> "package.json"
+    debugMessage $ "Reading package spec from '" ++ f ++ "'..."
     spec <- readPackageSpecIO $ readFile f
     return $ case spec of
       Left err -> Left $ err ++ " for file '" ++ f ++ "'"
       Right  v -> Right v
 
-quote :: String -> String
-quote s = "\"" ++ s ++ "\""
-
-
+  packageVersionFromFile :: String -> Maybe (String, Version)
+  packageVersionFromFile fn =
+    let ps = split (=='-') fn
+        l  = length ps
+    in if l < 2
+         then Nothing
+         else case readVersion (last ps) of
+                Nothing -> Nothing
+                Just v  -> Just (intercalate "-" (take (l-1) ps), v)
