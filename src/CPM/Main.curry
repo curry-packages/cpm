@@ -76,23 +76,23 @@ runWithArgs opts = do
     Left err -> do putStrLn $ "Error reading .cpmrc settings: " ++ err
                    exitWith 1
     Right c' -> return c'
-  let getGC   = getGlobalCache config
-  let getRepo = getRepository config
+  let getRepoGC = getRepository config >>= \repo ->
+                  getGlobalCache config repo >>= \gc -> return (repo,gc)
   setLogLevel $ optLogLevel opts
   (msgs, result) <- case optCommand opts of
     NoCommand   -> failIO "NoCommand"
     Update      -> updateRepository config
-    Compiler o  -> compiler o config getRepo getGC
-    Exec o      -> exec     o config getRepo getGC
-    Doc  o      -> docCmd   o config getRepo getGC
-    Test o      -> test     o config getRepo getGC
+    Compiler o  -> compiler o config getRepoGC
+    Exec o      -> exec     o config getRepoGC
+    Doc  o      -> docCmd   o config getRepoGC
+    Test o      -> test     o config getRepoGC
     Clean       -> cleanPackage Info
     New o       -> newPackage o
-    _ -> do repo <- getRepo
+    _ -> do repo <- getRepository config
             case optCommand opts of
               List   o -> listCmd o config repo
               Search o -> search  o config repo
-              _ -> do globalCache <- getGC
+              _ -> do globalCache <- getGlobalCache config repo
                       case optCommand opts of
                         Deps         -> deps         config repo globalCache
                         PkgInfo o    -> info       o config repo globalCache
@@ -111,9 +111,9 @@ runWithArgs opts = do
                       result
   exitWith (if allOk then 0 else 1)
 
-getGlobalCache :: Config -> IO GlobalCache
-getGlobalCache config = do
-  maybeGC <- readInstalledPackagesFromDir $ packageInstallDir config
+getGlobalCache :: Config -> Repository -> IO GlobalCache
+getGlobalCache config repo = do
+  maybeGC <- readInstalledPackagesFromDir repo $ packageInstallDir config
   case maybeGC of
     Left err -> do putStrLn $ "Error reading global package cache: " ++ err
                    exitWith 1
@@ -626,9 +626,9 @@ printInfo allinfos plain gc pkg =
   putStrLn (renderPackageInfo allinfos plain gc pkg) >> succeedIO ()
 
 
-compiler :: CompilerOptions -> Config -> IO Repository -> IO GlobalCache
+compiler :: CompilerOptions -> Config -> IO (Repository,GlobalCache)
          -> IO (ErrorLogger ())
-compiler o cfg getRepo getGC =
+compiler o cfg getRepoGC =
   tryFindLocalPackageSpec "." |>= \pkgdir ->
   loadPackageSpec pkgdir |>= \pkg ->
   checkCompiler cfg pkg >>
@@ -645,8 +645,7 @@ compiler o cfg getRepo getGC =
   currybin = curryExec cfg
 
   computePackageLoadPath pkgdir pkg =
-    getRepo >>= \repo ->
-    getGC >>= \gc ->
+    getRepoGC >>= \ (repo,gc) ->
     resolveAndCopyDependenciesForPackage cfg repo gc pkgdir pkg |>= \pkgs ->
     getAbsolutePath pkgdir >>= \abs -> succeedIO () |>
     let srcdirs = map (abs </>) (sourceDirsOf pkg)
@@ -728,7 +727,7 @@ installExecutable cfg repo pkg =
   checkCompiler cfg pkg >>
   -- we read the global cache again since it might be modified by
   -- the installation of the package:
-  getGlobalCache cfg >>= \gc ->
+  getGlobalCache cfg repo >>= \gc ->
   maybe (succeedIO ())
         (\ (PackageExecutable name mainmod) ->
            getLogLevel >>= \lvl ->
@@ -740,7 +739,7 @@ installExecutable cfg repo pkg =
                bindir     = binInstallDir cfg
                binexec    = bindir </> name
            in compiler CompilerOptions { comCommand = cmd }
-                       cfg (return repo) (return gc) |>
+                       cfg (return (repo,gc)) |>
               log Info ("Installing executable '" ++ name ++ "' into '" ++
                         bindir ++ "'") |>
               (whenFileExists binexec (backupExistingBin binexec) >>
@@ -896,9 +895,9 @@ link (LinkOptions src) _ _ _ =
 --- or, if they are not given, on exported modules (if specified in the
 --- package), on the main executable (if specified in the package),
 --- or on all source modules of the package.
-docCmd :: DocOptions -> Config -> IO Repository -> IO GlobalCache
+docCmd :: DocOptions -> Config -> IO (Repository,GlobalCache)
        -> IO (ErrorLogger ())
-docCmd opts cfg getRepo getGC =
+docCmd opts cfg getRepoGC =
   tryFindLocalPackageSpec "." |>= \specDir ->
   loadPackageSpec specDir |>= \pkg -> do
     checkCompiler cfg pkg
@@ -937,14 +936,14 @@ docCmd opts cfg getRepo getGC =
   runDocCmd pkgdir doccmd = do
     let cmd = unwords doccmd
     infoMessage $ "Running CurryDoc: " ++ cmd
-    execWithPkgDir (ExecOptions cmd []) cfg getRepo getGC pkgdir
+    execWithPkgDir (ExecOptions cmd []) cfg getRepoGC pkgdir
 
 --- `test` command: run `curry check` on the modules provided as an argument
 --- or, if they are not provided, on the exported (if specified)
 --- or all source modules of the package.
-test :: TestOptions -> Config -> IO Repository -> IO GlobalCache
+test :: TestOptions -> Config -> IO (Repository,GlobalCache)
      -> IO (ErrorLogger ())
-test opts cfg getRepo getGC =
+test opts cfg getRepoGC =
   tryFindLocalPackageSpec "." |>= \specDir ->
   loadPackageSpec specDir |>= \pkg -> do
     checkCompiler cfg pkg
@@ -975,7 +974,7 @@ test opts cfg getRepo getGC =
     debugMessage $ "Removing directory: " ++ currysubdir
     showExecCmd (unwords ["rm", "-rf", currysubdir])
     inDirectory (apkgdir </> dir) $
-      execWithPkgDir (ExecOptions testcmd []) cfg getRepo getGC apkgdir
+      execWithPkgDir (ExecOptions testcmd []) cfg getRepoGC apkgdir
 
   testsuites spec mainprogs = case testModules opts of
     Nothing -> maybe (let exports = exportedModules spec
@@ -1050,14 +1049,14 @@ diff opts cfg repo gc =
       else succeedIO ()
 
 
-exec :: ExecOptions -> Config -> IO Repository -> IO GlobalCache
+exec :: ExecOptions -> Config -> IO (Repository,GlobalCache)
      -> IO (ErrorLogger ())
-exec o cfg getRepo getGC =
-  tryFindLocalPackageSpec "." |>= execWithPkgDir o cfg getRepo getGC
+exec o cfg getRepoGC =
+  tryFindLocalPackageSpec "." |>= execWithPkgDir o cfg getRepoGC
 
-execWithPkgDir :: ExecOptions -> Config -> IO Repository -> IO GlobalCache
+execWithPkgDir :: ExecOptions -> Config -> IO (Repository,GlobalCache)
                -> String -> IO (ErrorLogger ())
-execWithPkgDir o cfg getRepo getGC specDir =
+execWithPkgDir o cfg getRepoGC specDir =
   loadCurryPathFromCache specDir |>=
   maybe (computePackageLoadPath specDir) succeedIO |>= \currypath ->
   let execpath = joinSearchPath (exePath o ++ splitSearchPath currypath)
@@ -1069,7 +1068,7 @@ execWithPkgDir o cfg getRepo getGC specDir =
      succeedIO ()
  where
   computePackageLoadPath pkgdir =
-    getRepo >>= \repo -> getGC >>= \gc ->
+    getRepoGC >>= \ (repo,gc) ->
     loadPackageSpec pkgdir |>= \pkg ->
     resolveAndCopyDependenciesForPackage cfg repo gc pkgdir pkg |>= \pkgs ->
     getAbsolutePath pkgdir >>= \abs -> succeedIO () |>

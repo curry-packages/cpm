@@ -11,6 +11,7 @@ module CPM.FileUtil
   , isSymlink
   , linkTarget
   , copyDirectoryFollowingSymlinks
+  , quote
   , fileInPath
   , tempDir
   , inTempDir
@@ -73,6 +74,8 @@ linkTarget link = do
     then return $ replaceFileName link out
     else return ""
 
+--- Puts a file argument into quotes to avoid problems with files containing
+--- blanks.
 quote :: String -> String
 quote s = "\"" ++ s ++ "\""
 
