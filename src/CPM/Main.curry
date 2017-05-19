@@ -22,9 +22,10 @@ import Boxes (table, render)
 import OptParse
 import CPM.ErrorLogger
 import CPM.FileUtil ( fileInPath, joinSearchPath, safeReadFile, whenFileExists
-                    , ifFileExists, inDirectory, removeDirectoryComplete )
+                    , ifFileExists, inDirectory, removeDirectoryComplete
+                    , copyDirectory )
 import CPM.Config   ( Config ( packageInstallDir, binInstallDir
-                             , appPackageDir, curryExec )
+                             , repositoryDir, appPackageDir, curryExec )
                     , readConfigurationWithDefault, showCompilerVersion )
 import CPM.PackageCache.Global ( GlobalCache, readInstalledPackagesFromDir
                                , installFromZip, checkoutPackage
@@ -32,7 +33,8 @@ import CPM.PackageCache.Global ( GlobalCache, readInstalledPackagesFromDir
 import CPM.Package
 import CPM.Resolution ( isCompatibleToCompiler, showResult )
 import CPM.Repository ( Repository, readRepository, findVersion, listPackages
-                      , findLatestVersion, updateRepository, searchPackages )
+                      , findLatestVersion, updateRepository, searchPackages
+                      , updateRepositoryCache )
 import CPM.PackageCache.Runtime ( dependencyPathsSeparate, writePackageConfig )
 import CPM.PackageCopy
 import CPM.Diff.API as APIDiff
@@ -44,7 +46,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 04/05/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 19/05/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -76,7 +78,7 @@ runWithArgs opts = do
     Left err -> do putStrLn $ "Error reading .cpmrc settings: " ++ err
                    exitWith 1
     Right c' -> return c'
-  let getRepoGC = getRepository config >>= \repo ->
+  let getRepoGC = readRepository config >>= \repo ->
                   getGlobalCache config repo >>= \gc -> return (repo,gc)
   setLogLevel $ optLogLevel opts
   (msgs, result) <- case optCommand opts of
@@ -86,9 +88,11 @@ runWithArgs opts = do
     Exec o      -> exec     o config getRepoGC
     Doc  o      -> docCmd   o config getRepoGC
     Test o      -> test     o config getRepoGC
+    Link o      -> linkCmd  o config
+    Add  o      -> addCmd   o config
     Clean       -> cleanPackage Info
     New o       -> newPackage o
-    _ -> do repo <- getRepository config
+    _ -> do repo <- readRepository config
             case optCommand opts of
               List   o -> listCmd o config repo
               Search o -> search  o config repo
@@ -102,7 +106,6 @@ runWithArgs opts = do
                         Diff o       -> diff       o config repo globalCache
                         Uninstall o  -> uninstall  o config repo globalCache
                         Upgrade o    -> upgrade    o config repo globalCache
-                        Link o       -> link       o config repo globalCache
                         _ -> error "Internal command processing error!"
   mapIO showLogEntry msgs
   let allOk =  all (levelGte Info) (map logLevelOf msgs) &&
@@ -118,15 +121,6 @@ getGlobalCache config repo = do
     Left err -> do putStrLn $ "Error reading global package cache: " ++ err
                    exitWith 1
     Right gc -> return gc
-
-getRepository :: Config -> IO Repository
-getRepository config = do
-  (repo, repoErrors) <- readRepository config
-  if null repoErrors
-    then return repo
-    else do putStrLn "Problems while reading the package index:"
-            mapIO putStrLn repoErrors
-            exitWith 1
 
 data Options = Options
   { optLogLevel  :: LogLevel
@@ -147,6 +141,7 @@ data Command
   | Search     SearchOptions
   | Upgrade    UpgradeOptions
   | Link       LinkOptions
+  | Add        AddOptions
   | Exec       ExecOptions
   | Doc        DocOptions
   | Test       TestOptions
@@ -192,6 +187,11 @@ data UpgradeOptions = UpgradeOptions
 
 data LinkOptions = LinkOptions
   { lnkSource :: String }
+
+data AddOptions = AddOptions
+  { addSource :: String
+  , forceAdd  :: Bool
+  }
 
 data NewOptions = NewOptions
   { projectName :: String }
@@ -258,6 +258,11 @@ linkOpts :: Options -> LinkOptions
 linkOpts s = case optCommand s of
   Link opts -> opts
   _         -> LinkOptions ""
+
+addOpts :: Options -> AddOptions
+addOpts s = case optCommand s of
+  Add opts -> opts
+  _        -> AddOptions "" False
 
 newOpts :: Options -> NewOptions
 newOpts s = case optCommand s of
@@ -386,7 +391,9 @@ optionParser = optParser
                     (\a -> Right $ a { optCommand = Upgrade (upgradeOpts a) })
                     upgradeArgs
         <|> command "link" (help "Link a package to the local cache") Right
-                    linkArgs ) )
+                    linkArgs
+        <|> command "add" (help "Add a package to the local repository") Right
+                    addArgs ) )
  where
   checkoutArgs cmd =
         arg (\s a -> Right $ a { optCommand = cmd (checkoutOpts a)
@@ -579,6 +586,17 @@ optionParser = optParser
     arg (\s a -> Right $ a { optCommand = Link (linkOpts a) { lnkSource = s } })
         (  metavar "SOURCE"
         <> help "The directory to link" )
+
+  addArgs =
+       flag (\a -> Right $ a { optCommand =
+                                 Add (addOpts a) { forceAdd = True } })
+            (  short "f"
+            <> long "force"
+            <> help "Force, i.e., overwrite existing package" )
+   <.> arg (\s a -> Right $ a { optCommand =
+                                  Add (addOpts a) { addSource = s } })
+           (  metavar "SOURCE"
+           <> help "The directory to add to the local repository" )
 
 -- Check if operating system executables we depend on are present on the
 -- current system.
@@ -883,13 +901,49 @@ upgrade (UpgradeOptions (Just pkg)) cfg repo gc =
   upgradeSinglePackage cfg repo gc specDir pkg
 
 
-link :: LinkOptions -> Config -> Repository -> GlobalCache
-     -> IO (ErrorLogger ())
-link (LinkOptions src) _ _ _ =
+linkCmd :: LinkOptions -> Config -> IO (ErrorLogger ())
+linkCmd (LinkOptions src) _ =
   tryFindLocalPackageSpec "." |>= \specDir ->
   cleanCurryPathCache specDir |>
   log Info ("Linking '" ++ src ++ "' into local package cache") |>
   linkToLocalCache src specDir
+
+--- `add` command: copy the given package to the repository index
+--- and package installation directory so that it is available as
+--- any other package.
+addCmd :: AddOptions -> Config -> IO (ErrorLogger ())
+addCmd (AddOptions pkgdir force) config = do
+  dirExists <- doesDirectoryExist pkgdir
+  if dirExists
+    then loadPackageSpec pkgdir |>= \pkgSpec ->
+         (copyPackage pkgSpec >> succeedIO ()) |>
+         log Info ("Package in directory '" ++ pkgdir ++
+                   "' installed into local repository")
+    else log Critical ("Directory '" ++ pkgdir ++ "' does not exist.") |>
+         succeedIO ()
+ where
+  copyPackage pkg = do
+    let pkgName          = name pkg
+        pkgVersion       = version pkg
+        pkgIndexDir      = pkgName </> showVersion pkgVersion
+        pkgRepositoryDir = repositoryDir config </> pkgIndexDir
+        pkgInstallDir    = packageInstallDir config </> packageId pkg
+    exrepodir <- doesDirectoryExist pkgRepositoryDir
+    when (exrepodir && not force) $ error $
+      "Package repository directory '" ++
+      pkgRepositoryDir ++ "' already exists!\n" ++ useForce
+    expkgdir <- doesDirectoryExist pkgInstallDir
+    when expkgdir $
+      if force then removeDirectoryComplete pkgInstallDir
+               else error $ "Package installation directory '" ++
+                            pkgInstallDir ++ "' already exists!\n" ++ useForce
+    infoMessage $ "Create directory: " ++ pkgRepositoryDir
+    createDirectoryIfMissing True pkgRepositoryDir
+    copyFile (pkgdir </> "package.json") (pkgRepositoryDir </> "package.json")
+    copyDirectory pkgdir pkgInstallDir
+    updateRepositoryCache config
+
+  useForce = "Use option '-f' or '--force' to overwrite it."
 
 --- `doc` command: run `curry doc` on the modules provided as an argument
 --- or, if they are not given, on exported modules (if specified in the
