@@ -1,11 +1,11 @@
---------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 --- This module implements functionality surrounding the package *repository*.
---- The repository is the index of all packages known to the package manager. It
---- contains metadata about the packages, such as their names, versions 
+--- The repository is the index of all packages known to the package manager.
+--- It contains metadata about the packages, such as their names, versions 
 --- dependencies and where they can be acquired. The repository does not contain
 --- the actual packages. For a list of packages that are currently installed 
 --- locally, you can consult the *database*.
---------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 
 module CPM.Repository 
   ( Repository
@@ -17,18 +17,22 @@ module CPM.Repository
   , searchPackages
   , listPackages
   , updateRepository
+  , updateRepositoryCache
   ) where
 
-import Char   (toLower)
+import Char           ( toLower )
 import Directory
 import Either
-import List
 import FilePath
+import List
+import ReadShowTerm   ( readQTermFile, writeQTermFile )
+import System         ( exitWith )
 
-import CPM.Config     (Config, repositoryDir, packageIndexRepository)
+import CPM.Config     ( Config, repositoryDir, packageIndexRepository )
 import CPM.ErrorLogger
 import CPM.Package
-import CPM.FileUtil   ( checkAndGetDirectoryContents, inDirectory )
+import CPM.FileUtil   ( checkAndGetDirectoryContents, inDirectory
+                      , whenFileExists )
 import CPM.Resolution ( isCompatibleToCompiler )
 
 data Repository = Repository [Package]
@@ -109,11 +113,24 @@ findVersion repo p v =
 allPackages :: Repository -> [Package]
 allPackages (Repository ps) = ps
 
---- Reads all package specifications from the default repository
+--- Reads all package specifications from the default repository.
+--- Use the cache if is present or update the cache after reading.
+--- If some errors occur, show them and terminate with exit status.
 ---
 --- @param cfg the configuration to use
-readRepository :: Config -> IO (Repository, [String])
-readRepository cfg = readRepositoryFrom (repositoryDir cfg)
+readRepository :: Config -> IO Repository
+readRepository cfg = do
+  mbrepo <- readRepositoryCache cfg
+  case mbrepo of
+    Nothing -> do
+      infoMessage "Writing the repository cache..."
+      (repo, repoErrors) <- readRepositoryFrom (repositoryDir cfg)
+      if null repoErrors
+        then writeRepositoryCache cfg repo >> return repo
+        else do putStrLn "Problems while reading the package index:"
+                mapIO putStrLn repoErrors
+                exitWith 1
+    Just repo -> return repo
 
 --- Reads all package specifications from a repository.
 ---
@@ -124,7 +141,8 @@ readRepositoryFrom path = do
   pkgDirs <- checkAndGetDirectoryContents path
   pkgPaths <- return $ map (path </>) $ filter dirOrSpec pkgDirs
   verDirs <- mapIO checkAndGetDirectoryContents pkgPaths
-  verPaths <- return $ concat $ map (\(d, p) -> map (d </>) (filter dirOrSpec p)) $ zip pkgPaths verDirs
+  verPaths <- return $ concatMap (\ (d, p) -> map (d </>) (filter dirOrSpec p))
+                     $ zip pkgPaths verDirs
   specPaths <- return $ map (</> "package.json") verPaths
   specs <- mapIO readPackageFile specPaths
   when (null (lefts specs)) $ debugMessage "Finished reading repository"
@@ -138,25 +156,70 @@ readRepositoryFrom path = do
       Left err -> Left $ "Problem reading '" ++ f ++ "': " ++ err
       Right  s -> Right s
 
-  dirOrSpec d =  (not $ isPrefixOf "." d) && takeExtension d /= ".md"
+  dirOrSpec d = (not $ isPrefixOf "." d) && takeExtension d /= ".md" &&
+                d /= repositoryCacheFileName
 
 --- Updates the package index from the central Git repository.
 updateRepository :: Config -> IO (ErrorLogger ())
 updateRepository cfg = do
+  cleanRepositoryCache cfg
   gitExists <- doesDirectoryExist $ (repositoryDir cfg) </> ".git"
   if gitExists 
     then do
       c <- inDirectory (repositoryDir cfg) $
              execQuietCmd $ (\q -> "git pull " ++ q ++ " origin master")
       if c == 0
-        then log Info "Successfully updated repository"
+        then do updateRepositoryCache cfg
+                log Info "Successfully updated repository"
         else failIO $ "Failed to update git repository, return code " ++ show c
     else do
       c <- inDirectory (repositoryDir cfg) $ execQuietCmd cloneCommand
       if c == 0
-        then log Info "Successfully updated repository"
+        then do updateRepositoryCache cfg
+                log Info "Successfully updated repository"
         else failIO $ "Failed to update git repository, return code " ++ show c
  where
   cloneCommand q = unwords ["git clone", q, packageIndexRepository cfg, "."]
 
 
+------------------------------------------------------------------------------
+-- Operations implementing the repository cache for faster reading.
+
+--- The local file name containing the repository cache as a Curry term.
+repositoryCacheFileName :: String
+repositoryCacheFileName = "repository_cache"
+
+--- The file containing the repository cache as a Curry term.
+repositoryCache :: Config -> String
+repositoryCache cfg = repositoryDir cfg </> repositoryCacheFileName
+
+--- Updates the repository cache with the current repository index.
+updateRepositoryCache :: Config -> IO ()
+updateRepositoryCache cfg = do
+  cleanRepositoryCache cfg
+  repo <- readRepository cfg
+  writeRepositoryCache cfg repo
+
+--- Stores the given repository in the cache.
+writeRepositoryCache :: Config -> Repository -> IO ()
+writeRepositoryCache cfg repo =
+  writeQTermFile (repositoryCache cfg) repo
+
+--- Reads the given repository from the cache.
+readRepositoryCache :: Config -> IO (Maybe Repository)
+readRepositoryCache cfg = do
+  let cf = repositoryCache cfg
+  excache <- doesFileExist cf
+  if excache
+    then debugMessage ("Reading repository cache from '" ++ cf ++ "'...") >>
+         catch (readQTermFile cf >>= \t -> return $!! Just t)
+               (\_ -> cleanRepositoryCache cfg >> return Nothing)
+    else return Nothing
+
+--- Cleans the repository cache.
+cleanRepositoryCache :: Config -> IO ()
+cleanRepositoryCache cfg = do
+  let cachefile = repositoryCache cfg
+  whenFileExists cachefile $ removeFile cachefile
+
+------------------------------------------------------------------------------
