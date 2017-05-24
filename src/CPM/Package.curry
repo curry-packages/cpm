@@ -97,9 +97,11 @@ data CompilerCompatibility = CompilerCompatibility String Disjunction
 data PackageId = PackageId String Version
 
 --- The specification to generate an executable from the package.
---- It consists of the name of the executable and the name of the main
---- module (which must contain an operation `main`).
-data PackageExecutable = PackageExecutable String String
+--- It consists of the name of the executable, the name of the main
+--- module (which must contain an operation `main`), and list
+--- of options for various compilers (i.e., pairs of compiler name and
+--- options for this compiler).
+data PackageExecutable = PackageExecutable String String [(String,String)]
 
 --- The specification of a single test suite for a package.
 --- It consists of a directory, a list of modules, options (for CurryCheck),
@@ -231,9 +233,15 @@ packageSpecToJSON pkg = JObject $
       revToJSON VersionAsTag = [("tag", JString "$version")]
 
   maybeExecToJSON =
-    maybe [] (\ (PackageExecutable ename emain) ->
-                  [("executable", JObject [ ("name", JString ename)
-                                          , ("main", JString emain)])])
+    maybe [] (\ (PackageExecutable ename emain eopts) ->
+                  [("executable", JObject $ [ ("name", JString ename)
+                                            , ("main", JString emain)] ++
+                                            exOptsToJSON eopts)])
+   where
+    exOptsToJSON eopts =
+      if null eopts
+        then []
+        else [("options", JObject $ map (\ (c,o) -> (c, JString o)) eopts)]
 
   maybeTestToJSON = maybe [] (\tests -> [("testsuite", testsToJSON tests)])
    where
@@ -697,7 +705,22 @@ execSpecFromJObject :: [(String, JValue)] -> Either String PackageExecutable
 execSpecFromJObject kv =
   mandatoryString "name"       kv $ \name ->
   optionalString  "main"       kv $ \main ->
-  Right $ PackageExecutable name (maybe "Main" id main)
+  case lookup "options" kv of
+    Nothing -> Right $ PackageExecutable name (maybe "Main" id main) []
+    Just (JObject o) -> case optionsFromObject o of
+      Left e -> Left e
+      Right os -> Right $ PackageExecutable name (maybe "Main" id main) os
+    Just _ -> Left "Expected an object for 'executable>options'"
+ where
+  optionsFromObject o =
+    let os = map (extractString . snd) o
+    in if any isLeft os
+         then Left $ head (lefts os)
+         else Right (zip (map fst o) (map fromRight os))
+  
+  extractString s = case s of
+    JString s' -> Right s'
+    _          -> Left $ "'executable>options': values must be strings"
 
 --- Reads a test suite specification from the key-value-pairs of a JObject.
 testSuiteFromJObject :: [(String, JValue)] -> Either String [PackageTest]

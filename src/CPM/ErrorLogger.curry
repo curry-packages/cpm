@@ -9,6 +9,7 @@ module CPM.ErrorLogger
   , logLevelOf
   , levelGte
   , getLogLevel, setLogLevel
+  , setWithShowTime
   , (|>=)
   , (|>)
   , (|->)
@@ -29,10 +30,6 @@ import System (exitWith, system)
 
 infixl 0 |>=
 infixl 0 |>
-
--- Should the current time be shown with every log information?
-withShowTime :: Bool
-withShowTime = False
 
 --- An error logger.
 type ErrorLogger a = ([LogEntry], Either LogEntry a)
@@ -60,6 +57,21 @@ getLogLevel = readGlobal logLevel
 --- Sets the global log level. Messages below this level will not be printed.
 setLogLevel :: LogLevel -> IO ()
 setLogLevel level = writeGlobal logLevel level
+
+-- Should the current time be shown with every log information?
+withShowTime :: Global Bool
+withShowTime = global False Temporary
+
+--- Gets the "show time" information.
+getWithShowTime :: IO Bool
+getWithShowTime = readGlobal withShowTime
+
+--- Sets the "show time" information. If true, then timing information
+--- will be shown with every log information.
+setWithShowTime :: Bool -> IO ()
+setWithShowTime wst = writeGlobal withShowTime wst
+
+---------------------------------------------------------------------------
 
 --- Chains two actions passing the result from the first to the second.
 (|>=) :: IO (ErrorLogger a) -> (a -> IO (ErrorLogger b)) -> IO (ErrorLogger b)
@@ -169,11 +181,12 @@ failIO msg = return $ fail msg
 
 --- Create an IO action that logs a message.
 log :: LogLevel -> String -> IO (ErrorLogger ())
-log lvl msg =
-  if withShowTime
+log lvl msg = do
+  wst <- getWithShowTime
+  if wst
     then do
       runtime <- getProcessInfos >>= return . maybe 0 id . lookup ElapsedTime
-      return $ ([LogEntry lvl (showTime runtime ++ ' ':msg)], Right ())
+      return $ ([LogEntry lvl (showTime runtime ++ 's':' ':msg)], Right ())
     else
       return $ ([LogEntry lvl msg], Right ())
  where
