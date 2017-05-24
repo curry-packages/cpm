@@ -76,7 +76,8 @@ writePackageConfig :: Config -> String -> Package -> IO (ErrorLogger ())
 writePackageConfig cfg pkgdir pkg =
   maybe (succeedIO ())
         (\ configmod ->
-           let binname = maybe "" (\ (PackageExecutable n _) -> n)
+           let binname = maybe ""
+                               (\ (PackageExecutable n _ _) -> n)
                                (executableSpec pkg)
            in if null configmod
                 then succeedIO ()

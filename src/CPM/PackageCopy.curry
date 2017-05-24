@@ -244,10 +244,14 @@ renderPackageInfo allinfos plain gc pkg = pPrint doc
 
   execspec = case executableSpec pkg of
     Nothing -> empty
-    Just  (PackageExecutable n m) ->
+    Just  (PackageExecutable n m eopts) ->
       boldText "Executable" <$$>
       indent 4 (boldText "Name         " <+> text n) <$$>
-      indent 4 (boldText "Main module  " <+> text m)
+      indent 4 (boldText "Main module  " <+> text m) <$$>
+      if null eopts
+        then empty
+        else indent 4 (boldText "Options      ") <+>
+             align (vsep (map (\ (c,o) -> text $ c ++ ": " ++ o) eopts))
 
   testsuites = case testSuite pkg of
     Nothing -> []

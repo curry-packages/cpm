@@ -24,8 +24,7 @@ import CPM.ErrorLogger
 import CPM.FileUtil ( fileInPath, joinSearchPath, safeReadFile, whenFileExists
                     , ifFileExists, inDirectory, removeDirectoryComplete
                     , copyDirectory )
-import CPM.Config   ( Config ( packageInstallDir, binInstallDir
-                             , repositoryDir, appPackageDir, curryExec )
+import CPM.Config   ( Config (..)
                     , readConfigurationWithDefault, showCompilerVersion )
 import CPM.PackageCache.Global ( GlobalCache, readInstalledPackagesFromDir
                                , installFromZip, checkoutPackage
@@ -46,7 +45,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 19/05/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 24/05/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -67,6 +66,7 @@ main = do
 
 runWithArgs :: Options -> IO ()
 runWithArgs opts = do
+  setWithShowTime (optWithTime opts)
   missingExecutables <- checkExecutables
   unless (null missingExecutables) $ do
       putStrLn $ "The following programs could not be found on the PATH " ++
@@ -125,6 +125,7 @@ getGlobalCache config repo = do
 data Options = Options
   { optLogLevel  :: LogLevel
   , optDefConfig :: [(String,String)]
+  , optWithTime  :: Bool
   , optCommand   :: Command }
 
 data Command 
@@ -320,7 +321,7 @@ applyEither (f:fs) z = case f z of
 applyParse :: [Options -> Either String Options] -> Either String Options
 applyParse fs = applyEither fs defaultOpts
  where
-  defaultOpts = Options Info [] NoCommand
+  defaultOpts = Options Info [] False NoCommand
 
 (>.>) :: Either String a -> (a -> b) -> Either String b
 a >.> f = case a of 
@@ -340,6 +341,10 @@ optionParser = optParser
         <> short "d"
         <> metavar "DEFINITION"
         <> help "Overwrite definition of cpmrc file with 'option=value'." )
+  <.> flag (\a -> Right $ a { optWithTime = True })
+        (  long "time"
+        <> short "t"
+        <> help "Show elapsed time with every log output" )
   <.> commands (metavar "COMMAND")
         (   command "checkout" (help "Checkout a package.") Right
                     (checkoutArgs Checkout)
@@ -747,13 +752,15 @@ installExecutable cfg repo pkg =
   -- the installation of the package:
   getGlobalCache cfg repo >>= \gc ->
   maybe (succeedIO ())
-        (\ (PackageExecutable name mainmod) ->
+        (\ (PackageExecutable name mainmod eopts) ->
            getLogLevel >>= \lvl ->
            getEnviron "PATH" >>= \path ->
            log Info ("Compiling main module: " ++ mainmod) |>
-           let cmd = unwords $
-                       [":set", if levelGte Debug lvl then "v1" else "v0",
-                        ":load", mainmod, ":save", ":quit"]
+           let (cmpname,_,_) = compilerVersion cfg
+               cmd = unwords $
+                       [":set", if levelGte Debug lvl then "v1" else "v0"
+                       , maybe "" id (lookup cmpname eopts)
+                       , ":load", mainmod, ":save", ":quit"]
                bindir     = binInstallDir cfg
                binexec    = bindir </> name
            in compiler CompilerOptions { comCommand = cmd }
@@ -791,7 +798,7 @@ uninstall (UninstallOptions Nothing Nothing) cfg _ _ =
   tryFindLocalPackageSpec "." |>= \pkgdir ->
   loadPackageSpec pkgdir |>= \pkg ->
   maybe (succeedIO ())
-        (\ (PackageExecutable name _) ->
+        (\ (PackageExecutable name _ _) ->
            let binexec = binInstallDir cfg </> name
            in ifFileExists binexec
                 (removeFile binexec >>
@@ -958,7 +965,7 @@ docCmd opts cfg getRepoGC =
     let docdir  = maybe "cdoc" id (docDir opts)
         exports = exportedModules pkg
         mainmod = maybe Nothing
-                        (\ (PackageExecutable _ emain) -> Just emain)
+                        (\ (PackageExecutable _ emain _) -> Just emain)
                         (executableSpec pkg)
     (docmods,apidoc) <-
        maybe (if null exports

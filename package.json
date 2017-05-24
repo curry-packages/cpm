@@ -22,7 +22,8 @@
     "configModule": "CPM.ConfigPackage",
     "executable": {
         "name": "cpm",
-        "main": "CPM.Main"
+        "main": "CPM.Main",
+        "options": { "kics2" : ":set rts -T" }
     },
     "testsuite": {
         "src-dir": "src",

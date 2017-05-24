@@ -7,8 +7,17 @@ export CURRY = $(CURRYROOT)/bin/curry
 # The tool name of the application:
 TOOL = $(HOME)/.cpm/bin/cpm
 
-# The default options for the REPL
+# The compiler name (e.g., pakcs or kics2):
+CURRYCOMPILER := $(shell $(CURRY) :set v0 :set -time :add Distribution :eval "putStrLn curryCompiler" :quit)
+
+
+# The default options for the REPL (options "rts -T" required for KiCS2
+# in order to get elapsed times):
+ifeq ($(CURRYCOMPILER),kics2)
+export REPL_OPTS = --noreadline :set -time :set rts -T
+else
 export REPL_OPTS = --noreadline :set -time
+endif
 
 # Source modules of CPM:
 DEPS = src/CPM/*.curry src/CPM/*/*.curry
