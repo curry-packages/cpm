@@ -45,7 +45,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 24/05/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 01/06/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -87,7 +87,7 @@ runWithArgs opts = do
     Compiler o  -> compiler o config getRepoGC
     Exec o      -> exec     o config getRepoGC
     Doc  o      -> docCmd   o config getRepoGC
-    Test o      -> test     o config getRepoGC
+    Test o      -> testCmd  o config getRepoGC
     Link o      -> linkCmd  o config
     Add  o      -> addCmd   o config
     Clean       -> cleanPackage Info
@@ -912,7 +912,7 @@ linkCmd :: LinkOptions -> Config -> IO (ErrorLogger ())
 linkCmd (LinkOptions src) _ =
   tryFindLocalPackageSpec "." |>= \specDir ->
   cleanCurryPathCache specDir |>
-  log Info ("Linking '" ++ src ++ "' into local package cache") |>
+  log Info ("Linking '" ++ src ++ "' into local package cache...") |>
   linkToLocalCache src specDir
 
 --- `add` command: copy the given package to the repository index
@@ -1002,9 +1002,9 @@ docCmd opts cfg getRepoGC =
 --- `test` command: run `curry check` on the modules provided as an argument
 --- or, if they are not provided, on the exported (if specified)
 --- or all source modules of the package.
-test :: TestOptions -> Config -> IO (Repository,GlobalCache)
-     -> IO (ErrorLogger ())
-test opts cfg getRepoGC =
+testCmd :: TestOptions -> Config -> IO (Repository,GlobalCache)
+        -> IO (ErrorLogger ())
+testCmd opts cfg getRepoGC =
   tryFindLocalPackageSpec "." |>= \specDir ->
   loadPackageSpec specDir |>= \pkg -> do
     checkCompiler cfg pkg

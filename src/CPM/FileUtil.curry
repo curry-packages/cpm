@@ -58,7 +58,7 @@ createSymlink from to = system $ "ln -s " ++ (quote from) ++ " " ++ (quote to)
 
 --- Deletes a symlink.
 removeSymlink :: String -> IO Int
-removeSymlink link = system $ "rm " ++ (quote link)
+removeSymlink link = system $ "rm " ++ quote link
 
 --- Tests whether a file is a symlink.
 isSymlink :: String -> IO Bool
