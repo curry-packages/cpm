@@ -22,8 +22,8 @@ module CPM.PackageCache.Local
   ) where
 
 import Debug
-import Directory (createDirectoryIfMissing, copyFile, getDirectoryContents
-                 , doesDirectoryExist, doesFileExist)
+import Directory (createDirectoryIfMissing, copyFile, getAbsolutePath
+                 , getDirectoryContents, doesDirectoryExist, doesFileExist)
 import Either (rights)
 import FilePath ((</>)) 
 import List (isPrefixOf)
@@ -34,7 +34,7 @@ import CPM.FileUtil (isSymlink, removeSymlink, createSymlink, linkTarget)
 import CPM.Package (Package, packageId, readPackageSpec)
 import CPM.PackageCache.Global (installedPackageDir)
 
---- Get the cache directory of the local package cache.
+--- The cache directory of the local package cache.
 ---
 --- @param dir the package directory
 cacheDir :: String -> String
@@ -48,15 +48,25 @@ allPackages pkgDir = do
   cacheExists <- doesDirectoryExist cdir
   if cacheExists
     then do
-      pkgDirs <- getDirectoryContents cdir
-      pkgPaths <- return $ map (cdir </>) $ filter (not . isPrefixOf ".") pkgDirs
-      specPaths <- return $ map (</> "package.json") pkgPaths
+      debugMessage $ "Reading local package cache from '" ++ cdir ++ "'..."
+      cdircont <- getDirectoryContents cdir
+      let pkgDirs = filter (not . isPrefixOf ".") cdircont
+      pkgPaths <- mapIO removeIfIllegalSymLink $ map (cdir </>) pkgDirs
+      specPaths <- return $ map (</> "package.json") $ concat pkgPaths
       specs <- mapIO (readPackageSpecIO . readFile) specPaths
       succeedIO $ rights specs
     else succeedIO []
  where
   readPackageSpecIO = liftIO readPackageSpec
   cdir = cacheDir pkgDir
+
+  removeIfIllegalSymLink target = do
+    dirExists  <- doesDirectoryExist target
+    fileExists <- doesFileExist target
+    isLink     <- isSymlink target
+    if isLink && (dirExists || fileExists)
+      then return [target]
+      else when isLink (removeSymlink target >> done) >> return []
 
 --- Creates a link to a package from the global cache in the local cache. Does
 --- not overwrite existing links.
@@ -137,16 +147,19 @@ ensureCacheDir pkgDir = do
 
 deleteIfLink :: String -> IO (ErrorLogger ())
 deleteIfLink target = do
-  dirExists <- doesDirectoryExist target
+  dirExists  <- doesDirectoryExist target
   fileExists <- doesFileExist target
+  isLink     <- isSymlink target
   if dirExists || fileExists
-    then do
-      isLink <- isSymlink target
+    then
       if isLink
         then removeSymlink target >> succeedIO ()
         else failIO $ "deleteIfLink can only delete links!\n" ++
                       "Unexpected target: " ++ target
-    else succeedIO ()
+    else
+      if isLink -- maybe it is a link to some non-existing target
+        then removeSymlink target >> succeedIO ()
+        else succeedIO ()
 
 linkExists :: String -> IO Bool
 linkExists target = do
@@ -176,7 +189,8 @@ createLink pkgDir from name replace = do
   if exists && not replace
     then succeedIO ()
     else deleteIfLink target |> do
-      rc <- createSymlink from target
+      fromabs <- getAbsolutePath from
+      rc <- createSymlink fromabs target
       if rc == 0
         then succeedIO ()
         else failIO $ "Failed to create symlink from '" ++ from ++ "' to '" ++

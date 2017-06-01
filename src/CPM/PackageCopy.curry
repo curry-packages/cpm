@@ -148,7 +148,7 @@ installLocalDependencies cfg repo gc dir =
   copyDependencies cfg gc pkgSpec (resolvedPackages result) dir |>
   succeedIO (pkgSpec, resolvedPackages result)
 
---- Links a directory into the local package cache. Used for cpm link.
+--- Links a directory into the local package cache. Used for `cpm link`.
 linkToLocalCache :: String -> String -> IO (ErrorLogger ())
 linkToLocalCache src pkgDir = do
   dirExists <- doesDirectoryExist src
