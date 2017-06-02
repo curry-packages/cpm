@@ -33,7 +33,9 @@ import List      ( intercalate, splitOn )
 
 --- Joins a list of directories into a search path.
 joinSearchPath :: [FilePath] -> String
-joinSearchPath dirs = intercalate [searchPathSeparator] dirs
+joinSearchPath = intercalate [searchPathSeparator] . map emptyPath2Dot
+ where
+  emptyPath2Dot p = if null p then "." else p
 
 --- Recursively copies a directory structure.
 copyDirectory :: String -> String -> IO ()
