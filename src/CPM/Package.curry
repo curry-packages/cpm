@@ -30,7 +30,7 @@ module CPM.Package
   , PackageId (..)
   , PackageSource (..)
   , GitRevision (..)
-  , PackageExecutable (..), PackageTest (..)
+  , PackageExecutable (..), PackageTest (..), PackageDocumentation (..)
   , showDependency
   , showCompilerDependency
   , loadPackageSpec
@@ -118,6 +118,14 @@ data PackageExecutable = PackageExecutable String String [(String,String)]
 data PackageTest = PackageTest String [String] String String
  deriving (Eq,Show)
 
+--- The specification to generate the documentation of the package.
+--- It consists of the name of the directory containing the documentation,
+--- a main file (usually, a LaTeX file) containing the documentation,
+--- and a command to generate the documentation. If the command is missing
+--- and the main file has the suffix "tex", e.g., "manual.tex",
+--- the default command is "pdflatex manual.tex".
+data PackageDocumentation = PackageDocumentation String String String
+
 --- A source where the contents of a package can be acquired.
 --- @cons Http - URL to a ZIP file 
 --- @cons Git - URL to a Git repository and an optional revision spec to check 
@@ -162,6 +170,7 @@ data Package = Package {
   , configModule          :: Maybe String
   , executableSpec        :: Maybe PackageExecutable
   , testSuite             :: Maybe [PackageTest]
+  , documentation         :: Maybe PackageDocumentation
   }
  deriving (Eq,Show)
 
@@ -189,6 +198,7 @@ emptyPackage = Package {
   , configModule          = Nothing
   , executableSpec        = Nothing
   , testSuite             = Nothing
+  , documentation         = Nothing
   }
 
 --- Translates a package to a JSON object.
@@ -214,7 +224,8 @@ packageSpecToJSON pkg = JObject $
   stringListToJSON "exportedModules" (exportedModules pkg) ++
   maybeStringToJSON "configModule" (configModule pkg) ++
   maybeExecToJSON (executableSpec pkg) ++
-  maybeTestToJSON (testSuite pkg)
+  maybeTestToJSON (testSuite pkg) ++
+  maybeDocuToJSON (documentation pkg)
  where
   dependenciesToJSON deps = JObject $ map dependencyToJSON deps
    where dependencyToJSON (Dependency p vc) =
@@ -261,6 +272,15 @@ packageSpecToJSON pkg = JObject $
       (if null opts then [] else [("options", JString opts)]) ++
       stringListToJSON "modules" mods ++
       (if null script then [] else [("script", JString script)])
+
+  maybeDocuToJSON =
+    maybe [] (\ (PackageDocumentation docdir docmain doccmd) ->
+                  [("documentation",
+                    JObject $ [ ("src-dir", JString docdir)
+                              , ("main", JString docmain)] ++
+                              if null doccmd
+                                then []
+                                else [("command", JString doccmd)] )])
 
   stringListToJSON fname exps =
     if null exps then []
@@ -465,6 +485,7 @@ packageSpecFromJObject kv =
   getCompilerCompatibility $ \compilerCompatibility ->
   getExecutableSpec $ \executable ->
   getTestSuite $ \testsuite ->
+  getDocumentationSpec $ \docspec ->
   Right Package {
       name = name
     , version = version
@@ -487,6 +508,7 @@ packageSpecFromJObject kv =
     , configModule    = configModule
     , executableSpec  = executable
     , testSuite       = testsuite
+    , documentation   = docspec
     }
   where
     mustBeVersion :: String -> (Version -> Either String a) -> Either String a
@@ -580,6 +602,20 @@ packageSpecFromJObject kv =
       Just JFalse      -> Left $ "Expected an object, got 'false'"  ++ forKey
       Just JNull       -> Left $ "Expected an object, got 'null'"   ++ forKey
      where forKey = " for key 'testsuite'"
+
+    getDocumentationSpec :: (Maybe PackageDocumentation -> Either String a)
+                         -> Either String a
+    getDocumentationSpec f = case lookup "documentation" kv of
+      Nothing -> f Nothing
+      Just (JObject s) -> case docuSpecFromJObject s of Left  e  -> Left e
+                                                        Right s' -> f (Just s')
+      Just (JString _) -> Left $ "Expected an object, got a string" ++ forKey
+      Just (JArray  _) -> Left $ "Expected an object, got an array" ++ forKey
+      Just (JNumber _) -> Left $ "Expected an object, got a number" ++ forKey
+      Just JTrue       -> Left $ "Expected an object, got 'true'"   ++ forKey
+      Just JFalse      -> Left $ "Expected an object, got 'false'"  ++ forKey
+      Just JNull       -> Left $ "Expected an object, got 'null'"   ++ forKey
+     where forKey = " for key 'documentation'"
 
 
 mandatoryString :: String -> [(String, JValue)]
@@ -777,6 +813,15 @@ getOptStringList optional key kv = case lookup (key++"s") kv of
   Just JNull       -> Left $ "Expected an array, got 'null'" ++ forKey
  where
   forKey = " for key '" ++ key ++ "s'"
+
+--- Reads documentation specification from the key-value-pairs of a JObject.
+docuSpecFromJObject :: [(String, JValue)] -> Either String PackageDocumentation
+docuSpecFromJObject kv =
+  mandatoryString "src-dir" kv $ \docdir ->
+  mandatoryString "main"    kv $ \docmain ->
+  optionalString  "command" kv $ \doccmd ->
+  Right $ PackageDocumentation docdir docmain (maybe "" id doccmd)
+
 
 --- Reads a dependency constraint expression in disjunctive normal form into 
 --- a list of lists of version constraints. The inner lists are conjunctions of
