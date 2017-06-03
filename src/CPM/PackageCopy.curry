@@ -43,7 +43,7 @@ import CPM.Package ( Package (..)
                    , showVersion, PackageSource (..), showDependency
                    , showCompilerDependency, showPackageSource
                    , Dependency, GitRevision (..), PackageExecutable (..)
-                   , PackageTest (..)
+                   , PackageTest (..), PackageDocumentation (..)
                    , packageIdEq, loadPackageSpec)
 import CPM.Resolution
 
@@ -212,7 +212,8 @@ renderPackageInfo allinfos plain gc pkg = pPrint doc
                , cats, deps, compilers, descr ] ++
                if allinfos
                  then [ srcdirs, expmods, cfgmod, execspec] ++ testsuites ++
-                      [ src, licns, licfl, copyrt, homepg, reposy, bugrep]
+                      [ docuspec, src, licns, licfl, copyrt, homepg
+                      , reposy, bugrep]
                  else []
 
   pkgId = packageId pkg
@@ -272,6 +273,16 @@ renderPackageInfo allinfos plain gc pkg = pPrint doc
                else indent 4 (boldText "Test modules " <+>
                     align (fillSep (map text mods)))))
           tests
+
+  docuspec = case documentation pkg of
+    Nothing -> empty
+    Just  (PackageDocumentation docdir docmain doccmd) ->
+      boldText "Documentation" <$$>
+      indent 4 (boldText "Directory    " <+> text docdir) <$$>
+      indent 4 (boldText "Main file    " <+> text docmain) <$$>
+      if null doccmd
+        then empty
+        else indent 4 (boldText "Command      ") <+> text doccmd
 
   descr  = showParaField description  "Description"
   licns  = showLineField license      "License"

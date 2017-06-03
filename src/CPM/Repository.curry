@@ -20,20 +20,22 @@ module CPM.Repository
   , updateRepositoryCache
   ) where
 
-import Char           ( toLower )
+import Char         ( toLower )
 import Directory
 import Either
 import FilePath
+import IO
 import List
-import ReadShowTerm   ( readQTermFile, writeQTermFile )
-import System         ( exitWith )
+import ReadShowTerm ( showQTerm, readQTerm )
+import System       ( exitWith )
 
-import CPM.Config     ( Config, repositoryDir, packageIndexRepository )
+import CPM.Config        ( Config, repositoryDir, packageIndexRepository )
+import CPM.ConfigPackage ( packageVersion )
 import CPM.ErrorLogger
 import CPM.Package
-import CPM.FileUtil   ( checkAndGetDirectoryContents, inDirectory
-                      , whenFileExists )
-import CPM.Resolution ( isCompatibleToCompiler )
+import CPM.FileUtil      ( checkAndGetDirectoryContents, inDirectory
+                         , whenFileExists )
+import CPM.Resolution    ( isCompatibleToCompiler )
 
 data Repository = Repository [Package]
 
@@ -123,7 +125,7 @@ readRepository cfg = do
   mbrepo <- readRepositoryCache cfg
   case mbrepo of
     Nothing -> do
-      infoMessage "Writing the repository cache..."
+      infoMessage "Writing repository cache..."
       (repo, repoErrors) <- readRepositoryFrom (repositoryDir cfg)
       if null repoErrors
         then writeRepositoryCache cfg repo >> return repo
@@ -157,7 +159,7 @@ readRepositoryFrom path = do
       Right  s -> Right s
 
   dirOrSpec d = (not $ isPrefixOf "." d) && takeExtension d /= ".md" &&
-                d /= repositoryCacheFileName
+                (not $ isPrefixOf repositoryCacheFileName d)
 
 --- Updates the package index from the central Git repository.
 updateRepository :: Config -> IO (ErrorLogger ())
@@ -203,7 +205,8 @@ updateRepositoryCache cfg = do
 --- Stores the given repository in the cache.
 writeRepositoryCache :: Config -> Repository -> IO ()
 writeRepositoryCache cfg repo =
-  writeQTermFile (repositoryCache cfg) repo
+  writeFile (repositoryCache cfg)
+            (packageVersion ++ "\n" ++ showQTerm repo)
 
 --- Reads the given repository from the cache.
 readRepositoryCache :: Config -> IO (Maybe Repository)
@@ -212,9 +215,20 @@ readRepositoryCache cfg = do
   excache <- doesFileExist cf
   if excache
     then debugMessage ("Reading repository cache from '" ++ cf ++ "'...") >>
-         catch (readQTermFile cf >>= \t -> return $!! Just t)
-               (\_ -> cleanRepositoryCache cfg >> return Nothing)
+         catch (readTermInCacheFile cf)
+               (\_ -> do infoMessage "Cleaning broken repository cache..."
+                         cleanRepositoryCache cfg
+                         return Nothing )
     else return Nothing
+ where
+  readTermInCacheFile cf = do
+    h <- openFile cf ReadMode
+    pv <- hGetLine h
+    if pv == packageVersion
+      then hGetContents h >>= \t -> return $!! Just (readQTerm t)
+      else do infoMessage "Cleaning repository cache (wrong version)..."
+              cleanRepositoryCache cfg
+              return Nothing
 
 --- Cleans the repository cache.
 cleanRepositoryCache :: Config -> IO ()

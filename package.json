@@ -29,6 +29,10 @@
         "src-dir": "src",
         "modules": [ "CPM.Package", "CPM.Resolution", "CPM.LookupSet" ]
     },
+    "documentation": {
+        "src-dir": "docs",
+        "main": "manual.tex"
+    },
     "source": {
         "git": "https://git.ps.informatik.uni-kiel.de/curry-packages/cpm.git",
         "tag": "$version"
