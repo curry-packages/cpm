@@ -991,24 +991,40 @@ genPackageManual :: DocOptions -> Config -> IO (Repository,GlobalCache)
 genPackageManual _ _ _ pkg outputdir = case documentation pkg of
     Nothing -> succeedIO ()
     Just (PackageDocumentation docdir docmain doccmd) -> do
-      inDirectory docdir $
-        if null doccmd then format docmain
-                       else system doccmd >> done
+      let formatcmd = replaceSubString "OUTDIR" outputdir $
+                        if null doccmd then formatCmd docmain
+                                       else doccmd
+      if null formatcmd
+        then infoMessage $ "Cannot format documentation file '" ++
+                           docmain ++ "' (unknown kind)"
+        else do
+          debugMessage $ "Executing command: " ++ formatcmd
+          inDirectory docdir $ system formatcmd
+          let outfile = outputdir </> replaceExtension docmain ".pdf"
+          infoMessage $ "Package documentation written to '" ++ outfile ++ "'."
       succeedIO ()
  where
-  format docmain =
-    if ".tex" `isSuffixOf` docmain
-      then formatTeX docmain
-      else infoMessage $ "Cannot format documentation file '" ++
-                         docmain ++ "' (unknown kind)"
+  formatCmd docmain
+    | ".tex" `isSuffixOf` docmain
+    = let formatcmd = "pdflatex -output-directory=\"OUTDIR\" " ++ docmain
+      in formatcmd ++ " && " ++ formatcmd
+    | ".md" `isSuffixOf` docmain
+    = "pandoc " ++ docmain ++
+      " -o \"OUTDIR" </> replaceExtension docmain ".pdf" ++ "\""
+    | otherwise = ""
 
-  formatTeX file = do
-    let formatcmd = "pdflatex -output-directory=" ++ outputdir ++ " " ++ file
-        syscmd    = formatcmd ++ " && " ++ formatcmd
-    debugMessage $ "Executing command: " ++ syscmd
-    system syscmd
-    let outfile = outputdir </> replaceExtension file ".pdf"
-    infoMessage $ "Package documentation written to '" ++ outfile ++ "'."
+--- Replace every occurrence of the first argument by the second argument
+--- in a string (third argument).
+replaceSubString :: String -> String -> String -> String
+replaceSubString sub newsub s = replString s
+ where
+  sublen = length sub
+
+  replString [] = []
+  replString ccs@(c:cs) =
+    if take sublen ccs == sub
+      then newsub ++ replString (drop sublen ccs)
+      else c : replString cs
 
 --- Generate program documentation:
 --- run `curry doc` on the modules provided as an argument
