@@ -125,6 +125,7 @@ data PackageTest = PackageTest String [String] String String
 --- and the main file has the suffix "tex", e.g., "manual.tex",
 --- the default command is "pdflatex manual.tex".
 data PackageDocumentation = PackageDocumentation String String String
+ deriving (Eq,Show)
 
 --- A source where the contents of a package can be acquired.
 --- @cons Http - URL to a ZIP file 
