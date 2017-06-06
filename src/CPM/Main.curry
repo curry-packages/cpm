@@ -24,7 +24,7 @@ import OptParse
 import CPM.ErrorLogger
 import CPM.FileUtil ( fileInPath, joinSearchPath, safeReadFile, whenFileExists
                     , ifFileExists, inDirectory, removeDirectoryComplete
-                    , copyDirectory )
+                    , copyDirectory, quote )
 import CPM.Config   ( Config (..)
                     , readConfigurationWithDefault, showCompilerVersion )
 import CPM.PackageCache.Global ( GlobalCache, readInstalledPackagesFromDir
@@ -46,7 +46,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 01/06/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 06/06/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -100,7 +100,7 @@ runWithArgs opts = do
               _ -> do globalCache <- getGlobalCache config repo
                       case optCommand opts of
                         Deps         -> deps         config repo globalCache
-                        PkgInfo o    -> info       o config repo globalCache
+                        PkgInfo o    -> infoCmd    o config repo globalCache
                         Checkout o   -> checkout   o config repo globalCache
                         InstallApp o -> installapp o config repo globalCache
                         Install o    -> install    o config repo globalCache
@@ -640,22 +640,22 @@ deps cfg repo gc =
   resolveDependencies cfg repo gc specDir |>= \result ->
   putStrLn (showResult result) >> succeedIO ()
 
-info :: InfoOptions -> Config -> Repository -> GlobalCache
+infoCmd :: InfoOptions -> Config -> Repository -> GlobalCache
      -> IO (ErrorLogger ())
-info (InfoOptions Nothing Nothing allinfos plain) _ _ gc =
+infoCmd (InfoOptions Nothing Nothing allinfos plain) _ _ gc =
   tryFindLocalPackageSpec "." |>= \specDir ->
   loadPackageSpec specDir |>= printInfo allinfos plain gc
-info (InfoOptions (Just pkg) Nothing allinfos plain) cfg repo gc =
+infoCmd (InfoOptions (Just pkg) Nothing allinfos plain) cfg repo gc =
   case findLatestVersion cfg repo pkg False of
    Nothing -> failIO $
                 "Package '" ++ pkg ++ "' not found in package repository."
    Just p  -> printInfo allinfos plain gc p
-info (InfoOptions (Just pkg) (Just v) allinfos plain) _ repo gc =
+infoCmd (InfoOptions (Just pkg) (Just v) allinfos plain) _ repo gc =
  case findVersion repo pkg v of
-   Nothing -> failIO $ "Package '" ++ pkg ++ "-" ++ (showVersion v) ++
+   Nothing -> failIO $ "Package '" ++ pkg ++ "-" ++ showVersion v ++
                        "' not found in package repository."
    Just p  -> printInfo allinfos plain gc p
-info (InfoOptions Nothing (Just _) _ _) _ _ _ =
+infoCmd (InfoOptions Nothing (Just _) _ _) _ _ _ =
   failIO "Must specify package name"
 
 printInfo :: Bool -> Bool -> GlobalCache -> Package
@@ -1001,6 +1001,7 @@ genPackageManual _ _ _ pkg outputdir = case documentation pkg of
           debugMessage $ "Executing command: " ++ formatcmd
           inDirectory docdir $ system formatcmd
           let outfile = outputdir </> replaceExtension docmain ".pdf"
+          system ("chmod -f 644 " ++ quote outfile) -- make it readable
           infoMessage $ "Package documentation written to '" ++ outfile ++ "'."
       succeedIO ()
  where
