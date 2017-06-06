@@ -318,7 +318,7 @@ loadPackageSpec dir = do
 --- @param p1 the first package
 --- @param p2 the second package
 packageIdEq :: Package -> Package -> Bool
-packageIdEq p1 p2 = (name p1) == (name p2) && (version p1) == (version p2)
+packageIdEq p1 p2 = name p1 == name p2 && version p1 == version p2
 
 --- Shows the package source in human-readable format.
 showPackageSource :: Package -> String
