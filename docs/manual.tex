@@ -608,15 +608,15 @@ This section gives a short description of all available CPM commands.
 In addition to the commands listed below, there are some global options
 which can be placed in front of the CPM command:
 \begin{description}
+\item[\code{-d$\,|\,$--define $option$=$value$}:]
+This option overrides the configuration options of CPM,
+ see Section~\ref{sec:config}.
 \item[\code{-v$\,|\,$--verbosity [info|debug]}:]
 The default value is \code{info}.
 The value \code{debug} provides more output messages in order to see
 what CPM is doing.
 \item[\code{-t$\,|\,$--time}:]
 This option adds the elapsed time to every info or debug output line.
-\item[\code{-d$\,|\,$--define $option$=$value$}:]
-This option overrides the configuration options of CPM,
- see Section~\ref{sec:config}.
 \end{description}
 %
 The available commands of CPM are:
@@ -664,10 +664,15 @@ exporting the module \code{JSON.Data} can be found by the command
 \item[\fbox{\code{update}}] Updates the local copy of the central package index
 to the newest available version.
 
-\item[\fbox{\code{install}}] Installs all dependencies of the current package.
+\item[\fbox{\code{install}}]
+Installs all dependencies of the current package.
 Furthermore, if the current package contains an executable application,
 the application is compiled and the executable is installed
 (unless the option \code{-n} or \code{--noexec} is set).
+With the option \code{-x} or \code{--exec}, the executable
+is installed without installing all dependencies again.
+This is useful to speed up the re-installation of a previously
+installed application.
 
 \item[\fbox{\code{install $package$ [--$pre$]}}] Installs the newest version
 (compatible to the current compiler) of 
