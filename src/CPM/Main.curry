@@ -8,7 +8,8 @@ import Char         ( toLower )
 import CSV          ( showCSV )
 import Directory    ( doesFileExist, getAbsolutePath, doesDirectoryExist
                     , copyFile, createDirectory, createDirectoryIfMissing
-                    , getDirectoryContents, getModificationTime
+                    , getCurrentDirectory, getDirectoryContents
+                    , getModificationTime
                     , renameFile, removeFile, setCurrentDirectory )
 import Distribution ( stripCurrySuffix, addCurrySubdir )
 import Either
@@ -46,7 +47,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 30/06/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 02/07/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -746,6 +747,7 @@ installapp :: CheckoutOptions -> Config -> Repository -> GlobalCache
 installapp opts cfg repo gc = do
   let apppkgdir = appPackageDir cfg
       copkgdir  = apppkgdir </> coPackage opts
+  curdir <- getCurrentDirectory
   removeDirectoryComplete copkgdir
   debugMessage ("Change into directory " ++ apppkgdir)
   inDirectory apppkgdir
@@ -753,8 +755,10 @@ installapp opts cfg repo gc = do
       log Debug ("Change into directory " ++ copkgdir) |>
       (setCurrentDirectory copkgdir >> succeedIO ()) |>
       loadPackageSpec "." |>= \pkg ->
-      maybe (failIO $ "Package '" ++ name pkg ++
-                      "' does not contain an executable.")
+      maybe (setCurrentDirectory curdir >>
+             removeDirectoryComplete copkgdir >>
+             failIO ("Package '" ++ name pkg ++
+                     "' does not contain an executable, nothing installed."))
             (\_ -> install (InstallOptions Nothing Nothing False True False)
                            cfg repo gc)
             (executableSpec pkg)
