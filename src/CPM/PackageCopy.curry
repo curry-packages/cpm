@@ -209,11 +209,11 @@ renderPackageInfo allinfos plain gc pkg = pPrint doc
   boldText s = (if plain then id else bold) $ text s
   maxLen = 12
   doc = vcat $ [ heading, rule, installed, ver, auth, maintnr, synop
-               , cats, deps, compilers, descr ] ++
+               , cats, deps, compilers, descr, execspec ] ++
                if allinfos
-                 then [ srcdirs, expmods, cfgmod, execspec] ++ testsuites ++
+                 then [ srcdirs, expmods, cfgmod ] ++ testsuites ++
                       [ docuspec, src, licns, licfl, copyrt, homepg
-                      , reposy, bugrep]
+                      , reposy, bugrep ]
                  else []
 
   pkgId = packageId pkg
@@ -246,13 +246,15 @@ renderPackageInfo allinfos plain gc pkg = pPrint doc
   execspec = case executableSpec pkg of
     Nothing -> empty
     Just  (PackageExecutable n m eopts) ->
-      boldText "Executable" <$$>
-      indent 4 (boldText "Name         " <+> text n) <$$>
-      indent 4 (boldText "Main module  " <+> text m) <$$>
-      if null eopts
-        then empty
-        else indent 4 (boldText "Options      ") <+>
-             align (vsep (map (\ (c,o) -> text $ c ++ ": " ++ o) eopts))
+      if allinfos
+        then boldText "Executable" <$$>
+             indent 4 (boldText "Name         " <+> text n) <$$>
+             indent 4 (boldText "Main module  " <+> text m) <$$>
+             if null eopts
+               then empty
+               else indent 4 (boldText "Options      ") <+>
+                    align (vsep (map (\ (c,o) -> text $ c ++ ": " ++ o) eopts))
+        else fill maxLen (boldText "Executable") <+> text n
 
   testsuites = case testSuite pkg of
     Nothing -> []
