@@ -61,25 +61,32 @@ findAllVersions (Repository ps) p pre =
 --- Search the names and synopses of all compiler-compatbile packages
 --- in the repository for a particular term.
 --- Lower/upercase is ignored for the search.
---- Returns the newest matching version of each package.
+--- Returns all matching versions (newest first) of each package.
 ---
---- @param repo - the repository
---- @searchmod - search for some module?
---- @param q - the term to search for
-searchPackages :: Repository -> Bool -> String -> [Package]
-searchPackages (Repository ps) searchmod searchstring =
-  map (head . sortedByVersion) groupedResults
+--- @param repo       - the repository
+--- @param searchmod  - search for some module?
+--- @param searchexec - search for some executable?
+--- @param searchterm - the term to search for
+searchPackages :: Repository -> Bool -> Bool -> String -> [[Package]]
+searchPackages (Repository ps) searchmod searchexec searchterm =
+  map sortedByVersion (groupBy (\a b -> name a == name b) allResults)
  where
-  groupedResults = groupBy namesEqual allResults
-  allResults = if searchmod
-                 then filter (\p -> searchstring `elem` (exportedModules p)) ps
-                 else filter (matches (lowerS searchstring)) ps
+  allResults = let s = lowerS searchterm
+               in if searchmod
+                    then filter (\p -> s `elem` exportedModules p) ps
+                    else if searchexec
+                           then filter (\p -> s `isInfixOf`
+                                                (lowerS $ execOfPackage p)) ps
+                           else filter (matches s) ps
+
   matches q p = q `isInfixOf` (lowerS $ name p) ||
                 q `isInfixOf` (lowerS $ synopsis p) ||
                 q `isInfixOf` (lowerS $ unwords (exportedModules p))
-  namesEqual a b = (name a) == (name b)
-  sortedByVersion = sortBy (\a b -> (version a) `vgt` (version b))
+
+  sortedByVersion = sortBy (\a b -> version a `vgt` version b)
+
   lowerS = map toLower
+
 
 --- Get all packages in the repository and group them by versions
 --- (newest first).
