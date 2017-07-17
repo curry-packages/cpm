@@ -47,7 +47,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 02/07/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 17/07/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -97,8 +97,8 @@ runWithArgs opts = do
     New o       -> newPackage o
     _ -> do repo <- readRepository config
             case optCommand opts of
-              List   o -> listCmd o config repo
-              Search o -> search  o config repo
+              List   o -> listCmd    o config repo
+              Search o -> searchCmd  o config repo
               _ -> do globalCache <- getGlobalCache config repo
                       case optCommand opts of
                         Deps         -> deps         config repo globalCache
@@ -182,8 +182,9 @@ data ListOptions = ListOptions
   }
 
 data SearchOptions = SearchOptions
-  { searchQuery  :: String
-  , searchModule :: Bool
+  { searchQuery  :: String -- the term to search for
+  , searchModule :: Bool   -- search for some module?
+  , searchExec   :: Bool   -- search for some executable?
   }
 
 data UpgradeOptions = UpgradeOptions
@@ -253,7 +254,7 @@ listOpts s = case optCommand s of
 searchOpts :: Options -> SearchOptions
 searchOpts s = case optCommand s of
   Search opts -> opts
-  _           -> SearchOptions "" False
+  _           -> SearchOptions "" False False
 
 upgradeOpts :: Options -> UpgradeOptions
 upgradeOpts s = case optCommand s of
@@ -596,7 +597,12 @@ optionParser = optParser
                                                { searchModule = True } })
              (  short "m"
              <> long "module"
-             <> help "Search an exported module" )
+             <> help "Search for an exported module" )
+    <.> flag (\a -> Right $ a { optCommand = Search (searchOpts a)
+                                               { searchExec = True } })
+             (  short "x"
+             <> long "exec"
+             <> help "Search for the name of an executable" )
     <.> arg (\s a -> Right $ a { optCommand = Search (searchOpts a)
                                                 { searchQuery = s } }) 
             (  metavar "QUERY"
@@ -858,21 +864,15 @@ listCmd (ListOptions lv csv cat) cfg repo =
                           else renderPkgs allpkgs
   in putStr listresult >> succeedIO ()
  where
-  -- filter all packages compatible to the current compiler but leave at least
-  -- one package
-  filterCompatPkgs pkgs =
-    let comppkgs = filter (isCompatibleToCompiler cfg) pkgs
-    in if null comppkgs then take 1 pkgs else comppkgs
-
   -- all packages (and versions if `lv`)
-  allpkgs = concatMap (if lv then id else ((:[]) . head . filterCompatPkgs))
+  allpkgs = concatMap (if lv then id else ((:[]) . filterCompatPkgs cfg))
                       (sortBy (\ps1 ps2 -> name (head ps1) <= name (head ps2))
                               (listPackages repo))
 
   -- all categories together with their package names:
   catgroups =
     let pkgid p = name p ++ '-' : showVersionIfCompatible cfg p
-        newpkgs = map (head . filterCompatPkgs) (listPackages repo)
+        newpkgs = map (filterCompatPkgs cfg) (listPackages repo)
         catpkgs = concatMap (\p -> map (\c -> (c, pkgid p)) (category p))
                             newpkgs
         nocatps = map pkgid (filter (null . category) newpkgs)
@@ -895,6 +895,14 @@ listCmd (ListOptions lv csv cat) cfg repo =
   renderTable colsizes rows =
     if csv then showCSV (head rows : drop 2 rows)
            else unlines [render (table rows colsizes), cpmInfo, cpmUpdate]
+
+--- Returns the first package of a list of packages compatible to the
+--- current compiler (according to the given configuration).
+--- If there is no compatible package, returns the first one.
+filterCompatPkgs :: Config -> [Package] -> Package
+filterCompatPkgs cfg pkgs =
+  let comppkgs = filter (isCompatibleToCompiler cfg) pkgs
+  in if null comppkgs then head pkgs else head comppkgs
 
 -- Format a list of packages by showing their names, synopsis, and versions
 -- as table rows. Returns also the column sizes.
@@ -923,16 +931,21 @@ cpmUpdate = "Use 'cpm update' to download the newest package index."
 
 
 --- Search in all (compiler-compatible) packages in the given repository.
-search :: SearchOptions -> Config -> Repository -> IO (ErrorLogger ())
-search (SearchOptions q smod) cfg repo = putStr rendered >> succeedIO ()
+searchCmd :: SearchOptions -> Config -> Repository -> IO (ErrorLogger ())
+searchCmd (SearchOptions q smod sexec) cfg repo =
+  putStr rendered >> succeedIO ()
  where
-  results = sortBy (\p1 p2 -> name p1 <= name p2) (searchPackages repo smod q)
+  results = sortBy (\p1 p2 -> name p1 <= name p2)
+                   (map (filterCompatPkgs cfg)
+                        (searchPackages repo smod sexec q))
   (colsizes,rows) = packageVersionAsTable cfg results
   rendered = unlines $
                if null results
-                 then ["No packages found for '" ++ q, "'", cpmUpdate]
+                 then ["No packages found for '" ++ q ++ "'", cpmUpdate]
                  else [ render (table rows colsizes), cpmInfo, cpmUpdate ]
 
+
+--- `upgrade` command.
 upgrade :: UpgradeOptions -> Config -> Repository -> GlobalCache
         -> IO (ErrorLogger ())
 upgrade (UpgradeOptions Nothing) cfg repo gc =
@@ -946,6 +959,7 @@ upgrade (UpgradeOptions (Just pkg)) cfg repo gc =
   upgradeSinglePackage cfg repo gc specDir pkg
 
 
+--- `link` command.
 linkCmd :: LinkOptions -> Config -> IO (ErrorLogger ())
 linkCmd (LinkOptions src) _ =
   tryFindLocalPackageSpec "." |>= \specDir ->

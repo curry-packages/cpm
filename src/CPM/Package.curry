@@ -1,8 +1,8 @@
---------------------------------------------------------------------------------
---- This module contains the data types for a package specification and versions
---- as well as functions for reading/showing/comparing package specs and 
---- package versions.
---------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+--- This module contains the data types for a package specification and
+--- versions as well as functions for reading/showing/comparing package specs
+--- and package versions.
+------------------------------------------------------------------------------
 
 module CPM.Package
   ( Version, initialVersion
@@ -11,6 +11,7 @@ module CPM.Package
   , CompilerCompatibility (..)
   , Package (..), emptyPackage
   , Dependency (..)
+  , execOfPackage
   , showVersion
   , replaceVersionInTag
   , readVersion
@@ -193,6 +194,13 @@ emptyPackage = Package {
   , documentation         = Nothing
   }
 
+--- Returns the name of the executable of the package.
+--- Returns the empty string if the package has no executable to install.
+execOfPackage :: Package -> String
+execOfPackage p =
+  maybe "" (\ (PackageExecutable e _ _) -> e) (executableSpec p)
+
+------------------------------------------------------------------------------
 --- Translates a package to a JSON object.
 packageSpecToJSON :: Package -> JValue
 packageSpecToJSON pkg = JObject $
@@ -902,16 +910,20 @@ readVersion s = parse pVersion s
 
 pVersion :: Parser Version
 pVersion =   pPureVersion
-         <|> (\(maj, min, pat, _) pre -> (maj, min, pat, Just pre)) <$> pPureVersion <*> (char '-' *> pPreRelease)
+         <|> (\(maj, min, pat, _) pre -> (maj, min, pat, Just pre))
+         <$> pPureVersion <*> (char '-' *> pPreRelease)
 
 pPureVersion :: Parser Version
-pPureVersion = (\maj (min, pat) -> (maj, min, pat, Nothing)) <$> (pNum <* char '.') <*> ((\min pat -> (min, pat)) <$> pNum <* char '.' <*> pNum)
+pPureVersion = (\maj (min, pat) -> (maj, min, pat, Nothing))
+           <$> (pNum <* char '.') <*> ((\min pat -> (min, pat))
+           <$> pNum <* char '.' <*> pNum)
 
 pPreRelease :: Parser String
 pPreRelease = some (check isAscii anyChar)
 
 pNum :: Parser Int
-pNum = (\cs -> foldl1 ((+).(10*)) (map (\c' -> ord c' - ord '0') cs)) <$> some pDigit
+pNum = (\cs -> foldl1 ((+).(10*)) (map (\c' -> ord c' - ord '0') cs))
+   <$> some pDigit
 
 pDigit :: Parser Char
 pDigit = check isDigit anyChar
