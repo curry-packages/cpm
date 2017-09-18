@@ -38,7 +38,6 @@ module CPM.Package
   , writePackageSpec
   , Conjunction
   , Disjunction
-  , showDisjunction
   , packageSpecToJSON
   ) where
 
@@ -433,10 +432,8 @@ showCompilerDependency (CompilerCompatibility cc vcs) =
 
 --- Renders a list of version constraints in disjunctive normal form.
 showVersionConstraints :: [[VersionConstraint]] -> String
-showVersionConstraints vcs = intercalate " || " $ map (\c -> intercalate ", " $ map showVersionConstraint c) vcs
-
-showDisjunction :: Disjunction -> String
-showDisjunction = intercalate " || " . map (intercalate ", " . map showVersionConstraint)
+showVersionConstraints =
+  intercalate " || " . map (intercalate ", " . map showVersionConstraint)
 
 --- Renders a single version constraint as a string.
 showVersionConstraint :: VersionConstraint -> String

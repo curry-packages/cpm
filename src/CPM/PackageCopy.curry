@@ -9,7 +9,7 @@ module CPM.PackageCopy
   , resolveDependencies
   , upgradeAllPackages
   , upgradeSinglePackage
-  , tryFindLocalPackageSpec
+  , getLocalPackageSpec, searchLocalPackageSpec
   , linkToLocalCache
   , acquireAndInstallPackageWithDependencies
   , installLocalDependencies
@@ -161,17 +161,24 @@ linkToLocalCache src pkgDir = do
 
 --- Tries to find a package specification in the current directory or one of its
 --- ancestors.
-tryFindLocalPackageSpec :: String -> IO (ErrorLogger String)
-tryFindLocalPackageSpec dir = do
+getLocalPackageSpec :: String -> IO (ErrorLogger String)
+getLocalPackageSpec dir =
+  searchLocalPackageSpec dir |>=
+  maybe (failIO "No package.json found") succeedIO
+
+--- Tries to find a package specification in the current directory or one of its
+--- ancestors. Returns `Nothing` if there is not package specifiction.
+searchLocalPackageSpec :: String -> IO (ErrorLogger (Maybe String))
+searchLocalPackageSpec dir = do
   existsLocal <- doesFileExist $ dir </> "package.json"
   if existsLocal
-    then succeedIO dir
+    then succeedIO (Just dir)
     else log Debug ("No package.json in " ++ show dir ++ ", trying " ++
                     show (dir </> "..")) |> do
       parentExists <- doesDirectoryExist $ dir </> ".."
       if parentExists
-        then tryFindLocalPackageSpec $ dir </> ".."
-        else failIO "No package.json found"
+        then searchLocalPackageSpec $ dir </> ".."
+        else succeedIO Nothing
 
 --- Resolves the dependencies for a package copy and fills the package caches.
 resolveAndCopyDependencies :: Config -> Repository -> GC.GlobalCache -> String 
