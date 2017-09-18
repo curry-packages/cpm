@@ -47,7 +47,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 17/07/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 19/09/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -194,8 +194,10 @@ data LinkOptions = LinkOptions
   { lnkSource :: String }
 
 data AddOptions = AddOptions
-  { addSource :: String
-  , forceAdd  :: Bool
+  { addPackage    :: Bool
+  , addDependency :: Bool
+  , addSource     :: String
+  , forceAdd      :: Bool
   }
 
 data NewOptions = NewOptions
@@ -269,7 +271,7 @@ linkOpts s = case optCommand s of
 addOpts :: Options -> AddOptions
 addOpts s = case optCommand s of
   Add opts -> opts
-  _        -> AddOptions "" False
+  _        -> AddOptions False False "" False
 
 newOpts :: Options -> NewOptions
 newOpts s = case optCommand s of
@@ -403,7 +405,7 @@ optionParser = optParser
                     upgradeArgs
         <|> command "link" (help "Link a package to the local cache") Right
                     linkArgs
-        <|> command "add" (help "Add a package to the local repository") Right
+        <|> command "add" (help "Add a package (as dependency or to the local repository)") Right
                     addArgs ) )
  where
   checkoutArgs cmd =
@@ -622,14 +624,24 @@ optionParser = optParser
 
   addArgs =
        flag (\a -> Right $ a { optCommand =
+                                 Add (addOpts a) { addPackage = True } })
+            (  short "p"
+            <> long "package"
+            <> help "Add a local package to the local repository" )
+   <.> flag (\a -> Right $ a { optCommand =
+                                 Add (addOpts a) { addDependency = True } })
+            (  short "d"
+            <> long "dependency"
+            <> help "Add a dependency to the current package" )
+   <.> flag (\a -> Right $ a { optCommand =
                                  Add (addOpts a) { forceAdd = True } })
             (  short "f"
             <> long "force"
             <> help "Force, i.e., overwrite existing package" )
    <.> arg (\s a -> Right $ a { optCommand =
                                   Add (addOpts a) { addSource = s } })
-           (  metavar "SOURCE"
-           <> help "The directory to add to the local repository" )
+           (  metavar "PACKAGE"
+           <> help "The package directory or name to be added" )
 
 -- Check if operating system executables we depend on are present on the
 -- current system.
@@ -649,14 +661,14 @@ checkExecutables = do
 
 deps :: Config -> Repository -> GlobalCache -> IO (ErrorLogger ())
 deps cfg repo gc =
-  tryFindLocalPackageSpec "." |>= \specDir ->
+  getLocalPackageSpec "." |>= \specDir ->
   resolveDependencies cfg repo gc specDir |>= \result ->
   putStrLn (showResult result) >> succeedIO ()
 
 infoCmd :: InfoOptions -> Config -> Repository -> GlobalCache
-     -> IO (ErrorLogger ())
+        -> IO (ErrorLogger ())
 infoCmd (InfoOptions Nothing Nothing allinfos plain) _ _ gc =
-  tryFindLocalPackageSpec "." |>= \specDir ->
+  getLocalPackageSpec "." |>= \specDir ->
   loadPackageSpec specDir |>= printInfo allinfos plain gc
 infoCmd (InfoOptions (Just pkg) Nothing allinfos plain) cfg repo gc =
   case findLatestVersion cfg repo pkg False of
@@ -680,7 +692,7 @@ printInfo allinfos plain gc pkg =
 compiler :: CompilerOptions -> Config -> IO (Repository,GlobalCache)
          -> IO (ErrorLogger ())
 compiler o cfg getRepoGC =
-  tryFindLocalPackageSpec "." |>= \pkgdir ->
+  getLocalPackageSpec "." |>= \pkgdir ->
   loadPackageSpec pkgdir |>= \pkg ->
   checkCompiler cfg pkg >>
   loadCurryPathFromCache pkgdir |>=
@@ -722,14 +734,14 @@ checkout (CheckoutOptions pkg (Just ver) _) cfg repo gc =
 install :: InstallOptions -> Config -> Repository -> GlobalCache
         -> IO (ErrorLogger ())
 install (InstallOptions Nothing Nothing _ instexec False) cfg repo gc =
-  tryFindLocalPackageSpec "." |>= \pkgdir ->
+  getLocalPackageSpec "." |>= \pkgdir ->
   cleanCurryPathCache pkgdir |>
   installLocalDependencies cfg repo gc pkgdir |>= \ (pkg,_) ->
   writePackageConfig cfg pkgdir pkg |>
   if instexec then installExecutable cfg repo pkg else succeedIO ()
 -- Install executable only:
 install (InstallOptions Nothing Nothing _ _ True) cfg repo _ =
-  tryFindLocalPackageSpec "." |>= \pkgdir ->
+  getLocalPackageSpec "." |>= \pkgdir ->
   loadPackageSpec pkgdir |>= \pkg ->
   installExecutable cfg repo pkg
 install (InstallOptions (Just pkg) vers pre _ _) cfg repo gc = do
@@ -836,7 +848,7 @@ uninstall (UninstallOptions (Just pkgname) Nothing) cfg _ = do
 uninstall (UninstallOptions Nothing (Just _)) _ _ =
   log Error "Please provide a package and version number!"
 uninstall (UninstallOptions Nothing Nothing) cfg _ =
-  tryFindLocalPackageSpec "." |>= \pkgdir ->
+  getLocalPackageSpec "." |>= \pkgdir ->
   loadPackageSpec pkgdir |>= uninstallPackageExecutable cfg
 
 uninstallPackageExecutable :: Config -> Package -> IO (ErrorLogger ())
@@ -949,12 +961,12 @@ searchCmd (SearchOptions q smod sexec) cfg repo =
 upgrade :: UpgradeOptions -> Config -> Repository -> GlobalCache
         -> IO (ErrorLogger ())
 upgrade (UpgradeOptions Nothing) cfg repo gc =
-  tryFindLocalPackageSpec "." |>= \specDir ->
+  getLocalPackageSpec "." |>= \specDir ->
   cleanCurryPathCache specDir |>
   log Info "Upgrading all packages" |>
   upgradeAllPackages cfg repo gc specDir
 upgrade (UpgradeOptions (Just pkg)) cfg repo gc =
-  tryFindLocalPackageSpec "." |>= \specDir ->
+  getLocalPackageSpec "." |>= \specDir ->
   log Info ("Upgrade " ++ pkg) |>
   upgradeSinglePackage cfg repo gc specDir pkg
 
@@ -962,7 +974,7 @@ upgrade (UpgradeOptions (Just pkg)) cfg repo gc =
 --- `link` command.
 linkCmd :: LinkOptions -> Config -> IO (ErrorLogger ())
 linkCmd (LinkOptions src) _ =
-  tryFindLocalPackageSpec "." |>= \specDir ->
+  getLocalPackageSpec "." |>= \specDir ->
   cleanCurryPathCache specDir |>
   log Info ("Linking '" ++ src ++ "' into local package cache...") |>
   linkToLocalCache src specDir
@@ -971,7 +983,16 @@ linkCmd (LinkOptions src) _ =
 --- and package installation directory so that it is available as
 --- any other package.
 addCmd :: AddOptions -> Config -> IO (ErrorLogger ())
-addCmd (AddOptions pkgdir force) config = do
+addCmd (AddOptions addpkg adddep pkg force) config
+  | addpkg    = addPackageCmd    pkg force config
+  | adddep    = addDependencyCmd pkg force config
+  | otherwise = log Critical "Option --package or --dependency missing!"
+
+--- `add --package` command: copy the given package to the repository index
+--- and package installation directory so that it is available as
+--- any other package.
+addPackageCmd :: String -> Bool -> Config -> IO (ErrorLogger ())
+addPackageCmd pkgdir force config = do
   dirExists <- doesDirectoryExist pkgdir
   if dirExists
     then loadPackageSpec pkgdir |>= \pkgSpec ->
@@ -1002,7 +1023,49 @@ addCmd (AddOptions pkgdir force) config = do
     copyDirectory pkgdir pkgInstallDir
     updateRepositoryCache config
 
-  useForce = "Use option '-f' or '--force' to overwrite it."
+useForce :: String
+useForce = "Use option '-f' or '--force' to overwrite it."
+
+--- `add --dependency` command: add the given package as a new
+--- dependency to the current package.
+addDependencyCmd :: String -> Bool -> Config -> IO (ErrorLogger ())
+addDependencyCmd pkgname force config =
+  readRepository config >>= \repo ->
+  case findLatestVersion config repo pkgname False of
+    Nothing -> failIO $
+                 "Package '" ++ pkgname ++ "' not found in package repository."
+    Just p  -> searchLocalPackageSpec "." |>=
+               maybe (genNewLocalPackage (version p))
+                     (addDepToLocalPackage (version p))
+ where
+  addDepToLocalPackage vers pkgdir =
+    loadPackageSpec pkgdir |>= \pkgSpec ->
+    let depexists = pkgname `elem` dependencyNames pkgSpec
+        newdeps   = addDep [[VGte vers]] (dependencies pkgSpec)
+        newpkg    = pkgSpec { dependencies = newdeps }
+    in if force || not depexists
+         then writePackageSpec newpkg (pkgdir </> "package.json") |>>
+              log Info ("Dependency '" ++ pkgname ++ " >= " ++
+                        showVersion vers ++
+                        "' added to current package specification")
+         else log Critical ("Dependency '" ++ pkgname ++
+                            "' already exists!\n" ++ useForce)
+
+  genNewLocalPackage vers =
+    let newpkg  = emptyPackage { name            = "PSEUDO_PACKAGE"
+                               , version         = initialVersion
+                               , author          = "NN"
+                               , synopsis        = "UNKNOWN"
+                               , dependencies    = addDep [[VGte vers]] []
+                               }
+    in writePackageSpec newpkg "package.json" |>>
+       log Info ("New package specification 'package.json' with dependency '" ++
+                 pkgname ++ " >= " ++ showVersion vers ++ "' generated")
+
+  addDep vcs [] = [Dependency pkgname vcs]
+  addDep vcs (Dependency pn pvcs : deps) =
+    if pn == pkgname then Dependency pn vcs : deps
+                     else Dependency pn pvcs : addDep vcs deps
 
 ------------------------------------------------------------------------------
 --- `doc` command: run `curry doc` on the modules provided as an argument
@@ -1012,20 +1075,20 @@ addCmd (AddOptions pkgdir force) config = do
 docCmd :: DocOptions -> Config -> IO (Repository,GlobalCache)
        -> IO (ErrorLogger ())
 docCmd opts cfg getRepoGC =
-  tryFindLocalPackageSpec "." |>= \specDir ->
+  getLocalPackageSpec "." |>= \specDir ->
   loadPackageSpec specDir |>= \pkg -> do
   let docdir = maybe "cdoc" id (docDir opts)
   absdocdir <- getAbsolutePath docdir
   createDirectoryIfMissing True absdocdir
-  (if docManual opts then genPackageManual opts cfg getRepoGC pkg absdocdir
+  (if docManual opts then genPackageManual opts cfg pkg absdocdir
                      else succeedIO ()) |>
     (if docPrograms opts then genDocForPrograms opts cfg getRepoGC specDir pkg
                          else succeedIO ())
 
 --- Generate manual according to  documentation specification of package.
-genPackageManual :: DocOptions -> Config -> IO (Repository,GlobalCache)
-                 -> Package -> String -> IO (ErrorLogger ())
-genPackageManual _ _ _ pkg outputdir = case documentation pkg of
+genPackageManual :: DocOptions -> Config -> Package -> String
+                 -> IO (ErrorLogger ())
+genPackageManual _ _ pkg outputdir = case documentation pkg of
     Nothing -> succeedIO ()
     Just (PackageDocumentation docdir docmain doccmd) -> do
       let formatcmd = replaceSubString "OUTDIR" outputdir $
@@ -1118,7 +1181,7 @@ genDocForPrograms opts cfg getRepoGC specDir pkg = do
 testCmd :: TestOptions -> Config -> IO (Repository,GlobalCache)
         -> IO (ErrorLogger ())
 testCmd opts cfg getRepoGC =
-  tryFindLocalPackageSpec "." |>= \specDir ->
+  getLocalPackageSpec "." |>= \specDir ->
   loadPackageSpec specDir |>= \pkg -> do
     checkCompiler cfg pkg
     aspecDir <- getAbsolutePath specDir
@@ -1180,7 +1243,7 @@ curryModulesInDir dir = getModules "" dir
 diff :: DiffOptions -> Config -> Repository -> GlobalCache
      -> IO (ErrorLogger ())
 diff opts cfg repo gc =
-  tryFindLocalPackageSpec "." |>= \specDir ->
+  getLocalPackageSpec "." |>= \specDir ->
   loadPackageSpec specDir     |>= \localSpec ->
   let localname  = name localSpec
       localv     = version localSpec
@@ -1226,7 +1289,7 @@ diff opts cfg repo gc =
 exec :: ExecOptions -> Config -> IO (Repository,GlobalCache)
      -> IO (ErrorLogger ())
 exec o cfg getRepoGC =
-  tryFindLocalPackageSpec "." |>= execWithPkgDir o cfg getRepoGC
+  getLocalPackageSpec "." |>= execWithPkgDir o cfg getRepoGC
 
 execWithPkgDir :: ExecOptions -> Config -> IO (Repository,GlobalCache)
                -> String -> IO (ErrorLogger ())
@@ -1254,7 +1317,7 @@ execWithPkgDir o cfg getRepoGC specDir =
 -- Clean auxiliary files in the current package
 cleanPackage :: LogLevel -> IO (ErrorLogger ())
 cleanPackage ll =
-  tryFindLocalPackageSpec "." |>= \specDir ->
+  getLocalPackageSpec "." |>= \specDir ->
   loadPackageSpec specDir     |>= \pkg ->
   let dotcpm   = specDir </> ".cpm"
       srcdirs  = map (specDir </>) (sourceDirsOf pkg)
@@ -1266,7 +1329,8 @@ cleanPackage ll =
   in log ll ("Removing directories: " ++ unwords rmdirs) |>
      (showExecCmd (unwords $ ["rm", "-rf"] ++ rmdirs) >> succeedIO ())
 
---- Creates a new package by asking some questions.
+
+--- Creates a new package.
 newPackage :: NewOptions -> IO (ErrorLogger ())
 newPackage (NewOptions pname) = do
   exists <- doesDirectoryExist pname

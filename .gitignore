@@ -13,6 +13,7 @@ DOC_*
 *.prof
 docs/*.aux
 docs/*.pdf
+docs/*.toc
 docs/*.log
 docs/*.out
 docs/*.synctex.gz

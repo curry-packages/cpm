@@ -10,9 +10,7 @@ module CPM.ErrorLogger
   , levelGte
   , getLogLevel, setLogLevel
   , setWithShowTime
-  , (|>=)
-  , (|>)
-  , (|->)
+  , (|>=), (|>), (|->), (|>>)
   , mapEL
   , foldEL
   , succeedIO
@@ -28,8 +26,7 @@ import Pretty
 import Profile -- for show run-time
 import System (exitWith, system)
 
-infixl 0 |>=
-infixl 0 |>
+infixl 0 |>=, |>, |>>, |->
 
 --- An error logger.
 type ErrorLogger a = ([LogEntry], Either LogEntry a)
@@ -106,6 +103,11 @@ a |-> b = do
       (msgs', _) <- b
       return $ (msgs', err)
     Left m -> return $ ([], Left m)
+
+--- Chains a standard IO action (where the result is ignored)
+--- with an error logger action.
+(|>>) :: IO a -> IO (ErrorLogger b) -> IO (ErrorLogger b)
+a |>> b = (a >> succeedIO ()) |> b
 
 --- Maps an action over a list of values. Fails if one of the actions fails.
 mapEL :: (a -> IO (ErrorLogger b)) -> [a] -> IO (ErrorLogger [b])
