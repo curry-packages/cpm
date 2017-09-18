@@ -101,7 +101,7 @@ runWithArgs opts = do
               Search o -> searchCmd  o config repo
               _ -> do globalCache <- getGlobalCache config repo
                       case optCommand opts of
-                        Deps         -> deps         config repo globalCache
+                        Deps         -> depsCmd      config repo globalCache
                         PkgInfo o    -> infoCmd    o config repo globalCache
                         Checkout o   -> checkout   o config repo globalCache
                         InstallApp o -> installapp o config repo globalCache
@@ -659,8 +659,8 @@ checkExecutables = do
     , "ln"
     , "readlink" ]
 
-deps :: Config -> Repository -> GlobalCache -> IO (ErrorLogger ())
-deps cfg repo gc =
+depsCmd :: Config -> Repository -> GlobalCache -> IO (ErrorLogger ())
+depsCmd cfg repo gc =
   getLocalPackageSpec "." |>= \specDir ->
   resolveDependencies cfg repo gc specDir |>= \result ->
   putStrLn (showResult result) >> succeedIO ()
