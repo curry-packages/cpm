@@ -4,5 +4,6 @@ det-parse https://git.ps.informatik.uni-kiel.de/curry-packages/det-parse.git v0.
 json https://git.ps.informatik.uni-kiel.de/curry-packages/json.git v2.0.0
 cass-analysis https://git.ps.informatik.uni-kiel.de/curry-packages/cass-analysis.git v2.0.0
 cass https://git.ps.informatik.uni-kiel.de/curry-packages/cass.git v2.0.0
+abstract-curry https://git.ps.informatik.uni-kiel.de/curry-packages/abstract-curry.git v2.0.0
 flatcurry https://git.ps.informatik.uni-kiel.de/curry-packages/flatcurry.git v2.0.0
 xml https://git.ps.informatik.uni-kiel.de/curry-packages/xml.git v2.0.0
