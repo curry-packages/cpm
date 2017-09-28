@@ -8,13 +8,14 @@
     "license": "BSD-3-Clause",
     "licenseFile": "LICENSE",
     "dependencies": {
-        "det-parse"    : ">= 0.0.1",
-        "opt-parse"    : ">= 0.0.3",
-        "boxes"        : ">= 0.0.2",
-        "json"         : ">= 0.0.2",
-        "cass-analysis": ">= 0.0.3",
-        "cass"         : ">= 0.0.1",
-        "flatcurry"    : ">= 1.0.0"
+        "abstract-curry": ">= 1.0.0",
+        "det-parse"     : ">= 0.0.1",
+        "opt-parse"     : ">= 0.0.3",
+        "boxes"         : ">= 0.0.2",
+        "json"          : ">= 0.0.2",
+        "cass-analysis" : ">= 0.0.3",
+        "cass"          : ">= 0.0.1",
+        "flatcurry"     : ">= 1.0.0"
     },
     "compilerCompatibility": {
         "pakcs": ">= 1.14.0, < 2.0.0",
