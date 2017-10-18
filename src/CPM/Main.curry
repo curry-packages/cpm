@@ -5,7 +5,6 @@
 module CPM.Main where
 
 import Char         ( toLower )
-import CSV          ( showCSV )
 import Directory    ( doesFileExist, getAbsolutePath, doesDirectoryExist
                     , copyFile, createDirectory, createDirectoryIfMissing
                     , getCurrentDirectory, getDirectoryContents
@@ -20,8 +19,10 @@ import Sort         ( sortBy )
 import System       ( getArgs, getEnviron, setEnviron, unsetEnviron, exitWith
                     , system )
 
-import Boxes (table, render)
+import Boxes        ( table, render )
 import OptParse
+import Text.CSV     ( showCSV )
+
 import CPM.ErrorLogger
 import CPM.FileUtil ( fileInPath, joinSearchPath, safeReadFile, whenFileExists
                     , ifFileExists, inDirectory, removeDirectoryComplete
