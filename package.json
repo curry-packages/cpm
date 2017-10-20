@@ -24,7 +24,7 @@
     },
     "configModule": "CPM.ConfigPackage",
     "executable": {
-        "name": "cpm",
+        "name": "cypm",
         "main": "CPM.Main",
         "options": { "kics2" : ":set rts -T" }
     },

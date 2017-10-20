@@ -131,13 +131,13 @@ createBaseTemp :: IO (ErrorLogger String)
 createBaseTemp = getTemporaryDirectory >>= 
   \tmpDir -> 
     let 
-      tmp = tmpDir </> "cpm" </> "bdiff" 
+      tmp = tmpDir </> "CPM" </> "bdiff" 
     in recreateDirectory tmp >> succeedIO tmp
 
 --- Get temporary directory for the behavior diff.
 getBaseTemp :: IO (ErrorLogger String)
 getBaseTemp = getTemporaryDirectory >>= 
-  \tmpDir -> succeedIO $ tmpDir </> "cpm" </> "bdiff"
+  \tmpDir -> succeedIO $ tmpDir </> "CPM" </> "bdiff"
 
 --- This message is printed before CurryCheck is executed.
 infoText :: String
@@ -506,7 +506,7 @@ addModuleDir dir mod p (ACYCache ps) = case lookup mod ps of
 
 --- Generate a translator function for a type expression. Expects a CTCons.
 ---
---- @param cfg current cpm configuration
+--- @param cfg current CPM configuration
 --- @param repo package repository
 --- @param gc the global package cache
 --- @param info information about the current comparison
@@ -762,7 +762,7 @@ replace' o n (x:xs) | x == o = n : replace' o n xs
 --- module versions and find the functions that have not changed between 
 --- versions.
 --- 
---- @param cfg the cpm configuration
+--- @param cfg the CPM configuration
 --- @param repo the current repository
 --- @param gc the global package cache
 --- @param dirA the directory of the A version of the package 
@@ -1192,7 +1192,7 @@ isPublic (CmtFunc _ _ _ Private _ _) = False
 --- comparison by copying them to the temporary directory and building renamed
 --- versions. 
 ---
---- @param cfg the cpm configuration
+--- @param cfg the CPM configuration
 --- @param repo the package repository
 --- @param gc the global package cache
 --- @param nameA the name of the first package
@@ -1218,7 +1218,7 @@ preparePackages cfg repo gc nameA verA nameB verB =
 --- cache. Copies them to a temporary directory and builds renamed versions of
 --- the packages and all dependencies.
 --- 
---- @param cfg the cpm configuration
+--- @param cfg the CPM configuration
 --- @param repo the package repository
 --- @param gc the global package cache
 --- @param dirA the directory for the first package
@@ -1239,7 +1239,7 @@ preparePackageAndDir cfg repo gc dirA nameB verB = GC.tryFindPackage gc nameB ve
 --- package files to a temporary directory and creates renamed version of the
 --- packages and their dependencies.
 --- 
---- @param cfg the cpm configuration
+--- @param cfg the CPM configuration
 --- @param repo the package repository
 --- @param gc the global package cache
 --- @param dirA the directory containing the first package
@@ -1290,7 +1290,7 @@ versionPrefix pkg = "V_" ++ (showVersion' $ version pkg)
 --- another copy of the package with all its modules and the modules of its 
 --- dependencies prefixed with the given string.
 ---
---- @param cfg the cpm configuration
+--- @param cfg the CPM configuration
 --- @param repo the package repository
 --- @param gc the global package cache
 --- @param pkgDir the package directory to copy from

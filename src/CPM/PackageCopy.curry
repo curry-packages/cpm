@@ -148,7 +148,7 @@ installLocalDependencies cfg repo gc dir =
   copyDependencies cfg gc pkgSpec (resolvedPackages result) dir |>
   succeedIO (pkgSpec, resolvedPackages result)
 
---- Links a directory into the local package cache. Used for `cpm link`.
+--- Links a directory into the local package cache. Used for `cypm link`.
 linkToLocalCache :: String -> String -> IO (ErrorLogger ())
 linkToLocalCache src pkgDir = do
   dirExists <- doesDirectoryExist src
@@ -196,7 +196,7 @@ resolveAndCopyDependenciesForPackage cfg repo gc dir pkgSpec =
         missingDeps = GC.missingPackages gc deps 
         failMsg = "Missing dependencies " 
                   ++ (intercalate "," $ map packageId missingDeps) 
-                  ++ "\nUse `cpm install` to install missing dependencies."
+                  ++ "\nUse `cypm install` to install missing dependencies."
     in if length missingDeps > 0
          then failIO failMsg
          else copyDependencies cfg gc pkgSpec deps dir |>= \_ ->
