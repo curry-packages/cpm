@@ -47,13 +47,13 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 19/09/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 20/10/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
 main = do
   args <- getArgs
-  parseResult <- return $ parse (intercalate " " args) optionParser "cpm"
+  parseResult <- return $ parse (intercalate " " args) optionParser "cypm"
   case parseResult of
     Left err -> do putStrLn cpmBanner
                    putStrLn err
@@ -61,7 +61,7 @@ main = do
                    exitWith 1
     Right  r -> case applyParse r of
       Left err   -> do putStrLn cpmBanner
-                       --printUsage "cpm" 80 optionParser
+                       --printUsage "cypm" 80 optionParser
                        putStrLn err
                        exitWith 1
       Right opts -> runWithArgs opts
@@ -72,7 +72,7 @@ runWithArgs opts = do
   missingExecutables <- checkExecutables
   unless (null missingExecutables) $ do
       putStrLn $ "The following programs could not be found on the PATH " ++
-                 "(they are required for cpm to work):\n" ++
+                 "(they are required for CPM to work):\n" ++
                  intercalate ", " missingExecutables
       exitWith 1
   config <- readConfigurationWithDefault (optDefConfig opts) >>= \c ->
@@ -489,7 +489,7 @@ optionParser = optParser
         arg (\s a -> Right $ a { optCommand = PkgInfo (infoOpts a)
                                                 { infoPackage = Just s } })
           (  metavar "PACKAGE"
-          <> help ("The package name. If no name is specified, cpm tries " ++
+          <> help ("The package name. If no name is specified, CPM tries " ++
                    "to read a package specification in the current directory.")
           <> optional) 
     <.> arg (\s a -> readVersion' s >.> \v -> a
@@ -497,7 +497,7 @@ optionParser = optParser
                                                   { infoVersion = Just v } })
           (  metavar "VERSION"
           <> help ("The package version. If no version is specified, " ++
-                   "cpm uses the latest version of the specified package.")
+                   "CPM uses the latest version of the specified package.")
           <> optional )
     <.> flag (\a -> Right $ a { optCommand = PkgInfo (infoOpts a)
                                                { infoAll = True } })
@@ -552,7 +552,7 @@ optionParser = optParser
                  a { optCommand = Diff (diffOpts a) { diffVersion = Just v } })
            (  metavar "VERSION"
            <> help ("The other package version. If no version is specified, " ++
-                    "cpm diffs against the latest repository version.")
+                    "CPM diffs against the latest repository version.")
            <> optional )
    <.> option (\s a -> Right $ a { optCommand = Diff (diffOpts a)
                                      { diffModules = Just $ splitOn "," s } })
@@ -936,10 +936,10 @@ showVersionIfCompatible cfg p =
   in if isCompatibleToCompiler cfg p then s else '(' : s ++ ")"
 
 cpmInfo :: String
-cpmInfo = "Use 'cpm info PACKAGE' for more information about a package."
+cpmInfo = "Use 'cypm info PACKAGE' for more information about a package."
 
 cpmUpdate :: String
-cpmUpdate = "Use 'cpm update' to download the newest package index."
+cpmUpdate = "Use 'cypm update' to download the newest package index."
 
 
 --- Search in all (compiler-compatible) packages in the given repository.
@@ -1371,12 +1371,12 @@ newPackage (NewOptions pname) = do
     , "- add further fields (e.g., 'description')"
     , "- review field 'license' (and adapt file 'LICENSE')"
     , ""
-    , "Then run 'cpm install' to install all dependencies and"
+    , "Then run 'cypm install' to install all dependencies and"
     , "put your program code in directory 'src'"
     , "(where you find a template file 'Main.curry')"
     , ""
     , "Run the main program with:"
-    , "> cpm curry :load Main :eval main :quit"
+    , "> cypm curry :load Main :eval main :quit"
     ]
 
 ---------------------------------------------------------------------------

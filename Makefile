@@ -5,7 +5,7 @@ CURRYROOT := $(shell curry :set v0 :set -time :add Distribution :eval "putStrLn 
 export CURRY = $(CURRYROOT)/bin/curry
 
 # The tool name of the application:
-TOOL = $(HOME)/.cpm/bin/cpm
+TOOL = $(HOME)/.cpm/bin/cypm
 
 # The compiler name (e.g., pakcs or kics2):
 CURRYCOMPILER := $(shell $(CURRY) :set v0 :set -time :add Distribution :eval "putStrLn curryCompiler" :quit)
