@@ -6,11 +6,11 @@ This repository contains the Curry package manager (CPM).
 
 To build the Curry package manager, you need to run `make` inside this 
 directory. The `Makefile` assumes that the `curry` executable and `git` are on
-your path. If the build was successful, a `cpm` binary will be placed in the 
+your path. If the build was successful, a `cypm` binary will be placed in the 
 directory `~/.cpm/bin` (which is also the directory where CPM installs
 binaries of tools distributed in packages). Therefore, you should
 add this directory to your path. Afterwards, run 
-`cpm update` to clone a copy of the central package index repository. More 
+`cypm update` to clone a copy of the central package index repository. More 
 information can be found in the manual, see the `docs` directory.
 
 ## Documentation
