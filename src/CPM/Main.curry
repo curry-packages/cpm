@@ -48,13 +48,13 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 20/10/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 25/10/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
 main = do
   args <- getArgs
-  parseResult <- return $ parse (intercalate " " args) optionParser "cypm"
+  parseResult <- return $ parse (unwords args) (optionParser args) "cypm"
   case parseResult of
     Left err -> do putStrLn cpmBanner
                    putStrLn err
@@ -62,7 +62,7 @@ main = do
                    exitWith 1
     Right  r -> case applyParse r of
       Left err   -> do putStrLn cpmBanner
-                       --printUsage "cypm" 80 optionParser
+                       --printUsage "cypm" 80 (optionParser args)
                        putStrLn err
                        exitWith 1
       Right opts -> runWithArgs opts
@@ -337,8 +337,8 @@ a >.> f = case a of
   Left err -> Left err
   Right  v -> Right $ f v
 
-optionParser :: ParseSpec (Options -> Either String Options)
-optionParser = optParser 
+optionParser :: [String] -> ParseSpec (Options -> Either String Options)
+optionParser allargs = optParser 
   (   option (\s a -> readLogLevel s >.> \ll -> a { optLogLevel = ll })
         (  long "verbosity"
         <> short "v"
@@ -474,17 +474,21 @@ optionParser = optParser
 
   curryArgs =
     rest (\s a -> Right $ a { optCommand = Compiler (compOpts a)
-                                                    { comCommand = s } })
+                                            { comCommand = unwords remargs } })
          (  metavar "ARGS"
          <> help "The options to pass to the compiler"
          <> optional )
+    where
+     remargs = tail (snd (break (=="curry") allargs))
 
   execArgs =
-    rest (\s a -> Right $ a { optCommand = Exec (execOpts a)
-                                                { exeCommand = s } })
+    rest (\_ a -> Right $ a { optCommand = Exec (execOpts a)
+                                            { exeCommand = unwords remargs } })
          (  metavar "CMD"
          <> help "The command to execute. Don't forget the quotes!"
          <> optional )
+    where
+     remargs = tail (snd (break (=="exec") allargs))
 
   infoArgs =
         arg (\s a -> Right $ a { optCommand = PkgInfo (infoOpts a)
