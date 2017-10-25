@@ -472,7 +472,7 @@ optionParser allargs = optParser
        <> help "The name of the new project" )
 
   curryArgs =
-    rest (\s a -> Right $ a { optCommand = Compiler (compOpts a)
+    rest (\_ a -> Right $ a { optCommand = Compiler (compOpts a)
                                             { comCommand = unwords remargs } })
          (  metavar "ARGS"
          <> help "The options to pass to the compiler"
