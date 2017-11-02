@@ -8,24 +8,24 @@ module CPM.Config
   ( Config ( Config, packageInstallDir, binInstallDir, repositoryDir
            , appPackageDir, packageIndexRepository, curryExec
            , compilerVersion )
-  , readConfiguration, readConfigurationWithDefault, defaultConfig
-  , showCompilerVersion ) where
+  , readConfigurationWith, defaultConfig
+  , showConfiguration, showCompilerVersion ) where
 
-import Char         (toUpper)
-import Directory    (getHomeDirectory, createDirectoryIfMissing)
-import Distribution (installDir, curryCompiler, curryCompilerMinorVersion
-                    , curryCompilerMajorVersion)
-import FilePath     ((</>))
-import Function     ((***))
-import IOExts       (evalCmd)
-import List         (split, splitOn, intersperse)
-import Maybe        (mapMaybe)
-import PropertyFile (readPropertyFile)
-import Read         (readInt)
+import Char         ( toUpper )
+import Directory    ( getHomeDirectory, createDirectoryIfMissing )
+import Distribution ( installDir, curryCompiler, curryCompilerMinorVersion
+                    , curryCompilerMajorVersion )
+import FilePath     ( (</>), isAbsolute )
+import Function     ( (***) )
+import IOExts       ( evalCmd )
+import List         ( split, splitOn, intersperse )
+import Maybe        ( mapMaybe )
+import PropertyFile ( readPropertyFile )
+import Read         ( readInt )
 
 import CPM.ErrorLogger
-import CPM.FileUtil (ifFileExists)
-import CPM.Helpers  (strip)
+import CPM.FileUtil ( ifFileExists, getFileInPath )
+import CPM.Helpers  ( strip )
 
 --- The location of the central package index.
 packageIndexURI :: String
@@ -66,21 +66,51 @@ defaultConfig = Config
                               curryCompilerMinorVersion)
   }
 
+--- Shows the configuration.
+showConfiguration :: Config -> String
+showConfiguration cfg = unlines
+  [ "Current configuration:"
+  , "Compiler version  : " ++ showCompilerVersion cfg
+  , "CURRYBIN          : " ++ curryExec         cfg
+  , "REPOSITORYPATH    : " ++ repositoryDir     cfg
+  , "PACKAGEINSTALLPATH: " ++ packageInstallDir cfg
+  , "BININSTALLPATH    : " ++ binInstallDir     cfg
+  , "APPPACKAGEPATH    : " ++ appPackageDir     cfg
+  ]
+  
 --- Shows the compiler version in the configuration.
 showCompilerVersion :: Config -> String
 showCompilerVersion cfg =
   let (cname,cmaj,cmin) = compilerVersion cfg
   in cname ++ ' ' : show cmaj ++ "." ++ show cmin
 
+--- Sets an existing compiler executable in the configuration.
+--- Try to use the predefined CURRYBIN value.
+--- If it is an absolute path name but does not exists,
+--- try to find the executable "curry" in the path.
+setCompilerExecutable :: Config -> IO Config
+setCompilerExecutable cfg = do
+  let exec = curryExec cfg
+  if isAbsolute exec
+    then ifFileExists exec (return cfg) (findExecutable "curry")
+    else findExecutable exec
+ where
+  findExecutable exec =
+    getFileInPath exec >>=
+    maybe (error $ "Executable '" ++ exec ++ "' not found in path!")
+          (\absexec -> return cfg { curryExec = absexec })
+
 --- Sets the correct compiler version in the configuration.
 setCompilerVersion :: Config -> IO Config
-setCompilerVersion cfg =
+setCompilerVersion cfg0 = do
+  cfg <- setCompilerExecutable cfg0
   if curryExec cfg == installDir </> "bin" </> curryCompiler
     then return cfg { compilerVersion = currVersion }
-    else do (c1,sname,_) <- evalCmd (curryExec cfg) ["--compiler-name"] ""
-            (c2,svers,_) <- evalCmd (curryExec cfg) ["--numeric-version"] ""
+    else do (c1,sname,e1) <- evalCmd (curryExec cfg) ["--compiler-name"] ""
+            (c2,svers,e2) <- evalCmd (curryExec cfg) ["--numeric-version"] ""
             when (c1 > 0 || c2 > 0) $
-              error $ "Cannot determine compiler version"
+              error $ "Cannot determine compiler version:\n" ++
+                      unlines (filter (not . null) [e1,e2])
             let cname = strip sname
                 cvers = strip svers
                 (majs:mins:_) = split (=='.') cvers
@@ -90,24 +120,18 @@ setCompilerVersion cfg =
   currVersion = (curryCompiler, curryCompilerMajorVersion,
                                 curryCompilerMinorVersion)
 
---- Reads the .cpmrc file from the user's home directory (if present) and merges
---- its contents into the default configuration. Resolves the $HOME variable 
---- after merging and creates any missing directories.
---- May return an error using Left.
-readConfiguration :: IO (Either String Config)
-readConfiguration = readConfigurationWithDefault []
-
---- Reads the .cpmrc file from the user's home directory (if present) and merges
---- its contents and some given default settings into the default configuration.
+--- Reads the .cpmrc file from the user's home directory (if present) and
+--- merges its contents and some given default settings (first argument)
+--- into the configuration used by CPM.
 --- Resolves the $HOME variable after merging and creates
---- any missing directories. May return an error using Left.
-readConfigurationWithDefault :: [(String,String)] -> IO (Either String Config)
-readConfigurationWithDefault defsettings = do
+--- any missing directories. May return an error using `Left`.
+readConfigurationWith :: [(String,String)] -> IO (Either String Config)
+readConfigurationWith defsettings = do
   home <- getHomeDirectory
   configFile <- return $ home </> ".cpmrc"
   settingsFromFile <-
     ifFileExists configFile
-                 (readPropertyFile configFile >>= \p -> return $ stripProps p)
+                 (readPropertyFile configFile >>= return . stripProps)
                  (return [])
   let mergedSettings = mergeConfigSettings defaultConfig
                          (settingsFromFile ++ stripProps defsettings)
