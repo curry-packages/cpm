@@ -28,7 +28,8 @@ import CPM.FileUtil ( fileInPath, joinSearchPath, safeReadFile, whenFileExists
                     , ifFileExists, inDirectory, removeDirectoryComplete
                     , copyDirectory, quote )
 import CPM.Config   ( Config (..)
-                    , readConfigurationWithDefault, showCompilerVersion )
+                    , readConfigurationWith, showCompilerVersion
+                    , showConfiguration )
 import CPM.PackageCache.Global ( GlobalCache, readInstalledPackagesFromDir
                                , installFromZip, checkoutPackage
                                , uninstallPackage )
@@ -48,7 +49,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 25/10/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 02/11/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -76,19 +77,20 @@ runWithArgs opts = do
                  "(they are required for CPM to work):\n" ++
                  intercalate ", " missingExecutables
       exitWith 1
-  config <- readConfigurationWithDefault (optDefConfig opts) >>= \c ->
+  config <- readConfigurationWith (optDefConfig opts) >>= \c ->
    case c of
     Left err -> do putStrLn $ "Error reading .cpmrc settings: " ++ err
                    exitWith 1
     Right c' -> return c'
+  setLogLevel $ optLogLevel opts
+  debugMessage (showConfiguration config)
   let getRepoGC = readRepository config >>= \repo ->
                   getGlobalCache config repo >>= \gc -> return (repo,gc)
-  setLogLevel $ optLogLevel opts
   (msgs, result) <- case optCommand opts of
     NoCommand   -> failIO "NoCommand"
     Update      -> updateRepository config
     Compiler o  -> compiler  o config getRepoGC
-    Exec o      -> exec      o config getRepoGC
+    Exec o      -> execCmd   o config getRepoGC
     Doc  o      -> docCmd    o config getRepoGC
     Test o      -> testCmd   o config getRepoGC
     Uninstall o -> uninstall o config getRepoGC
@@ -1291,9 +1293,9 @@ diff opts cfg repo gc =
       else succeedIO ()
 
 
-exec :: ExecOptions -> Config -> IO (Repository,GlobalCache)
+execCmd :: ExecOptions -> Config -> IO (Repository,GlobalCache)
      -> IO (ErrorLogger ())
-exec o cfg getRepoGC =
+execCmd o cfg getRepoGC =
   getLocalPackageSpec "." |>= execWithPkgDir o cfg getRepoGC
 
 execWithPkgDir :: ExecOptions -> Config -> IO (Repository,GlobalCache)
