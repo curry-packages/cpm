@@ -309,6 +309,7 @@ readLogLevel :: String -> Either String LogLevel
 readLogLevel s = case map toLower s of
   "debug" -> Right Debug
   "info"  -> Right Info
+  "quiet" -> Right Quiet
   _       -> Left $ "Illegal verbosity value: " ++ s
 
 readRcOption :: String -> Either String (String,String)
@@ -341,10 +342,10 @@ a >.> f = case a of
 optionParser :: [String] -> ParseSpec (Options -> Either String Options)
 optionParser allargs = optParser 
   (   option (\s a -> readLogLevel s >.> \ll -> a { optLogLevel = ll })
-        (  long "verbosity"
-        <> short "v"
-        <> metavar "LEVEL"
-        <> help "Log level for the application. Valid values are 'info' and 'debug'." )
+       (  long "verbosity"
+       <> short "v"
+       <> metavar "LEVEL"
+       <> help "Log level for the application. Valid values: info|debug|quiet" )
   <.> option (\s a -> readRcOption s >.> \kv ->
                       a { optDefConfig = optDefConfig a ++ [kv] })
         (  long "define"

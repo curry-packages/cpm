@@ -38,7 +38,8 @@ logLevelOf :: LogEntry -> LogLevel
 logLevelOf (LogEntry ll _) = ll
 
 --- A log level.
-data LogLevel = Info
+data LogLevel = Quiet
+              | Info
               | Debug
               | Error
               | Critical
@@ -141,6 +142,7 @@ showLogEntry (LogEntry lvl msg) = do
     else return ()
  where
   lvlText = case lvl of
+    Quiet    -> text "QUIET "  -- show not occur...
     Info     -> text "INFO "
     Debug    -> green $ text "DEBUG "
     Critical -> red   $ text "CRITICAL "
@@ -149,19 +151,28 @@ showLogEntry (LogEntry lvl msg) = do
 --- Compares two log levels.
 levelGte :: LogLevel -> LogLevel -> Bool
 levelGte Debug Debug    = True
+levelGte Debug Quiet    = False
 levelGte Debug Info     = False
 levelGte Debug Error    = False
 levelGte Debug Critical = False
 levelGte Info  Debug    = True
 levelGte Info  Info     = True
+levelGte Info  Quiet    = False
 levelGte Info  Error    = False
 levelGte Info  Critical = False
+levelGte Quiet Debug    = True
+levelGte Quiet Quiet    = True
+levelGte Quiet Info     = False
+levelGte Quiet Error    = False
+levelGte Quiet Critical = False
 levelGte Error Debug    = True
 levelGte Error Info     = True
+levelGte Error Quiet    = True
 levelGte Error Error    = True
 levelGte Error Critical = True
 levelGte Critical Debug = True
 levelGte Critical Info  = True
+levelGte Critical Quiet = True
 levelGte Critical Error = True
 levelGte Critical Critical = True
 
