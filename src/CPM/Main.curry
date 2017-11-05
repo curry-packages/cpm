@@ -69,25 +69,20 @@ main = do
 
 runWithArgs :: Options -> IO ()
 runWithArgs opts = do
+  setLogLevel $ optLogLevel opts
   setWithShowTime (optWithTime opts)
-  missingExecutables <- checkExecutables
-  unless (null missingExecutables) $ do
-      putStrLn $ "The following programs could not be found on the PATH " ++
-                 "(they are required for CPM to work):\n" ++
-                 intercalate ", " missingExecutables
-      exitWith 1
+  debugMessage "Reading CPM configuration..."
   config <- readConfigurationWith (optDefConfig opts) >>= \c ->
    case c of
     Left err -> do putStrLn $ "Error reading .cpmrc settings: " ++ err
                    exitWith 1
     Right c' -> return c'
-  setLogLevel $ optLogLevel opts
   debugMessage (showConfiguration config)
   let getRepoGC = readRepository config >>= \repo ->
                   getGlobalCache config repo >>= \gc -> return (repo,gc)
   (msgs, result) <- case optCommand opts of
     NoCommand   -> failIO "NoCommand"
-    Update      -> updateRepository config
+    Update      -> checkRequiredExecutables >> updateRepository config
     Compiler o  -> compiler  o config getRepoGC
     Exec o      -> execCmd   o config getRepoGC
     Doc  o      -> docCmd    o config getRepoGC
@@ -662,11 +657,18 @@ optionParser allargs = optParser
            <> help "The package directory or name to be added" )
 
 -- Check if operating system executables we depend on are present on the
--- current system.
-checkExecutables :: IO [String]
-checkExecutables = do
-  present <- mapIO fileInPath listOfExecutables
-  return $ map fst $ filter (not . snd) (zip listOfExecutables present)
+-- current system. Since this takes some time, it is only checked with
+-- the `update` command.
+checkRequiredExecutables :: IO ()
+checkRequiredExecutables = do
+  debugMessage "Checking whether all required executables can be found..."
+  missingExecutables <- checkExecutables listOfExecutables
+  unless (null missingExecutables) $ do
+      putStrLn $ "The following programs could not be found on the PATH " ++
+                 "(they are required for CPM to work):\n" ++
+                 intercalate ", " missingExecutables
+      exitWith 1
+  debugMessage "All required executables found."
  where
   listOfExecutables = 
     [ "curl"  
@@ -676,6 +678,12 @@ checkExecutables = do
     , "rm"
     , "ln"
     , "readlink" ]
+
+checkExecutables :: [String] -> IO [String]
+checkExecutables executables = do
+  present <- mapIO fileInPath executables
+  return $ map fst $ filter (not . snd) (zip executables present)
+
 
 depsCmd :: DepsOptions -> Config -> IO (Repository,GlobalCache)
         -> IO (ErrorLogger ())
@@ -1292,8 +1300,9 @@ compiler o cfg getRepoGC =
   getLocalPackageSpec "." |>= \pkgdir ->
   loadPackageSpec pkgdir |>= \pkg ->
   checkCompiler cfg pkg >>
-  execWithPkgDir (ExecOptions $ curryExec cfg ++ " " ++ exeCommand o)
-                 cfg getRepoGC pkgdir
+  execWithPkgDir
+    (ExecOptions $ unwords [curryExec cfg, "--nocypm", exeCommand o])
+    cfg getRepoGC pkgdir
 
 execCmd :: ExecOptions -> Config -> IO (Repository,GlobalCache)
         -> IO (ErrorLogger ())
