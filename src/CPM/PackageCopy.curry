@@ -210,12 +210,14 @@ resolveDependencies cfg repo gc dir = loadPackageSpec dir |->
   \pkgSpec -> resolveDependenciesForPackageCopy cfg pkgSpec repo gc dir
 
 --- Renders information on a package.
-renderPackageInfo :: Bool -> Bool -> GC.GlobalCache -> Package -> String
-renderPackageInfo allinfos plain gc pkg = pPrint doc
+renderPackageInfo :: Bool -> Bool -> Maybe Bool -> Package -> String
+renderPackageInfo allinfos plain mbinstalled pkg = pPrint doc
  where
   boldText s = (if plain then id else bold) $ text s
   maxLen = 12
-  doc = vcat $ [ heading, rule, installed, ver, auth, maintnr, synop
+  doc = vcat $ [ heading, rule
+               , maybe empty instTxt mbinstalled
+               , ver, auth, maintnr, synop
                , cats, deps, compilers, descr, execspec ] ++
                if allinfos
                  then [ srcdirs, expmods, cfgmod ] ++ testsuites ++
@@ -224,11 +226,10 @@ renderPackageInfo allinfos plain gc pkg = pPrint doc
                  else []
 
   pkgId = packageId pkg
-  isInstalled = GC.isPackageInstalled gc pkg
 
   heading   = text pkgId 
-  installed = if isInstalled || plain then empty
-                                      else red $ text "Not installed"
+  instTxt i = if i || plain then empty
+                            else red $ text "Not installed"
   rule      = text (take (length pkgId) $ repeat '-')
   ver       = fill maxLen (boldText "Version") <+>
               (text $ showVersion $ version pkg)

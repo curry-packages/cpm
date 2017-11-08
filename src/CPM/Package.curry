@@ -42,16 +42,18 @@ module CPM.Package
   ) where
 
 import Char
-import List (intercalate, intersperse, isInfixOf, splitOn)
-import FilePath ((</>))
-import SetFunctions
+import Either
+import FilePath    ( (</>) )
+import IOExts      ( readCompleteFile )
 import JSON.Data
 import JSON.Parser
-import JSON.Pretty (ppJSON)
-import Either
+import JSON.Pretty ( ppJSON )
+import List        ( intercalate, intersperse, isInfixOf, splitOn )
+import Read        ( readInt )
+import SetFunctions
 import Test.EasyCheck
+
 import DetParse
-import Read (readInt)
 
 import CPM.ErrorLogger
 import CPM.FileUtil (ifFileExists)
@@ -304,7 +306,7 @@ loadPackageSpec dir = do
   let packageFile = dir </> "package.json"
   ifFileExists packageFile
     (do debugMessage $ "Reading package specification '" ++ packageFile ++ "'..."
-        contents <- readFile packageFile
+        contents <- readCompleteFile packageFile
         case readPackageSpec contents of
           Left err -> failIO err
           Right v  -> succeedIO v )
