@@ -22,17 +22,18 @@ module CPM.PackageCache.Local
   ) where
 
 import Debug
-import Directory (createDirectoryIfMissing, copyFile, getAbsolutePath
-                 , getDirectoryContents, doesDirectoryExist, doesFileExist)
-import Either (rights)
-import FilePath ((</>)) 
-import List (isPrefixOf)
+import Directory ( createDirectoryIfMissing, copyFile, getAbsolutePath
+                 , getDirectoryContents, doesDirectoryExist, doesFileExist )
+import Either    ( rights )
+import FilePath  ( (</>) ) 
+import IOExts    ( readCompleteFile )
+import List      ( isPrefixOf )
 
-import CPM.Config (Config, packageInstallDir)
+import CPM.Config     ( Config, packageInstallDir )
 import CPM.ErrorLogger
-import CPM.FileUtil (isSymlink, removeSymlink, createSymlink, linkTarget)
-import CPM.Package (Package, packageId, readPackageSpec)
-import CPM.PackageCache.Global (installedPackageDir)
+import CPM.FileUtil   ( isSymlink, removeSymlink, createSymlink, linkTarget )
+import CPM.Package    ( Package, packageId, readPackageSpec )
+import CPM.PackageCache.Global ( installedPackageDir )
 
 --- The cache directory of the local package cache.
 ---
@@ -53,7 +54,7 @@ allPackages pkgDir = do
       let pkgDirs = filter (not . isPrefixOf ".") cdircont
       pkgPaths <- mapIO removeIfIllegalSymLink $ map (cdir </>) pkgDirs
       specPaths <- return $ map (</> "package.json") $ concat pkgPaths
-      specs <- mapIO (readPackageSpecIO . readFile) specPaths
+      specs <- mapIO (readPackageSpecIO . readCompleteFile) specPaths
       succeedIO $ rights specs
     else succeedIO []
  where

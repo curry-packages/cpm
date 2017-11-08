@@ -32,7 +32,7 @@ import CPM.Config   ( Config (..)
                     , showConfiguration )
 import CPM.PackageCache.Global ( GlobalCache, readInstalledPackagesFromDir
                                , installFromZip, checkoutPackage
-                               , uninstallPackage )
+                               , uninstallPackage, isPackageInstalled )
 import CPM.Package
 import CPM.Resolution ( isCompatibleToCompiler, showResult )
 import CPM.Repository ( Repository, readRepository, findVersion, listPackages
@@ -90,6 +90,7 @@ runWithArgs opts = do
     Test o      -> testCmd   o config getRepoGC
     Uninstall o -> uninstall o config getRepoGC
     Deps o      -> depsCmd   o config getRepoGC
+    PkgInfo   o -> infoCmd   o config getRepoGC
     Link o      -> linkCmd   o config
     Add  o      -> addCmd    o config
     Clean       -> cleanPackage Info
@@ -100,12 +101,12 @@ runWithArgs opts = do
               Search o -> searchCmd  o config repo
               _ -> do globalCache <- getGlobalCache config repo
                       case optCommand opts of
-                        PkgInfo o    -> infoCmd    o config repo globalCache
-                        Checkout o   -> checkout   o config repo globalCache
+                        --PkgInfo    o -> infoCmd    o config repo globalCache
+                        Checkout   o -> checkout   o config repo globalCache
                         InstallApp o -> installapp o config repo globalCache
-                        Install o    -> install    o config repo globalCache
-                        Diff o       -> diff       o config repo globalCache
-                        Upgrade o    -> upgrade    o config repo globalCache
+                        Install    o -> install    o config repo globalCache
+                        Diff       o -> diff       o config repo globalCache
+                        Upgrade    o -> upgrade    o config repo globalCache
                         _ -> error "Internal command processing error!"
   mapIO showLogEntry msgs
   let allOk =  all (levelGte Info) (map logLevelOf msgs) &&
@@ -701,30 +702,46 @@ depsCmd opts cfg getRepoGC =
          resolveDependencies cfg repo gc specDir |>= \result ->
          putStrLn (showResult result) >> succeedIO ()
 
-infoCmd :: InfoOptions -> Config -> Repository -> GlobalCache
+------------------------------------------------------------------------------
+-- `info` command:
+infoCmd :: InfoOptions -> Config -> IO (Repository,GlobalCache)
         -> IO (ErrorLogger ())
-infoCmd (InfoOptions Nothing Nothing allinfos plain) _ _ gc =
-  getLocalPackageSpec "." |>= \specDir ->
-  loadPackageSpec specDir |>= printInfo allinfos plain gc
-infoCmd (InfoOptions (Just pkg) Nothing allinfos plain) cfg repo gc =
+infoCmd opts cfg getRepoGC = case (infoPackage opts, infoVersion opts) of
+  (Nothing, Just _) -> failIO "Must specify package name"
+  (Nothing, Nothing) ->
+     getLocalPackageSpec "." |>= \specDir ->
+     loadPackageSpec specDir |>= \p -> 
+     let allinfos = infoAll opts
+     in if allinfos
+          then getRepoGC >>= \ (_,gc) ->
+               printInfo (infoAll opts) (infoPlain opts)
+                         (Just (isPackageInstalled gc p)) p
+          else printInfo (infoAll opts) (infoPlain opts) Nothing p
+  (Just pkg, mbvers) ->
+    getRepoGC >>= \ (repo,gc) ->
+    infoCmdRepoGC pkg mbvers (infoAll opts) (infoPlain opts) cfg repo gc
+
+infoCmdRepoGC :: String -> Maybe Version -> Bool -> Bool -> Config
+              -> Repository -> GlobalCache -> IO (ErrorLogger ())
+infoCmdRepoGC pkg Nothing allinfos plain cfg repo gc =
   case findLatestVersion cfg repo pkg False of
-   Nothing -> failIO $
-                "Package '" ++ pkg ++ "' not found in package repository."
-   Just p  -> printInfo allinfos plain gc p
-infoCmd (InfoOptions (Just pkg) (Just v) allinfos plain) _ repo gc =
- case findVersion repo pkg v of
-   Nothing -> failIO $ "Package '" ++ pkg ++ "-" ++ showVersion v ++
-                       "' not found in package repository."
-   Just p  -> printInfo allinfos plain gc p
-infoCmd (InfoOptions Nothing (Just _) _ _) _ _ _ =
-  failIO "Must specify package name"
+    Nothing -> failIO $
+                 "Package '" ++ pkg ++ "' not found in package repository."
+    Just p  -> printInfo allinfos plain (Just (isPackageInstalled gc p)) p
+infoCmdRepoGC pkg (Just v) allinfos plain _ repo gc =
+  case findVersion repo pkg v of
+    Nothing -> failIO $ "Package '" ++ pkg ++ "-" ++ showVersion v ++
+                        "' not found in package repository."
+    Just p  -> printInfo allinfos plain (Just (isPackageInstalled gc p)) p
 
-printInfo :: Bool -> Bool -> GlobalCache -> Package
+printInfo :: Bool -> Bool -> Maybe Bool -> Package
           -> IO (ErrorLogger ())
-printInfo allinfos plain gc pkg =
-  putStrLn (renderPackageInfo allinfos plain gc pkg) >> succeedIO ()
+printInfo allinfos plain mbinstalled pkg =
+  putStrLn (renderPackageInfo allinfos plain mbinstalled pkg) >> succeedIO ()
 
 
+------------------------------------------------------------------------------
+-- `checkout` command:
 checkout :: CheckoutOptions -> Config -> Repository -> GlobalCache
          -> IO (ErrorLogger ())
 checkout (CheckoutOptions pkg Nothing pre) cfg repo gc =

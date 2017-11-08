@@ -25,11 +25,12 @@ module CPM.PackageCache.Global
 
 import Directory
 import Either
+import IOExts       ( readCompleteFile )
 import List
 import Maybe (isJust)
 import FilePath
 
-import CPM.Config (Config, packageInstallDir)
+import CPM.Config   ( Config, packageInstallDir )
 import CPM.ErrorLogger
 import CPM.FileUtil ( copyDirectory, inTempDir, recreateDirectory, inDirectory
                     , removeDirectoryComplete, tempDir
@@ -290,7 +291,7 @@ readInstalledPackagesFromDir repo path = do
   readPackageSpecFromFile pkgdir = do
     let f = path </> pkgdir </> "package.json"
     debugMessage $ "Reading package spec from '" ++ f ++ "'..."
-    spec <- readPackageSpecIO $ readFile f
+    spec <- readPackageSpecIO $ readCompleteFile f
     return $ case spec of
       Left err -> Left $ err ++ " for file '" ++ f ++ "'"
       Right  v -> Right v

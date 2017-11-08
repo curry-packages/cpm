@@ -25,6 +25,7 @@ import Directory
 import Either
 import FilePath
 import IO
+import IOExts       ( readCompleteFile )
 import List
 import ReadShowTerm ( showQTerm, readQTerm )
 import System       ( exitWith )
@@ -160,7 +161,7 @@ readRepositoryFrom path = do
   readPackageSpecIO = liftIO readPackageSpec
 
   readPackageFile f = do
-    spec <- readPackageSpecIO $ readFile f
+    spec <- readPackageSpecIO $ readCompleteFile f
     return $ case spec of
       Left err -> Left $ "Problem reading '" ++ f ++ "': " ++ err
       Right  s -> Right s
