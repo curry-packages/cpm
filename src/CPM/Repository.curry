@@ -20,7 +20,7 @@ module CPM.Repository
   , updateRepositoryCache
   ) where
 
-import Char         ( toLower )
+import Char         ( toLower, toUpper )
 import Directory
 import Either
 import FilePath
@@ -30,12 +30,13 @@ import List
 import ReadShowTerm ( showQTerm, readQTerm )
 import System       ( exitWith )
 
-import CPM.Config        ( Config, repositoryDir, packageIndexRepository )
+import CPM.Config        ( Config, repositoryDir, packageIndexRepository
+                         , packageInstallDir )
 import CPM.ConfigPackage ( packageVersion )
 import CPM.ErrorLogger
 import CPM.Package
 import CPM.FileUtil      ( checkAndGetDirectoryContents, inDirectory
-                         , whenFileExists )
+                         , whenFileExists, removeDirectoryComplete )
 import CPM.Resolution    ( isCompatibleToCompiler )
 
 data Repository = Repository [Package]
@@ -167,12 +168,17 @@ readRepositoryFrom path = do
       Right  s -> Right s
 
   dirOrSpec d = (not $ isPrefixOf "." d) && takeExtension d /= ".md" &&
-                (not $ isPrefixOf repositoryCacheFileName d)
+                (not $ isPrefixOf repositoryCacheFileName (map toUpper d))
 
 --- Updates the package index from the central Git repository.
+--- Cleans also the global package cache in order to support
+--- downloading the newest versions.
 updateRepository :: Config -> IO (ErrorLogger ())
 updateRepository cfg = do
   cleanRepositoryCache cfg
+  debugMessage $ "Deleting global package cache: '" ++
+                 packageInstallDir cfg ++ "'"
+  removeDirectoryComplete (packageInstallDir cfg)
   gitExists <- doesDirectoryExist $ (repositoryDir cfg) </> ".git"
   if gitExists 
     then do
@@ -197,7 +203,7 @@ updateRepository cfg = do
 
 --- The local file name containing the repository cache as a Curry term.
 repositoryCacheFileName :: String
-repositoryCacheFileName = "repository_cache"
+repositoryCacheFileName = "REPOSITORY_CACHE"
 
 --- The file containing the repository cache as a Curry term.
 repositoryCache :: Config -> String

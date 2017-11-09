@@ -760,8 +760,13 @@ For instance, the command
 lists all packages where the name of the executable contains the
 string \ccode{show}.
 
-\item[\fbox{\code{update}}] Updates the local copy of the central package index
+\item[\fbox{\code{update}}]
+Updates the local copy of the central package index
 to the newest available version.
+This command also cleans the global package cache in order to support
+the download of fresh package versions.
+Note that this also removes local copies of packages
+installed by the command \ccode{add --package}.
 
 \item[\fbox{\code{install}}]
 Installs all dependencies of the current package.
