@@ -49,7 +49,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 09/11/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 13/11/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -694,7 +694,7 @@ depsCmd opts cfg getRepoGC =
   loadPackageSpec specDir |>= \pkg ->
   checkCompiler cfg pkg >>
   if depsPath opts -- show CURRYPATH only?
-    then loadCurryPathFromCache specDir |>=
+    then loadCurryPathFromCache cfg specDir |>=
          maybe (computePackageLoadPath cfg specDir getRepoGC)
                succeedIO |>= \currypath ->
          putStrLn currypath >> succeedIO ()
@@ -1330,7 +1330,7 @@ execCmd o cfg getRepoGC =
 execWithPkgDir :: ExecOptions -> Config -> IO (Repository,GlobalCache)
                -> String -> IO (ErrorLogger ())
 execWithPkgDir o cfg getRepoGC specDir =
-  loadCurryPathFromCache specDir |>=
+  loadCurryPathFromCache cfg specDir |>=
   maybe (computePackageLoadPath cfg specDir getRepoGC)
         succeedIO |>= \currypath ->
   log Debug ("Setting CURRYPATH to " ++ currypath) |>
@@ -1343,14 +1343,19 @@ execWithPkgDir o cfg getRepoGC specDir =
 computePackageLoadPath :: Config -> String -> IO (Repository,GlobalCache)
                        -> IO (ErrorLogger String)
 computePackageLoadPath cfg pkgdir getRepoGC =
+  debugMessage "Computing load path for package..." >>
   getRepoGC >>= \ (repo,gc) ->
   loadPackageSpec pkgdir |>= \pkg ->
-  resolveAndCopyDependenciesForPackage cfg repo gc pkgdir pkg |>= \pkgs ->
+  resolveAndCopyDependenciesForPackage cfg repo gc pkgdir pkg |>= \allpkgs ->
   getAbsolutePath pkgdir >>= \abs -> succeedIO () |>
   let srcdirs = map (abs </>) (sourceDirsOf pkg)
+      -- remove 'base' package if it is the same as in current config:
+      pkgs = filter notCurrentBase allpkgs
       currypath = joinSearchPath (srcdirs ++ dependencyPathsSeparate pkgs abs)
-  in saveCurryPathToCache pkgdir currypath >> succeedIO currypath
-
+  in saveCurryPathToCache cfg pkgdir currypath >> succeedIO currypath
+ where
+  notCurrentBase pkg = name pkg /= "base" ||
+                       showVersion (version pkg) /= baseVersion cfg
 
 -- Clean auxiliary files in the current package
 cleanPackage :: LogLevel -> IO (ErrorLogger ())
@@ -1419,23 +1424,28 @@ newPackage (NewOptions pname) = do
 
 ---------------------------------------------------------------------------
 -- Caching the current CURRYPATH of a package for faster startup.
+-- The file `.cpm/CURRYPATH_CACHE` contains the following lines:
+-- * The CURRYPATH used to load the package
+-- * The compiler name and major/minor version
+-- * The version of the base libraries
 
 --- The name of the cache file in a package directory.
 curryPathCacheFile :: String -> String
 curryPathCacheFile pkgdir = pkgdir </> ".cpm" </> "CURRYPATH_CACHE"
 
 --- Saves package CURRYPATH in local cache file in the given package dir.
-saveCurryPathToCache :: String -> String -> IO ()
-saveCurryPathToCache pkgdir path = do
+saveCurryPathToCache :: Config -> String -> String -> IO ()
+saveCurryPathToCache cfg pkgdir path = do
   let cpmdir = pkgdir </> ".cpm"
   createDirectoryIfMissing False cpmdir
-  writeFile (curryPathCacheFile pkgdir) (path ++ "\n")
+  writeFile (curryPathCacheFile pkgdir)
+            (unlines [path, showCompilerVersion cfg, baseVersion cfg])
 
 --- Restores package CURRYPATH from local cache file in the given package dir,
 --- if it is still up-to-date, i.e., it exists and is newer than the package
 --- specification.
-loadCurryPathFromCache :: String -> IO (ErrorLogger (Maybe String))
-loadCurryPathFromCache pkgdir = do
+loadCurryPathFromCache :: Config -> String -> IO (ErrorLogger (Maybe String))
+loadCurryPathFromCache cfg pkgdir = do
   let cachefile = curryPathCacheFile pkgdir
   excache <- doesFileExist cachefile
   if excache
@@ -1445,10 +1455,14 @@ loadCurryPathFromCache pkgdir = do
       if cftime > pftime
         then do cnt <- safeReadFile cachefile
                 let ls = either (const []) lines cnt
-                succeedIO $ if null ls then Nothing
-                                       else Just (head ls)
+                succeedIO $ if consistentCache ls then Just (head ls)
+                                                  else Nothing
         else succeedIO Nothing
     else succeedIO Nothing
+ where
+  consistentCache cls =
+    length cls > 2 && cls!!1 == showCompilerVersion cfg
+                   && cls!!2 == baseVersion cfg
 
 --- Cleans the local cache file for CURRYPATH. This might be necessary
 --- for upgrade/install/link commands.

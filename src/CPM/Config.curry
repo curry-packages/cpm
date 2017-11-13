@@ -7,14 +7,13 @@
 module CPM.Config 
   ( Config ( Config, packageInstallDir, binInstallDir, repositoryDir
            , appPackageDir, packageIndexRepository, curryExec
-           , compilerVersion )
+           , compilerVersion, baseVersion )
   , readConfigurationWith, defaultConfig
   , showConfiguration, showCompilerVersion ) where
 
 import Char         ( toUpper )
 import Directory    ( getHomeDirectory, createDirectoryIfMissing )
-import Distribution ( installDir, curryCompiler, curryCompilerMinorVersion
-                    , curryCompilerMajorVersion )
+import qualified Distribution as Dist
 import FilePath     ( (</>), isAbsolute )
 import Function     ( (***) )
 import IOExts       ( evalCmd )
@@ -50,6 +49,8 @@ data Config = Config {
   , curryExec :: String
     --- The compiler version (name,major,minor) used to compile packages
   , compilerVersion :: (String,Int,Int)
+    --- The version of the base libraries used by the compiler
+  , baseVersion :: String
   }
 
 --- CPM's default configuration values. These are used if no .cpmrc file is found
@@ -61,9 +62,11 @@ defaultConfig = Config
   , repositoryDir          = "$HOME/.cpm/index" 
   , appPackageDir          = "$HOME/.cpm/app_packages" 
   , packageIndexRepository = packageIndexURI
-  , curryExec              = installDir </> "bin" </> curryCompiler
-  , compilerVersion        = (curryCompiler, curryCompilerMajorVersion,
-                              curryCompilerMinorVersion)
+  , curryExec              = Dist.installDir </> "bin" </> Dist.curryCompiler
+  , compilerVersion        = ( Dist.curryCompiler
+                             , Dist.curryCompilerMajorVersion
+                             , Dist.curryCompilerMinorVersion )
+  , baseVersion            = Dist.baseVersion
   }
 
 --- Shows the configuration.
@@ -71,11 +74,12 @@ showConfiguration :: Config -> String
 showConfiguration cfg = unlines
   [ "Current configuration:"
   , "Compiler version  : " ++ showCompilerVersion cfg
-  , "CURRYBIN          : " ++ curryExec         cfg
-  , "REPOSITORYPATH    : " ++ repositoryDir     cfg
-  , "PACKAGEINSTALLPATH: " ++ packageInstallDir cfg
-  , "BININSTALLPATH    : " ++ binInstallDir     cfg
-  , "APPPACKAGEPATH    : " ++ appPackageDir     cfg
+  , "Base version      : " ++ baseVersion         cfg
+  , "CURRYBIN          : " ++ curryExec           cfg
+  , "REPOSITORYPATH    : " ++ repositoryDir       cfg
+  , "PACKAGEINSTALLPATH: " ++ packageInstallDir   cfg
+  , "BININSTALLPATH    : " ++ binInstallDir       cfg
+  , "APPPACKAGEPATH    : " ++ appPackageDir       cfg
   ]
   
 --- Shows the compiler version in the configuration.
@@ -104,21 +108,26 @@ setCompilerExecutable cfg = do
 setCompilerVersion :: Config -> IO Config
 setCompilerVersion cfg0 = do
   cfg <- setCompilerExecutable cfg0
-  if curryExec cfg == installDir </> "bin" </> curryCompiler
-    then return cfg { compilerVersion = currVersion }
+  if curryExec cfg == Dist.installDir </> "bin" </> Dist.curryCompiler
+    then return cfg { compilerVersion = currVersion
+                    , baseVersion = Dist.baseVersion }
     else do (c1,sname,e1) <- evalCmd (curryExec cfg) ["--compiler-name"] ""
             (c2,svers,e2) <- evalCmd (curryExec cfg) ["--numeric-version"] ""
-            when (c1 > 0 || c2 > 0) $
+            (c3,sbver,e3) <- evalCmd (curryExec cfg) ["--base-version"] ""
+            when (c1 > 0 || c2 > 0 || c3 > 0) $
               error $ "Cannot determine compiler version:\n" ++
-                      unlines (filter (not . null) [e1,e2])
+                      unlines (filter (not . null) [e1,e2,e3])
             let cname = strip sname
                 cvers = strip svers
+                bvers = strip sbver
                 (majs:mins:_) = split (=='.') cvers
             debugMessage $ "Compiler version: " ++ cname ++ " " ++ cvers
-            return cfg { compilerVersion = (cname, readInt majs, readInt mins) }
+            debugMessage $ "Base lib version: " ++ bvers
+            return cfg { compilerVersion = (cname, readInt majs, readInt mins)
+                       , baseVersion = bvers }
  where
-  currVersion = (curryCompiler, curryCompilerMajorVersion,
-                                curryCompilerMinorVersion)
+  currVersion = (Dist.curryCompiler, Dist.curryCompilerMajorVersion,
+                                     Dist.curryCompilerMinorVersion)
 
 --- Reads the .cpmrc file from the user's home directory (if present) and
 --- merges its contents and some given default settings (first argument)
