@@ -63,7 +63,7 @@ readAbstractCurryFromPackagePath :: Package -> String -> [Package] -> String
 readAbstractCurryFromPackagePath pkg pkgDir deps modname = do
   let loadPath = fullLoadPathForPackage pkg pkgDir deps
   params <- return $ setQuiet True (setFullPath loadPath defaultParams)
-  callFrontendWithParams ACY params modname 
+  callFrontendWithParams ACY params modname
   src <- lookupModuleSource loadPath modname
   acyName <- return $ case src of
     Nothing -> error $ "Module not found: " ++ modname
@@ -78,14 +78,7 @@ readAbstractCurryFromPackagePath pkg pkgDir deps modname = do
 readAbstractCurryFromDeps :: String -> [Package] -> String -> IO CurryProg
 readAbstractCurryFromDeps pkgDir deps modname = do
   pkg <- fromErrorLogger (loadPackageSpec pkgDir)
-  let loadPath = fullLoadPathForPackage pkg pkgDir deps
-  params <- return $ setQuiet True (setFullPath loadPath defaultParams)
-  src <- lookupModuleSource loadPath modname
-  sourceFile <- return $ case src of
-    Nothing -> error $ "Module not found: " ++ modname
-    Just (_, file) -> replaceExtension (inCurrySubdirModule modname file) ".acy"
-  callFrontendWithParams ACY params modname
-  readAbstractCurryFile sourceFile
+  readAbstractCurryFromPackagePath pkg pkgDir deps modname
 
 --- Applies a transformation function to a module from a package or one of its
 --- dependencies and writes the modified module to a file in Curry form.
@@ -95,18 +88,10 @@ readAbstractCurryFromDeps pkgDir deps modname = do
 --- @param f - the transformation function
 --- @param mod - the module to transform
 --- @param dest - the destination file for the transformed module
-transformAbstractCurryInDeps :: String -> [Package] -> (CurryProg -> CurryProg) 
+transformAbstractCurryInDeps :: String -> [Package] -> (CurryProg -> CurryProg)
                              -> String -> String -> IO ()
 transformAbstractCurryInDeps pkgDir deps transform modname destFile = do
-  pkg <- fromErrorLogger (loadPackageSpec pkgDir)
-  let loadPath = fullLoadPathForPackage pkg pkgDir deps
-  params <- return $ setQuiet True (setFullPath loadPath defaultParams)
-  src <- lookupModuleSource loadPath modname
-  sourceFile <- return $ case src of
-    Nothing -> error $ "Module not found: " ++ modname
-    Just (_, file) -> replaceExtension (inCurrySubdirModule modname file) ".acy"
-  callFrontendWithParams ACY params modname
-  acy <- readAbstractCurryFile sourceFile
+  acy <- readAbstractCurryFromDeps pkgDir deps modname
   writeFile destFile $ showCProg (transform acy)
 
 --- Renames all references to some modules in a Curry program.
