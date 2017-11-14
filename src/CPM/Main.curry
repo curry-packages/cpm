@@ -49,7 +49,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 13/11/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 14/11/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -725,13 +725,11 @@ infoCmdRepoGC :: String -> Maybe Version -> Bool -> Bool -> Config
               -> Repository -> GlobalCache -> IO (ErrorLogger ())
 infoCmdRepoGC pkg Nothing allinfos plain cfg repo gc =
   case findLatestVersion cfg repo pkg False of
-    Nothing -> failIO $
-                 "Package '" ++ pkg ++ "' not found in package repository."
+    Nothing -> packageNotFoundFailure pkg
     Just p  -> printInfo allinfos plain (Just (isPackageInstalled gc p)) p
 infoCmdRepoGC pkg (Just v) allinfos plain _ repo gc =
   case findVersion repo pkg v of
-    Nothing -> failIO $ "Package '" ++ pkg ++ "-" ++ showVersion v ++
-                        "' not found in package repository."
+    Nothing -> packageNotFoundFailure $ pkg ++ "-" ++ showVersion v
     Just p  -> printInfo allinfos plain (Just (isPackageInstalled gc p)) p
 
 printInfo :: Bool -> Bool -> Maybe Bool -> Package
@@ -746,14 +744,12 @@ checkout :: CheckoutOptions -> Config -> Repository -> GlobalCache
          -> IO (ErrorLogger ())
 checkout (CheckoutOptions pkg Nothing pre) cfg repo gc =
  case findLatestVersion cfg repo pkg pre of
-  Nothing -> failIO $ "Package '" ++ pkg ++
-                      "' not found in package repository."
+  Nothing -> packageNotFoundFailure pkg
   Just  p -> acquireAndInstallPackageWithDependencies cfg repo gc p |>
              checkoutPackage cfg repo gc p
 checkout (CheckoutOptions pkg (Just ver) _) cfg repo gc =
  case findVersion repo pkg ver of
-  Nothing -> failIO $ "Package '" ++ pkg ++ "-" ++ showVersion ver ++
-                      "' not found in package repository."
+  Nothing -> packageNotFoundFailure $ pkg ++ "-" ++ showVersion ver
   Just  p -> acquireAndInstallPackageWithDependencies cfg repo gc p |>
              checkoutPackage cfg repo gc p
 
@@ -890,8 +886,7 @@ uninstallPackageExecutable cfg pkg =
 
 tryFindVersion :: String -> Version -> Repository -> IO (ErrorLogger Package)
 tryFindVersion pkg ver repo = case findVersion repo pkg ver of
-  Nothing -> failIO $ "Package '" ++ pkg ++ "-" ++ (showVersion ver) ++
-                      "' not found in package repository."
+  Nothing -> packageNotFoundFailure $ pkg ++ "-" ++ showVersion ver
   Just  p -> succeedIO $ p
 
 --- Lists all (compiler-compatible if `lall` is false) packages
@@ -1058,8 +1053,7 @@ addDependencyCmd :: String -> Bool -> Config -> IO (ErrorLogger ())
 addDependencyCmd pkgname force config =
   readRepository config >>= \repo ->
   case findLatestVersion config repo pkgname False of
-    Nothing -> failIO $
-                 "Package '" ++ pkgname ++ "' not found in package repository."
+    Nothing -> packageNotFoundFailure pkgname
     Just p  -> searchLocalPackageSpec "." |>=
                maybe (genNewLocalPackage (version p))
                      (addDepToLocalPackage (version p))
@@ -1421,6 +1415,13 @@ newPackage (NewOptions pname) = do
     , "Run the main program with:"
     , "> cypm curry :load Main :eval main :quit"
     ]
+
+
+--- Fail with a "package not found" message.
+packageNotFoundFailure :: String -> IO (ErrorLogger _)
+packageNotFoundFailure pkgname =
+  failIO $ "Package '" ++ pkgname ++ "' not found in package repository.\n" ++
+           cpmUpdate
 
 ---------------------------------------------------------------------------
 -- Caching the current CURRYPATH of a package for faster startup.
