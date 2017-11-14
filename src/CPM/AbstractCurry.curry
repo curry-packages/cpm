@@ -13,14 +13,10 @@ module CPM.AbstractCurry
   , tcArgsOfType
   ) where
 
-import Char (toUpper)
 import Distribution (FrontendTarget (..), FrontendParams (..), defaultParams
-                    , callFrontendWithParams
-                    , setQuiet, setFullPath, setDefinitions
+                    , callFrontendWithParams, setQuiet, setFullPath
                     , sysLibPath, inCurrySubdir, modNameToPath
-                    , inCurrySubdirModule, lookupModuleSource
-                    , curryCompiler, curryCompilerMajorVersion
-                    , curryCompilerMinorVersion )
+                    , inCurrySubdirModule, lookupModuleSource)
 import List (intercalate, nub)
 import FilePath ((</>), (<.>), takeFileName, replaceExtension)
 import AbstractCurry.Files (readAbstractCurryFile, writeAbstractCurryFile)
@@ -66,19 +62,13 @@ readAbstractCurryFromPackagePath :: Package -> String -> [Package] -> String
                                  -> IO CurryProg
 readAbstractCurryFromPackagePath pkg pkgDir deps modname = do
   let loadPath = fullLoadPathForPackage pkg pkgDir deps
-  params <- return $ setQuiet True
-                   $ setFullPath loadPath
-                   $ setDefinitions defs
-                   $ defaultParams
+  params <- return $ setQuiet True (setFullPath loadPath defaultParams)
   callFrontendWithParams ACY params modname
   src <- lookupModuleSource loadPath modname
   acyName <- return $ case src of
     Nothing -> error $ "Module not found: " ++ modname
     Just (_, file) -> replaceExtension (inCurrySubdirModule modname file) ".acy"
   readAbstractCurryFile acyName
- where
-  defs = [( "__" ++ map toUpper curryCompiler ++ "__"
-          , curryCompilerMajorVersion * 100 + curryCompilerMinorVersion )]
 
 --- Reads an AbstractCurry module from a package or one of its dependencies.
 ---
