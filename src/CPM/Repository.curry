@@ -12,8 +12,7 @@ module CPM.Repository
   , emptyRepository
   , allPackages
   , readRepository
-  , findVersion
-  , findLatestVersion
+  , findAllVersions, findVersion, findLatestVersion
   , searchPackages
   , listPackages
   , updateRepository
