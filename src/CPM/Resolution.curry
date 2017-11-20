@@ -18,9 +18,9 @@ module CPM.Resolution
 
 import Either
 import List
-import Pretty
 import Sort
 import Maybe
+import Text.Pretty
 import Test.EasyCheck
 
 import CPM.Config (Config, defaultConfig, compilerVersion)

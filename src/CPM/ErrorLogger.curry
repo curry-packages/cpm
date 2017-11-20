@@ -22,9 +22,10 @@ module CPM.ErrorLogger
   ) where
 
 import Global
-import Pretty
 import Profile -- for show run-time
 import System (exitWith, system)
+
+import Text.Pretty
 
 infixl 0 |>=, |>, |>>, |->
 

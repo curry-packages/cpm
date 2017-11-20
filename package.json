@@ -16,7 +16,8 @@
         "cass-analysis" : ">= 2.0.0",
         "cass"          : ">= 2.0.0",
         "csv"           : ">= 1.0.0",
-        "flatcurry"     : ">= 2.0.0"
+        "flatcurry"     : ">= 2.0.0",
+        "wl-pprint"     : ">= 0.0.1"
     },
     "compilerCompatibility": {
         "pakcs": ">= 2.0.0",

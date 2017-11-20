@@ -17,16 +17,17 @@ module CPM.PackageCopy
   ) where
 
 import Debug
-import Directory (doesFileExist, getAbsolutePath, createDirectoryIfMissing
+import Directory ( doesFileExist, getAbsolutePath, createDirectoryIfMissing
                  , doesDirectoryExist, getTemporaryDirectory
                  , getCurrentDirectory, setCurrentDirectory, createDirectory
-                 , removeDirectory, getDirectoryContents, copyFile)
-import FilePath ((</>), takeExtension, takeBaseName, joinPath, takeDirectory)
+                 , removeDirectory, getDirectoryContents, copyFile )
+import FilePath ((</>), takeExtension, takeBaseName, joinPath, takeDirectory )
 import AbstractCurry.Types (CurryProg)
-import List (intercalate, splitOn)
-import Maybe (mapMaybe, fromJust)
-import System (system)
-import Pretty hiding ((</>))
+import List      ( intercalate, splitOn )
+import Maybe     ( mapMaybe, fromJust )
+import System    ( system )
+
+import Text.Pretty hiding ( (</>) )
 
 import CPM.AbstractCurry
 import CPM.Config (Config, packageInstallDir)

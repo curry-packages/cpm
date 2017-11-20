@@ -33,7 +33,6 @@ import Function (both)
 import List   ( intercalate, intersect, nub, splitOn, isPrefixOf, isInfixOf
               , find, delete, (\\), nubBy )
 import Maybe  ( isJust, fromJust, fromMaybe, listToMaybe )
-import Pretty ( pPrint, text, indent, vcat, (<+>), (<$$>) )
 import System ( getEnviron, setEnviron, unsetEnviron )
 
 import Analysis.Types       ( Analysis )
@@ -42,6 +41,7 @@ import Analysis.ProgInfo    ( ProgInfo, emptyProgInfo, combineProgInfo
 import Analysis.Termination ( productivityAnalysis, Productivity(..) )
 import Analysis.TypeUsage   ( typesInValuesAnalysis )
 import CASS.Server          ( analyzeGeneric )
+import Text.Pretty          ( pPrint, text, indent, vcat, (<+>), (<$$>) )
 
 import CPM.AbstractCurry ( readAbstractCurryFromDeps, loadPathForPackage
                          , tcArgsOfType )

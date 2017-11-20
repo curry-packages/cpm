@@ -24,7 +24,8 @@ import FilePath ((</>))
 import Function (both)
 import List (nub)
 import Maybe (listToMaybe, catMaybes)
-import Pretty (pPrint, text, (<+>), vcat, empty, red, ($$))
+
+import Text.Pretty (pPrint, text, (<+>), vcat, empty, red, ($$))
 
 import CPM.AbstractCurry (readAbstractCurryFromPackagePath)
 import CPM.Config (Config)
