@@ -74,7 +74,7 @@ searchPackages (Repository ps) searchmod searchexec searchterm =
  where
   allResults = let s = lowerS searchterm
                in if searchmod
-                    then filter (\p -> s `elem` exportedModules p) ps
+                    then filter (\p -> searchterm `elem` exportedModules p) ps
                     else if searchexec
                            then filter (\p -> s `isInfixOf`
                                                 (lowerS $ execOfPackage p)) ps
