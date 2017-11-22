@@ -16,7 +16,7 @@ CURRYCOMPILER := $(shell $(CURRY) :set v0 :set -time :add Distribution :eval "pu
 ifeq ($(CURRYCOMPILER),kics2)
 export REPL_OPTS = --noreadline :set -time :set rts -T
 else
-export REPL_OPTS = --noreadline :set -time
+export REPL_OPTS = --nocypm --noreadline :set -time
 endif
 
 # Source modules of CPM:
