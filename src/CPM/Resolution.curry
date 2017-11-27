@@ -14,6 +14,7 @@ module CPM.Resolution
   , resolve
   , resolveDependenciesFromLookupSet
   , isCompatibleToCompiler
+  , isDisjunctionCompatible
   ) where
 
 import Either

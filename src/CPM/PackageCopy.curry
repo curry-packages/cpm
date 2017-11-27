@@ -30,7 +30,7 @@ import System    ( system )
 import Text.Pretty hiding ( (</>) )
 
 import CPM.AbstractCurry
-import CPM.Config (Config, packageInstallDir)
+import CPM.Config (Config, packageInstallDir, baseVersion)
 import CPM.Repository (Repository, allPackages)
 import qualified CPM.LookupSet as LS
 import CPM.ErrorLogger
@@ -43,7 +43,7 @@ import CPM.Package ( Package (..)
                    , readPackageSpec, packageId, readVersion, Version 
                    , showVersion, PackageSource (..), showDependency
                    , showCompilerDependency, showPackageSource
-                   , Dependency, GitRevision (..), PackageExecutable (..)
+                   , Dependency (..), GitRevision (..), PackageExecutable (..)
                    , PackageTest (..), PackageDocumentation (..)
                    , packageIdEq, loadPackageSpec)
 import CPM.Resolution
@@ -54,25 +54,27 @@ resolveDependenciesForPackageCopy :: Config -> Package -> Repository
                                   -> IO (ErrorLogger ResolutionResult)
 resolveDependenciesForPackageCopy cfg pkg repo gc dir = 
   lookupSetForPackageCopy cfg pkg repo gc dir |>= \lookupSet ->
-  resolveDependenciesFromLookupSet cfg pkg lookupSet
+  resolveDependenciesFromLookupSet cfg (deleteBaseDependency cfg pkg) lookupSet
 
 --- Calculates the lookup set needed for dependency resolution on a package
 --- copy.
 lookupSetForPackageCopy :: Config -> Package -> Repository -> GC.GlobalCache 
                         -> String -> IO (ErrorLogger LS.LookupSet)
 lookupSetForPackageCopy cfg _ repo gc dir =
-  LocalCache.allPackages dir |>=
-  \localPkgs -> do
+  LocalCache.allPackages dir |>= \localPkgs -> do
     diffInLC <- mapIO filterGCLinked localPkgs
-    let lsLC = LS.addPackages lsGC localPkgs LS.FromLocalCache in
+    let lsLC = addPackagesWOBase cfg lsGC localPkgs LS.FromLocalCache in
       mapEL logSymlinkedPackage (mapMaybe id diffInLC) |>
       succeedIO lsLC
  where
-  logSymlinkedPackage p = log Debug $ "Using symlinked version of '" ++ (packageId p) ++ "' from local cache."
-  lsRepo = LS.addPackages LS.emptySet (allPackages repo) LS.FromRepository
+  allRepoPackages = allPackages repo
+  logSymlinkedPackage p = log Debug $ "Using symlinked version of '" ++
+                                      packageId p ++ "' from local cache."
+  lsRepo = addPackagesWOBase cfg LS.emptySet allRepoPackages LS.FromRepository
   -- Find all packages that are in the global cache, but not in the repo
-  newInGC = filter (\p -> not $ elemBy (packageIdEq p) (allPackages repo)) $ GC.allPackages gc
-  lsGC = LS.addPackages lsRepo newInGC LS.FromGlobalCache
+  newInGC = filter (\p -> not $ elemBy (packageIdEq p) allRepoPackages)
+                   (GC.allPackages gc)
+  lsGC = addPackagesWOBase cfg lsRepo newInGC LS.FromGlobalCache
   filterGCLinked p = do
     points <- LocalCache.doesLinkPointToGlobalCache cfg gc dir (packageId p)
     return $ if points
@@ -84,13 +86,14 @@ resolveDependenciesForPackage :: Config -> Package -> Repository
                               -> GC.GlobalCache 
                               -> IO (ErrorLogger ResolutionResult)
 resolveDependenciesForPackage cfg pkg repo gc = 
-  resolveDependenciesFromLookupSet cfg pkg lookupSet
+  resolveDependenciesFromLookupSet cfg (deleteBaseDependency cfg pkg) lookupSet
  where
-  lsRepo = LS.addPackages LS.emptySet (allPackages repo) LS.FromRepository
+  lsRepo = addPackagesWOBase cfg LS.emptySet (allPackages repo)
+                             LS.FromRepository
   -- Find all packages that are in the global cache, but not in the repo
   newInGC = filter inGCButNotInRepo $ GC.allPackages gc
   inGCButNotInRepo p = not $ elemBy (packageIdEq p) (allPackages repo)
-  lookupSet = LS.addPackages lsRepo newInGC LS.FromGlobalCache
+  lookupSet = addPackagesWOBase cfg lsRepo newInGC LS.FromGlobalCache
 
 --- Acquires a package and its dependencies and installs them to the global
 --- package cache.
@@ -132,7 +135,7 @@ upgradeSinglePackage :: Config -> Repository -> GC.GlobalCache -> String
 upgradeSinglePackage cfg repo gc dir pkgName = loadPackageSpec dir |>=
   \pkgSpec -> lookupSetForPackageCopy cfg pkgSpec repo gc dir |>=
   \originalLS -> let transitiveDeps = pkgName : allTransitiveDependencies originalLS pkgName in
-  resolveDependenciesFromLookupSet cfg pkgSpec
+  resolveDependenciesFromLookupSet cfg (deleteBaseDependency cfg pkgSpec)
                         (LS.setLocallyIgnored originalLS transitiveDeps) |>=
   \result -> GC.installMissingDependencies cfg gc (resolvedPackages result) |>
   log Info (showDependencies result) |>
@@ -337,3 +340,23 @@ renderPackageInfo allinfos plain mbinstalled pkg = pPrint doc
     Just  s -> boldText fname <$$>
                indent 4 (fillSep (map text (words s)))
 
+------------------------------------------------------------------------------
+--- Deletes `base` package dependency in a package if this dependency
+--- is compatible with the base package of the current compiler.
+deleteBaseDependency :: Config -> Package -> Package
+deleteBaseDependency cfg pkg =
+  pkg { dependencies = filter (not . isCompatBase) (dependencies pkg) }
+ where
+  isCompatBase (Dependency n disj) =
+    n=="base" &&
+    maybe False
+          (\bv -> isDisjunctionCompatible bv disj)
+          (readVersion (baseVersion cfg))
+
+--- Same as `LS.addPackages` but remove `base` package dependencies.
+addPackagesWOBase :: Config -> LS.LookupSet -> [Package] -> LS.LookupSource
+                  -> LS.LookupSet
+addPackagesWOBase cfg ls pkgs src =
+  LS.addPackages ls (map (deleteBaseDependency cfg) pkgs) src
+
+------------------------------------------------------------------------------

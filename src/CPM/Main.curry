@@ -1353,16 +1353,11 @@ computePackageLoadPath cfg pkgdir getRepoGC =
   debugMessage "Computing load path for package..." >>
   getRepoGC >>= \ (repo,gc) ->
   loadPackageSpec pkgdir |>= \pkg ->
-  resolveAndCopyDependenciesForPackage cfg repo gc pkgdir pkg |>= \allpkgs ->
+  resolveAndCopyDependenciesForPackage cfg repo gc pkgdir pkg |>= \pkgs ->
   getAbsolutePath pkgdir >>= \abs -> succeedIO () |>
   let srcdirs = map (abs </>) (sourceDirsOf pkg)
-      -- remove 'base' package if it is the same as in current config:
-      pkgs = filter notCurrentBase allpkgs
       currypath = joinSearchPath (srcdirs ++ dependencyPathsSeparate pkgs abs)
   in saveCurryPathToCache cfg pkgdir currypath >> succeedIO currypath
- where
-  notCurrentBase pkg = name pkg /= "base" ||
-                       showVersion (version pkg) /= baseVersion cfg
 
 -- Clean auxiliary files in the current package
 cleanPackage :: LogLevel -> IO (ErrorLogger ())
