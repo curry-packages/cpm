@@ -24,7 +24,8 @@ import Maybe
 import Text.Pretty
 import Test.EasyCheck
 
-import CPM.Config (Config, defaultConfig, compilerVersion)
+import CPM.Config      ( Config, defaultConfig, compilerVersion
+                       , compilerBaseVersion )
 import CPM.ErrorLogger
 import CPM.LookupSet
 import CPM.Package
@@ -39,14 +40,18 @@ resolveDependenciesFromLookupSet cfg pkg lookupSet =
     else failIO $ showResult result
 
 --- Resolves the dependencies of a package using packages from a lookup set.
+--- The base package of the current compiler is removed from the result set.
 resolve :: Config -> Package -> LookupSet -> ResolutionResult
 resolve cfg pkg ls = case resolvedPkgs of
-  Just pkgs -> ResolutionSuccess pkg pkgs
+  Just pkgs -> ResolutionSuccess pkg (deleteBase pkgs)
   Nothing   -> ResolutionFailure labeledTree
  where
   labeledTree = labelConflicts cfg $ candidateTree pkg ls
   noConflicts = prune ((/= Nothing) . clConflict) labeledTree
-  resolvedPkgs = maybeHead . map stPackages . filter stComplete . leaves . mapTree clState $ noConflicts
+  resolvedPkgs = maybeHead . map stPackages . filter stComplete . leaves
+                           . mapTree clState $ noConflicts
+  deleteBase   = filter (\p -> name p /= "base" ||
+                           showVersion (version p) /= compilerBaseVersion cfg)
 
 --- Gives a list of all activated packages for a successful resolution.
 resolvedPackages :: ResolutionResult -> [Package]

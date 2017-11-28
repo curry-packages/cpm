@@ -766,6 +766,7 @@ install (InstallOptions Nothing Nothing _ instexec False) cfg repo gc =
   getLocalPackageSpec "." |>= \pkgdir ->
   cleanCurryPathCache pkgdir |>
   installLocalDependencies cfg repo gc pkgdir |>= \ (pkg,_) ->
+  saveBaseVersionToCache cfg pkgdir >>
   writePackageConfig cfg pkgdir pkg |>
   if instexec then installExecutable cfg repo pkg else succeedIO ()
 -- Install executable only:
@@ -1353,13 +1354,15 @@ computePackageLoadPath cfg pkgdir getRepoGC =
   debugMessage "Computing load path for package..." >>
   getRepoGC >>= \ (repo,gc) ->
   loadPackageSpec pkgdir |>= \pkg ->
-  resolveAndCopyDependenciesForPackage cfg repo gc pkgdir pkg |>= \allpkgs ->
+  loadBaseVersionFromCache pkgdir >>= \cbv ->
+  let cfg' = if null cbv then cfg else cfg { baseVersion = cbv } in
+  resolveAndCopyDependenciesForPackage cfg' repo gc pkgdir pkg |>= \allpkgs ->
   getAbsolutePath pkgdir >>= \abs -> succeedIO () |>
   let srcdirs = map (abs </>) (sourceDirsOf pkg)
       -- remove 'base' package if it is the same as in current config:
       pkgs = filter notCurrentBase allpkgs
       currypath = joinSearchPath (srcdirs ++ dependencyPathsSeparate pkgs abs)
-  in saveCurryPathToCache cfg pkgdir currypath >> succeedIO currypath
+  in saveCurryPathToCache cfg' pkgdir currypath >> succeedIO currypath
  where
   notCurrentBase pkg = name pkg /= "base" ||
                        showVersion (version pkg) /= compilerBaseVersion cfg
@@ -1454,6 +1457,28 @@ compatPackageNotFoundFailure cfg pkgname helpcmt =
 curryPathCacheFile :: String -> String
 curryPathCacheFile pkgdir = pkgdir </> ".cpm" </> "CURRYPATH_CACHE"
 
+--- The name of the cache file for the base version in a package directory.
+baseVersionCacheFile :: String -> String
+baseVersionCacheFile pkgdir = pkgdir </> ".cpm" </> "BASEVERSION_CACHE"
+
+--- Saves baseVersion of config in local cache file in the given package dir.
+saveBaseVersionToCache :: Config -> String -> IO ()
+saveBaseVersionToCache cfg pkgdir = do
+  let cpmdir = pkgdir </> ".cpm"
+  createDirectoryIfMissing False cpmdir
+  writeFile (baseVersionCacheFile pkgdir) (baseVersion cfg ++ "\n")
+
+--- Loads baseVersion from local cache file in the given package dir.
+loadBaseVersionFromCache :: String -> IO String
+loadBaseVersionFromCache pkgdir = do
+  let cachefile = baseVersionCacheFile pkgdir
+  excache <- doesFileExist cachefile
+  if excache
+    then do bv <- safeReadFile cachefile >>= return . either (const "") id
+            debugMessage $ "Base version loaded from cache: " ++ bv
+            return bv
+    else return ""
+
 --- Saves package CURRYPATH in local cache file in the given package dir.
 saveCurryPathToCache :: Config -> String -> String -> IO ()
 saveCurryPathToCache cfg pkgdir path = do
@@ -1489,8 +1514,10 @@ loadCurryPathFromCache cfg pkgdir = do
 --- for upgrade/install/link commands.
 cleanCurryPathCache :: String -> IO (ErrorLogger ())
 cleanCurryPathCache pkgdir = do
-  let cachefile = curryPathCacheFile pkgdir
-  whenFileExists cachefile $ removeFile cachefile
+  let pathcachefile = curryPathCacheFile pkgdir
+      basecachefile = baseVersionCacheFile pkgdir
+  whenFileExists pathcachefile $ removeFile pathcachefile
+  whenFileExists basecachefile $ removeFile basecachefile
   succeedIO ()
 
 ---------------------------------------------------------------------------
