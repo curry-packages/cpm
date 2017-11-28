@@ -43,6 +43,7 @@ import CPM.Package ( Package (..)
                    , readPackageSpec, packageId, readVersion, Version 
                    , showVersion, PackageSource (..), showDependency
                    , showCompilerDependency, showPackageSource
+                   , VersionConstraint (..)
                    , Dependency (..), GitRevision (..), PackageExecutable (..)
                    , PackageTest (..), PackageDocumentation (..)
                    , packageIdEq, loadPackageSpec)
@@ -54,7 +55,7 @@ resolveDependenciesForPackageCopy :: Config -> Package -> Repository
                                   -> IO (ErrorLogger ResolutionResult)
 resolveDependenciesForPackageCopy cfg pkg repo gc dir = 
   lookupSetForPackageCopy cfg pkg repo gc dir |>= \lookupSet ->
-  resolveDependenciesFromLookupSet cfg (deleteBaseDependency cfg pkg) lookupSet
+  resolveDependenciesFromLookupSet cfg (setBaseDependency cfg pkg) lookupSet
 
 --- Calculates the lookup set needed for dependency resolution on a package
 --- copy.
@@ -86,7 +87,7 @@ resolveDependenciesForPackage :: Config -> Package -> Repository
                               -> GC.GlobalCache 
                               -> IO (ErrorLogger ResolutionResult)
 resolveDependenciesForPackage cfg pkg repo gc = 
-  resolveDependenciesFromLookupSet cfg (deleteBaseDependency cfg pkg) lookupSet
+  resolveDependenciesFromLookupSet cfg (setBaseDependency cfg pkg) lookupSet
  where
   lsRepo = addPackagesWOBase cfg LS.emptySet (allPackages repo)
                              LS.FromRepository
@@ -135,7 +136,7 @@ upgradeSinglePackage :: Config -> Repository -> GC.GlobalCache -> String
 upgradeSinglePackage cfg repo gc dir pkgName = loadPackageSpec dir |>=
   \pkgSpec -> lookupSetForPackageCopy cfg pkgSpec repo gc dir |>=
   \originalLS -> let transitiveDeps = pkgName : allTransitiveDependencies originalLS pkgName in
-  resolveDependenciesFromLookupSet cfg (deleteBaseDependency cfg pkgSpec)
+  resolveDependenciesFromLookupSet cfg (setBaseDependency cfg pkgSpec)
                         (LS.setLocallyIgnored originalLS transitiveDeps) |>=
   \result -> GC.installMissingDependencies cfg gc (resolvedPackages result) |>
   log Info (showDependencies result) |>
@@ -201,10 +202,10 @@ resolveAndCopyDependenciesForPackage cfg repo gc dir pkgSpec =
         failMsg = "Missing dependencies " 
                   ++ (intercalate "," $ map packageId missingDeps) 
                   ++ "\nUse `cypm install` to install missing dependencies."
-    in if length missingDeps > 0
-         then failIO failMsg
-         else copyDependencies cfg gc pkgSpec deps dir |>= \_ ->
+    in if null missingDeps
+         then copyDependencies cfg gc pkgSpec deps dir |>= \_ ->
               succeedIO deps
+         else failIO failMsg
 
 --- Resolves the dependencies for a package copy.
 resolveDependencies :: Config -> Repository -> GC.GlobalCache -> String 
@@ -341,22 +342,25 @@ renderPackageInfo allinfos plain mbinstalled pkg = pPrint doc
                indent 4 (fillSep (map text (words s)))
 
 ------------------------------------------------------------------------------
---- Deletes `base` package dependency in a package if this dependency
---- is compatible with the base package of the current compiler.
-deleteBaseDependency :: Config -> Package -> Package
-deleteBaseDependency cfg pkg =
-  pkg { dependencies = filter (not . isCompatBase) (dependencies pkg) }
+--- Sets `base` package dependency in a package to the current `baseVersion`
+--- if this dependency is compatible with the current `baseVersion`.
+--- Hence, a conflict occurs if some package requires a different version
+--- of the `base` package.
+setBaseDependency :: Config -> Package -> Package
+setBaseDependency cfg pkg =
+  pkg { dependencies = map setBase (dependencies pkg) }
  where
-  isCompatBase (Dependency n disj) =
-    n=="base" &&
-    maybe False
-          (\bv -> isDisjunctionCompatible bv disj)
-          (readVersion (baseVersion cfg))
+  bv = maybe (0,0,0,Nothing) id (readVersion (baseVersion cfg))
+  
+  setBase (Dependency n disj) =
+    Dependency n $ if n == "base" && isDisjunctionCompatible bv disj
+                     then [[VExact bv]]
+                     else disj
 
---- Same as `LS.addPackages` but remove `base` package dependencies.
+--- Same as `LS.addPackages` but set the `base` package dependency.
 addPackagesWOBase :: Config -> LS.LookupSet -> [Package] -> LS.LookupSource
                   -> LS.LookupSet
 addPackagesWOBase cfg ls pkgs src =
-  LS.addPackages ls (map (deleteBaseDependency cfg) pkgs) src
+  LS.addPackages ls (map (setBaseDependency cfg) pkgs) src
 
 ------------------------------------------------------------------------------

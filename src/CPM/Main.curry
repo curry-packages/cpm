@@ -49,7 +49,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 14/11/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 28/11/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -1353,11 +1353,16 @@ computePackageLoadPath cfg pkgdir getRepoGC =
   debugMessage "Computing load path for package..." >>
   getRepoGC >>= \ (repo,gc) ->
   loadPackageSpec pkgdir |>= \pkg ->
-  resolveAndCopyDependenciesForPackage cfg repo gc pkgdir pkg |>= \pkgs ->
+  resolveAndCopyDependenciesForPackage cfg repo gc pkgdir pkg |>= \allpkgs ->
   getAbsolutePath pkgdir >>= \abs -> succeedIO () |>
   let srcdirs = map (abs </>) (sourceDirsOf pkg)
+      -- remove 'base' package if it is the same as in current config:
+      pkgs = filter notCurrentBase allpkgs
       currypath = joinSearchPath (srcdirs ++ dependencyPathsSeparate pkgs abs)
   in saveCurryPathToCache cfg pkgdir currypath >> succeedIO currypath
+ where
+  notCurrentBase pkg = name pkg /= "base" ||
+                       showVersion (version pkg) /= compilerBaseVersion cfg
 
 -- Clean auxiliary files in the current package
 cleanPackage :: LogLevel -> IO (ErrorLogger ())
@@ -1443,7 +1448,7 @@ compatPackageNotFoundFailure cfg pkgname helpcmt =
 -- The file `.cpm/CURRYPATH_CACHE` contains the following lines:
 -- * The CURRYPATH used to load the package
 -- * The compiler name and major/minor version
--- * The version of the base libraries
+-- * The version of the base libraries required during package install
 
 --- The name of the cache file in a package directory.
 curryPathCacheFile :: String -> String

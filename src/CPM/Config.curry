@@ -7,7 +7,7 @@
 module CPM.Config 
   ( Config ( Config, packageInstallDir, binInstallDir, repositoryDir
            , appPackageDir, packageIndexRepository, curryExec
-           , compilerVersion, baseVersion )
+           , compilerVersion, compilerBaseVersion, baseVersion )
   , readConfigurationWith, defaultConfig
   , showConfiguration, showCompilerVersion ) where
 
@@ -50,6 +50,8 @@ data Config = Config {
     --- The compiler version (name,major,minor) used to compile packages
   , compilerVersion :: (String,Int,Int)
     --- The version of the base libraries used by the compiler
+  , compilerBaseVersion :: String
+    --- The version of the base libraries to be used for package installations
   , baseVersion :: String
   }
 
@@ -66,20 +68,22 @@ defaultConfig = Config
   , compilerVersion        = ( Dist.curryCompiler
                              , Dist.curryCompilerMajorVersion
                              , Dist.curryCompilerMinorVersion )
-  , baseVersion            = Dist.baseVersion
+  , compilerBaseVersion    = Dist.baseVersion
+  , baseVersion            = ""
   }
 
 --- Shows the configuration.
 showConfiguration :: Config -> String
 showConfiguration cfg = unlines
   [ "Current configuration:"
-  , "Compiler version  : " ++ showCompilerVersion cfg
-  , "Base version      : " ++ baseVersion         cfg
-  , "CURRYBIN          : " ++ curryExec           cfg
-  , "REPOSITORYPATH    : " ++ repositoryDir       cfg
-  , "PACKAGEINSTALLPATH: " ++ packageInstallDir   cfg
-  , "BININSTALLPATH    : " ++ binInstallDir       cfg
-  , "APPPACKAGEPATH    : " ++ appPackageDir       cfg
+  , "Compiler version       : " ++ showCompilerVersion cfg
+  , "Compiler base version  : " ++ compilerBaseVersion cfg
+  , "Base version           : " ++ baseVersion         cfg
+  , "CURRYBIN               : " ++ curryExec           cfg
+  , "REPOSITORYPATH         : " ++ repositoryDir       cfg
+  , "PACKAGEINSTALLPATH     : " ++ packageInstallDir   cfg
+  , "BININSTALLPATH         : " ++ binInstallDir       cfg
+  , "APPPACKAGEPATH         : " ++ appPackageDir       cfg
   ]
   
 --- Shows the compiler version in the configuration.
@@ -108,9 +112,13 @@ setCompilerExecutable cfg = do
 setCompilerVersion :: Config -> IO Config
 setCompilerVersion cfg0 = do
   cfg <- setCompilerExecutable cfg0
+  let initbase = baseVersion cfg
   if curryExec cfg == Dist.installDir </> "bin" </> Dist.curryCompiler
     then return cfg { compilerVersion = currVersion
-                    , baseVersion = Dist.baseVersion }
+                    , compilerBaseVersion = Dist.baseVersion
+                    , baseVersion         = if null initbase
+                                              then Dist.baseVersion
+                                              else initbase }
     else do (c1,sname,e1) <- evalCmd (curryExec cfg) ["--compiler-name"] ""
             (c2,svers,e2) <- evalCmd (curryExec cfg) ["--numeric-version"] ""
             (c3,sbver,e3) <- evalCmd (curryExec cfg) ["--base-version"] ""
@@ -124,7 +132,10 @@ setCompilerVersion cfg0 = do
             debugMessage $ "Compiler version: " ++ cname ++ " " ++ cvers
             debugMessage $ "Base lib version: " ++ bvers
             return cfg { compilerVersion = (cname, readInt majs, readInt mins)
-                       , baseVersion = bvers }
+                       , compilerBaseVersion = bvers
+                       , baseVersion         = if null initbase
+                                                 then bvers
+                                                 else initbase }
  where
   currVersion = (Dist.curryCompiler, Dist.curryCompilerMajorVersion,
                                      Dist.curryCompilerMinorVersion)
@@ -201,6 +212,7 @@ keySetters =
   , ("BININSTALLPATH"     , \v c -> c { binInstallDir     = v })
   , ("APPPACKAGEPATH"     , \v c -> c { appPackageDir     = v })
   , ("CURRYBIN"           , \v c -> c { curryExec         = v })
+  , ("BASEVERSION"        , \v c -> c { baseVersion       = v })
   ]
 
 --- Sequentially applies a list of functions that transform a value to a value
