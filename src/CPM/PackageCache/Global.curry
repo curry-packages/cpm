@@ -75,11 +75,12 @@ findNewestVersion db p = if length pkgs > 0
 
 --- Finds a specific version of a package.
 findVersion :: GlobalCache -> String -> Version -> Maybe Package
-findVersion (GlobalCache ps) p v = if length hits == 0
+findVersion (GlobalCache ps) p v =
+  if null hits
     then Nothing
     else Just $ head hits
-  where
-    hits = filter ((== v) . version) $ filter ((== p) . name) ps 
+ where
+  hits = filter ((== v) . version) $ filter ((== p) . name) ps 
 
 --- Checks whether a package is installed.
 isPackageInstalled :: GlobalCache -> Package -> Bool
@@ -106,10 +107,12 @@ copyPackage cfg pkg dir = do
 --- Acquires a package from the source specified in its specification and 
 --- installs it to the global package cache.
 acquireAndInstallPackage :: Config -> Package -> IO (ErrorLogger ())
-acquireAndInstallPackage cfg pkg = case (source pkg) of
-  Nothing -> failIO $ "No source specified for " ++ packageId pkg
-  Just  s -> log Info ("Installing package from " ++ showPackageSource pkg) |> 
-             installFromSource cfg pkg s
+acquireAndInstallPackage cfg reppkg =
+  readPackageFromRepository cfg reppkg |>= \pkg ->
+  case source pkg of
+   Nothing -> failIO $ "No source specified for " ++ packageId pkg
+   Just  s -> log Info ("Installing package from " ++ showPackageSource pkg) |> 
+              installFromSource cfg pkg s
 
 --- Installs a package from the given package source to the global package
 --- cache.
@@ -284,9 +287,7 @@ readInstalledPackagesFromDir repo path = do
     Nothing -> readPackageSpecFromFile pkgdir
     Just (pn,pv) -> case CPM.Repository.findVersion repo pn pv of
       Nothing -> readPackageSpecFromFile pkgdir
-      Just p  -> do debugMessage $ "Package spec '" ++ packageId p ++
-                                   "' loaded from repository"
-                    return (Right p)
+      Just p  -> return (Right p)
 
   readPackageSpecFromFile pkgdir = do
     let f = path </> pkgdir </> "package.json"

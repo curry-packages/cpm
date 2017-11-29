@@ -37,7 +37,8 @@ import CPM.Package
 import CPM.Resolution ( isCompatibleToCompiler, showResult )
 import CPM.Repository ( Repository, readRepository, findVersion, listPackages
                       , findAllVersions, findLatestVersion, updateRepository
-                      , searchPackages, updateRepositoryCache )
+                      , searchPackages, updateRepositoryCache
+                      , readPackageFromRepository )
 import CPM.PackageCache.Runtime ( dependencyPathsSeparate, writePackageConfig )
 import CPM.PackageCopy
 import CPM.Diff.API as APIDiff
@@ -49,7 +50,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 28/11/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 29/11/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -101,7 +102,6 @@ runWithArgs opts = do
               Search o -> searchCmd  o config repo
               _ -> do globalCache <- getGlobalCache config repo
                       case optCommand opts of
-                        --PkgInfo    o -> infoCmd    o config repo globalCache
                         Checkout   o -> checkout   o config repo globalCache
                         InstallApp o -> installapp o config repo globalCache
                         Install    o -> install    o config repo globalCache
@@ -727,15 +727,17 @@ infoCmdRepoGC pkgname Nothing allinfos plain cfg repo gc =
   case findAllVersions repo pkgname False of
     [] -> packageNotFoundFailure pkgname
     ps -> case filter (isCompatibleToCompiler cfg) ps of
-            [] -> let lvers = showVersion (version (head ps))
-                  in compatPackageNotFoundFailure cfg pkgname
-                       ("Use 'info " ++ pkgname ++ " " ++ lvers ++
-                        "' to print info about the latest version.")
-            (p:_) -> printInfo allinfos plain (Just (isPackageInstalled gc p)) p
-infoCmdRepoGC pkg (Just v) allinfos plain _ repo gc =
+           [] -> let lvers = showVersion (version (head ps))
+                 in compatPackageNotFoundFailure cfg pkgname
+                      ("Use 'info " ++ pkgname ++ " " ++ lvers ++
+                       "' to print info about the latest version.")
+           (rp:_) -> readPackageFromRepository cfg rp |>= \p ->
+                     printInfo allinfos plain (Just (isPackageInstalled gc p)) p
+infoCmdRepoGC pkg (Just v) allinfos plain cfg repo gc =
   case findVersion repo pkg v of
     Nothing -> packageNotFoundFailure $ pkg ++ "-" ++ showVersion v
-    Just p  -> printInfo allinfos plain (Just (isPackageInstalled gc p)) p
+    Just rp -> readPackageFromRepository cfg rp |>=  \p ->
+               printInfo allinfos plain (Just (isPackageInstalled gc p)) p
 
 printInfo :: Bool -> Bool -> Maybe Bool -> Package
           -> IO (ErrorLogger ())

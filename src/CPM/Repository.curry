@@ -17,6 +17,7 @@ module CPM.Repository
   , listPackages
   , updateRepository
   , updateRepositoryCache
+  , readPackageFromRepository
   ) where
 
 import Char         ( toLower, toUpper )
@@ -169,6 +170,7 @@ readRepositoryFrom path = do
   dirOrSpec d = (not $ isPrefixOf "." d) && takeExtension d /= ".md" &&
                 (not $ isPrefixOf repositoryCacheFileName (map toUpper d))
 
+
 --- Updates the package index from the central Git repository.
 --- Cleans also the global package cache in order to support
 --- downloading the newest versions.
@@ -199,6 +201,13 @@ updateRepository cfg = do
 
 ------------------------------------------------------------------------------
 -- Operations implementing the repository cache for faster reading.
+-- The repository cache contains reduced package specifications
+-- for faster reading/writing by removing some information
+-- which is not relevant for the repository data structure.
+--
+-- The relevant package fields are:
+-- name version synopsis category dependencies
+-- compilerCompatibility sourceDirs exportedModules
 
 --- The local file name containing the repository cache as a Curry term.
 repositoryCacheFileName :: String
@@ -219,7 +228,19 @@ updateRepositoryCache cfg = do
 writeRepositoryCache :: Config -> Repository -> IO ()
 writeRepositoryCache cfg repo =
   writeFile (repositoryCache cfg)
-            (packageVersion ++ "\n" ++ showQTerm repo)
+            (packageVersion ++ "\n" ++
+             showQTerm (map package2tuple (allPackages repo)))
+ where
+  package2tuple p =
+    ( name p
+    , version p
+    , synopsis p
+    , category p
+    , dependencies p
+    , compilerCompatibility p
+    , sourceDirs p
+    , exportedModules p
+    )
 
 --- Reads the given repository from the cache.
 readRepositoryCache :: Config -> IO (Maybe Repository)
@@ -238,15 +259,37 @@ readRepositoryCache cfg = do
     h <- openFile cf ReadMode
     pv <- hGetLine h
     if pv == packageVersion
-      then hGetContents h >>= \t -> return $!! Just (readQTerm t)
+      then hGetContents h >>= \t ->
+           return $!! Just (Repository (map tuple2package (readQTerm t)))
       else do infoMessage "Cleaning repository cache (wrong version)..."
               cleanRepositoryCache cfg
               return Nothing
+
+  tuple2package (nm,vs,sy,cat,dep,cmp,srcs,exps) =
+    emptyPackage { name = nm
+                 , version = vs
+                 , synopsis = sy
+                 , category = cat
+                 , dependencies = dep
+                 , compilerCompatibility = cmp
+                 , sourceDirs = srcs
+                 , exportedModules = exps
+                 }
+
 
 --- Cleans the repository cache.
 cleanRepositoryCache :: Config -> IO ()
 cleanRepositoryCache cfg = do
   let cachefile = repositoryCache cfg
   whenFileExists cachefile $ removeFile cachefile
+
+------------------------------------------------------------------------------
+--- Reads a given package from the default repository directory.
+--- This is useful to obtain the complete package specification
+--- from a possibly incomplete package specification.
+readPackageFromRepository :: Config -> Package -> IO (ErrorLogger Package)
+readPackageFromRepository cfg pkg =
+  let pkgdir = repositoryDir cfg </> name pkg </> showVersion (version pkg)
+  in loadPackageSpec pkgdir
 
 ------------------------------------------------------------------------------
