@@ -183,8 +183,7 @@ updateRepository cfg = do
   gitExists <- doesDirectoryExist $ (repositoryDir cfg) </> ".git"
   if gitExists 
     then do
-      c <- inDirectory (repositoryDir cfg) $
-             execQuietCmd $ (\q -> "git pull " ++ q ++ " origin master")
+      c <- inDirectory (repositoryDir cfg) $ execQuietCmd $ cleanPullCmd
       if c == 0
         then do updateRepositoryCache cfg
                 log Info "Successfully updated repository"
@@ -196,6 +195,7 @@ updateRepository cfg = do
                 log Info "Successfully updated repository"
         else failIO $ "Failed to update git repository, return code " ++ show c
  where
+  cleanPullCmd q = "git clean -d -f && git pull " ++ q ++ " origin master"
   cloneCommand q = unwords ["git clone", q, packageIndexRepository cfg, "."]
 
 
