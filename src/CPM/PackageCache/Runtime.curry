@@ -16,13 +16,14 @@ import Directory   ( createDirectoryIfMissing, copyFile, getDirectoryContents
                    , getAbsolutePath, doesDirectoryExist, doesFileExist )
 import List        ( intercalate, split )
 
-import CPM.Config (Config, binInstallDir)
+import CPM.Config    ( Config, binInstallDir )
 import CPM.ErrorLogger
 import CPM.PackageCache.Global (installedPackageDir)
-import CPM.Package  ( Package, packageId, PackageExecutable(..), sourceDirsOf
-                    , configModule, executableSpec, version, showVersion )
-import CPM.FileUtil ( copyDirectoryFollowingSymlinks, recreateDirectory )
+import CPM.Package    ( Package, packageId, PackageExecutable(..), sourceDirsOf
+                      , configModule, executableSpec, version, showVersion )
+import CPM.FileUtil   ( copyDirectoryFollowingSymlinks, recreateDirectory )
 import CPM.PackageCache.Local as LocalCache
+import CPM.Repository ( readPackageFromRepository )
 
 -- Each package needs its own copy of all dependencies since KiCS2 and PACKS
 -- store their intermediate results for each source file in a hidden directory
@@ -51,12 +52,14 @@ copyPackages cfg pkgs dir = mapIO copyPackage pkgs >> return ()
   where
     copyPackage pkg = do
       cdir <- ensureCacheDirectory dir
-      destDir <- return $ cdir </> (packageId pkg)
+      destDir <- return $ cdir </> packageId pkg
       recreateDirectory destDir
       pkgDirExists <- doesDirectoryExist pkgDir
       if pkgDirExists
-        then copyDirectoryFollowingSymlinks pkgDir cdir >>
-             writePackageConfig cfg destDir pkg |> succeedIO ()
+        then -- in order to obtain complete package specification:
+             readPackageFromRepository cfg pkg |>= \reppkg ->
+             copyDirectoryFollowingSymlinks pkgDir cdir >>
+             writePackageConfig cfg destDir reppkg |> succeedIO ()
         else error $ "Package " ++ packageId pkg ++
                      " could not be found in package cache." 
      where 
@@ -75,7 +78,7 @@ ensureCacheDirectory dir = do
 writePackageConfig :: Config -> String -> Package -> IO (ErrorLogger ())
 writePackageConfig cfg pkgdir pkg =
   maybe (succeedIO ())
-        (\ configmod ->
+        (\configmod ->
            let binname = maybe ""
                                (\ (PackageExecutable n _ _) -> n)
                                (executableSpec pkg)

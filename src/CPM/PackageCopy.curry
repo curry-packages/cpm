@@ -125,10 +125,11 @@ copyDependencies cfg gc pkg pkgs dir =
 --- Upgrades all dependencies of a package copy.
 upgradeAllPackages :: Config -> Repository -> GC.GlobalCache -> String 
                    -> IO (ErrorLogger ())
-upgradeAllPackages cfg repo gc dir = loadPackageSpec dir |>=
-  \pkgSpec -> LocalCache.clearCache dir >> succeedIO () |>
-  installLocalDependencies cfg repo gc dir |>=
-  \ (_,deps) -> copyDependencies cfg gc pkgSpec deps dir
+upgradeAllPackages cfg repo gc dir =
+  loadPackageSpec dir |>= \pkgSpec ->
+  LocalCache.clearCache dir >> succeedIO () |>
+  installLocalDependencies cfg repo gc dir |>= \ (_,deps) ->
+  copyDependencies cfg gc pkgSpec deps dir
 
 --- Upgrades a single dependencies and its transitive dependencies.
 upgradeSinglePackage :: Config -> Repository -> GC.GlobalCache -> String 
