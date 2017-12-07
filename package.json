@@ -8,6 +8,7 @@
     "license": "BSD-3-Clause",
     "licenseFile": "LICENSE",
     "dependencies": {
+        "base"          : ">= 1.0.0, < 2.0.0",
         "abstract-curry": ">= 2.0.0",
         "det-parse"     : ">= 0.0.1",
         "opt-parse"     : ">= 0.0.3",
