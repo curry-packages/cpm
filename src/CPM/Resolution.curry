@@ -71,7 +71,8 @@ resolutionSuccess (ResolutionFailure _) = False
 
 --- Renders a dependency tree from a successful resolution.
 showDependencies :: ResolutionResult -> String
-showDependencies (ResolutionSuccess pkg deps) = showTree . mapTree (text . packageId) $ dependencyTree deps pkg
+showDependencies (ResolutionSuccess pkg deps) =
+  showTree . mapTree (text . packageId) $ dependencyTree deps pkg
 showDependencies (ResolutionFailure _) = "Resolution failed."
 
 --- Renders a conflict resolution into a textual representation.
@@ -80,12 +81,16 @@ showConflict (ResolutionSuccess _ _) = "Resolution succeeded."
 showConflict (ResolutionFailure t) = case findRelevantConflict t of
   Just c  -> showConflictState c
   Nothing -> case missingPackages $ clState $ findDeepestNode t of
-    []    -> "It failed for an unknown reason :("
-    (d@(Dependency p _):_) -> "There seems to be no version of package " ++ p ++ " that can satisfy the constraint " ++ showDependency d
+    []    -> "Conflict resolution failed for an unknown reason :(\n" ++
+             "Please clean your package ('cypm clean') and try again..."
+    (d@(Dependency p _):_) ->
+      "There seems to be no version of package " ++ p ++
+      " that can satisfy the constraint " ++ showDependency d
 
 showConflictTree :: ResolutionResult -> String
 showConflictTree (ResolutionSuccess _ _) = "Resolution succeeded."
-showConflictTree (ResolutionFailure t) = showTree $ mapTree labeler $ cutBelowConflict t
+showConflictTree (ResolutionFailure t) =
+  showTree $ mapTree labeler $ cutBelowConflict t
  where
   pkgId = text . packageId . actPackage
   actChain a@(InitialA _) = pkgId a

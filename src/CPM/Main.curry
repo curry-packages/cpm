@@ -103,7 +103,6 @@ runWithArgs opts = do
               _ -> do globalCache <- getGlobalCache config repo
                       case optCommand opts of
                         Checkout   o -> checkout   o config repo globalCache
-                        InstallApp o -> installapp o config repo globalCache
                         Install    o -> install    o config repo globalCache
                         Diff       o -> diff       o config repo globalCache
                         Upgrade    o -> upgrade    o config repo globalCache
@@ -133,7 +132,6 @@ data Command
   = NoCommand
   | Deps       DepsOptions
   | Checkout   CheckoutOptions
-  | InstallApp CheckoutOptions
   | Install    InstallOptions
   | Uninstall  UninstallOptions
   | PkgInfo    InfoOptions
@@ -362,10 +360,6 @@ optionParser allargs = optParser
         <|> command "uninstall" (help "Uninstall a package")
                  (\a -> Right $ a { optCommand = Uninstall (uninstallOpts a) })
                  uninstallArgs
-        <|> command "installapp"
-                     (help "Install the application provided by a package (depreacted).") 
-                     Right
-                     (checkoutArgs InstallApp)
         <|> command "deps" (help "Calculate dependencies")
                            (\a -> Right $ a { optCommand = Deps (depsOpts a) })
                            depsArgs
