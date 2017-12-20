@@ -75,15 +75,14 @@ defaultConfig = Config
 --- Shows the configuration.
 showConfiguration :: Config -> String
 showConfiguration cfg = unlines
-  [ "Current configuration:"
-  , "Compiler version       : " ++ showCompilerVersion cfg
+  [ "Compiler version       : " ++ showCompilerVersion cfg
   , "Compiler base version  : " ++ compilerBaseVersion cfg
-  , "Base version           : " ++ baseVersion         cfg
-  , "CURRYBIN               : " ++ curryExec           cfg
-  , "REPOSITORYPATH         : " ++ repositoryDir       cfg
-  , "PACKAGEINSTALLPATH     : " ++ packageInstallDir   cfg
-  , "BININSTALLPATH         : " ++ binInstallDir       cfg
-  , "APPPACKAGEPATH         : " ++ appPackageDir       cfg
+  , "BASE_VERSION           : " ++ baseVersion         cfg
+  , "CURRY_BIN              : " ++ curryExec           cfg
+  , "REPOSITORY_PATH        : " ++ repositoryDir       cfg
+  , "PACKAGE_INSTALL_PATH   : " ++ packageInstallDir   cfg
+  , "BIN_INSTALL_PATH       : " ++ binInstallDir       cfg
+  , "APP_PACKAGE_PATH       : " ++ appPackageDir       cfg
   ]
   
 --- Shows the compiler version in the configuration.

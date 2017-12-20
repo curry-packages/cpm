@@ -219,12 +219,13 @@ creates a new project directory with a
 \code{package.json} file for you.\footnote{The \code{new} command
 also creates some other useful template files. Look into the
 output of this command.}
-Declare a dependency inside the new \code{package.json} file, e.g.:
+Then declare the dependencies inside the new \code{package.json} file, e.g.:
 
 \begin{lstlisting}
 {
   ...,
   "dependencies": {
+    "base": ">= 1.0.0, < 2.0.0",
     "json": "~> 1.1.0"
   }
 }
@@ -636,6 +637,24 @@ The name of the executable of the Curry system used
 to compile and test packages.
 The default value is the binary of the Curry system which has been used
 to compile CPM.
+
+\item[\fbox{\code{BASE_VERSION}}]
+The version of the base libraries which is used for package installations.
+In the default case, the base version is the version of the system libraries
+used by the Curry compiler. These system libraries are also available
+as package \ccode{base} so that they can listed as a dependency
+in the package specification.
+If the base version of the package is identical to the base version
+of the Curry compiler used by CPM, the installed copy
+of the base libraries is ignored.\footnote{Since the system libraries
+of a Curry compiler are usually pre-compiled, the usage of the
+system libraries instead of the \code{base} package might result
+in faster compilation times.}
+If one uses a different base version, e.g., enforced by a package
+dependency or by setting this configuration variable,
+then this version of the base package is used.
+Thus, one can use a package even if the current compiler
+has a different version of the base libraries.
 \end{description}
 %
 Note that one write the option names also in lowercase or omit
@@ -710,6 +729,12 @@ This option adds the elapsed time to every info or debug output line.
 The available commands of CPM are:
 
 \begin{description}
+\item[\fbox{\code{config}}]
+Shows the current configuration of CPM
+(see also Section~\ref{sec:config}).
+The option \code{--all} shows also the names and version
+of the packages installed in the global package cache.
+
 \item[\fbox{\code{info}}] Gives information on the current package, e.g. the
 package's name, author, synopsis and its dependency specifications.
 

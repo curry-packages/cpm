@@ -15,12 +15,11 @@ module CPM.Repository
   , findAllVersions, findVersion, findLatestVersion
   , searchPackages
   , listPackages
-  , updateRepository
-  , updateRepositoryCache
-  , readPackageFromRepository
+  , updateRepository, updateRepositoryCache
+  , readPackageFromRepository, getAllPackageVersions, getPackageVersion
   ) where
 
-import Char         ( toLower, toUpper )
+import Char         ( toLower )
 import Directory
 import Either
 import FilePath
@@ -35,7 +34,7 @@ import CPM.Config        ( Config, repositoryDir, packageIndexRepository
 import CPM.ConfigPackage ( packageVersion )
 import CPM.ErrorLogger
 import CPM.Package
-import CPM.FileUtil      ( checkAndGetDirectoryContents, inDirectory
+import CPM.FileUtil      ( checkAndGetVisibleDirectoryContents, inDirectory
                          , whenFileExists, removeDirectoryComplete )
 import CPM.Resolution    ( isCompatibleToCompiler )
 
@@ -125,8 +124,8 @@ allPackages :: Repository -> [Package]
 allPackages (Repository ps) = ps
 
 --- Reads all package specifications from the default repository.
---- Use the cache if is present or update the cache after reading.
---- If some errors occur, show them and terminate with exit status.
+--- Uses the cache if it is present or update the cache after reading.
+--- If some errors occur, show them and terminate with error exit status.
 ---
 --- @param cfg the configuration to use
 readRepository :: Config -> IO Repository
@@ -149,13 +148,13 @@ readRepository cfg = do
 readRepositoryFrom :: String -> IO (Repository, [String])
 readRepositoryFrom path = do
   debugMessage $ "Reading repository index from '" ++ path ++ "'..."
-  pkgDirs <- checkAndGetDirectoryContents path
-  pkgPaths <- return $ map (path </>) $ filter dirOrSpec pkgDirs
-  verDirs <- mapIO checkAndGetDirectoryContents pkgPaths
-  verPaths <- return $ concatMap (\ (d, p) -> map (d </>) (filter dirOrSpec p))
+  repos     <- checkAndGetVisibleDirectoryContents path
+  pkgPaths  <- mapIO getDir (map (path </>) repos) >>= return . concat
+  verDirs   <- mapIO checkAndGetVisibleDirectoryContents pkgPaths
+  verPaths  <- return $ concatMap (\ (d, p) -> map (d </>) p)
                      $ zip pkgPaths verDirs
   specPaths <- return $ map (</> "package.json") verPaths
-  specs <- mapIO readPackageFile specPaths
+  specs     <- mapIO readPackageFile specPaths
   when (null (lefts specs)) $ debugMessage "Finished reading repository"
   return $ (Repository $ rights specs, lefts specs)
  where
@@ -167,8 +166,7 @@ readRepositoryFrom path = do
       Left err -> Left $ "Problem reading '" ++ f ++ "': " ++ err
       Right  s -> Right s
 
-  dirOrSpec d = (not $ isPrefixOf "." d) && takeExtension d /= ".md" &&
-                (not $ isPrefixOf repositoryCacheFileName (map toUpper d))
+  getDir d = doesDirectoryExist d >>= \b -> return $ if b then [d] else []
 
 
 --- Updates the package index from the central Git repository.
@@ -249,7 +247,8 @@ readRepositoryCache cfg = do
   excache <- doesFileExist cf
   if excache
     then debugMessage ("Reading repository cache from '" ++ cf ++ "'...") >>
-         catch (readTermInCacheFile cf)
+         catch (readTermInCacheFile cf >>= \repo ->
+                debugMessage "Finished reading repository cache" >> return repo)
                (\_ -> do infoMessage "Cleaning broken repository cache..."
                          cleanRepositoryCache cfg
                          return Nothing )
@@ -291,5 +290,28 @@ readPackageFromRepository :: Config -> Package -> IO (ErrorLogger Package)
 readPackageFromRepository cfg pkg =
   let pkgdir = repositoryDir cfg </> name pkg </> showVersion (version pkg)
   in loadPackageSpec pkgdir
+
+------------------------------------------------------------------------------
+-- Some operations to access the repository. In the future, these
+-- operations might be implemented by a better database structure
+-- of the repository to speed-up the repository access.
+
+--- Retrieves all versions of a package with a given name from the repository.
+---
+--- @param cfg     - the current CPM configuration
+--- @param pkgname - the package name to be retrieved
+--- @param pre     - should pre-release versions be included?
+getAllPackageVersions :: Config -> String -> Bool -> IO [Package]
+getAllPackageVersions cfg pkgname pre =
+  readRepository cfg >>= \repo -> return (findAllVersions repo pkgname pre)
+
+--- Retrieves a package with a given name and version from the repository.
+---
+--- @param cfg     - the current CPM configuration
+--- @param pkgname - the package name to be retrieved
+--- @param ver     - the requested version of the package
+getPackageVersion :: Config -> String -> Version -> IO (Maybe Package)
+getPackageVersion cfg pkgname ver =
+  readRepository cfg >>= \repo -> return (findVersion repo pkgname ver)
 
 ------------------------------------------------------------------------------
