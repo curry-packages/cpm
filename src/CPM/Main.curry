@@ -37,7 +37,7 @@ import CPM.Package
 import CPM.Resolution ( isCompatibleToCompiler, showResult )
 import CPM.Repository ( Repository, readRepository, findVersion, listPackages
                       , findAllVersions, findLatestVersion, updateRepository
-                      , searchPackages, updateRepositoryCache
+                      , useUpdateHelp, searchPackages, updateRepositoryCache
                       , readPackageFromRepository
                       , getAllPackageVersions, getPackageVersion )
 import CPM.PackageCache.Runtime ( dependencyPathsSeparate, writePackageConfig )
@@ -84,7 +84,7 @@ runWithArgs opts = do
   (msgs, result) <- case optCommand opts of
     NoCommand   -> failIO "NoCommand"
     Config o    -> configCmd o config
-    Update      -> checkRequiredExecutables >> updateRepository config
+    Update      -> updateCmd   config
     Compiler o  -> compiler  o config
     Exec o      -> execCmd   o config
     Doc  o      -> docCmd    o config
@@ -697,14 +697,22 @@ checkExecutables executables = do
 -- `config` command: show current CPM configuration
 configCmd :: ConfigOptions -> Config -> IO (ErrorLogger ())
 configCmd opts cfg = do
-  putStrLn $ unlines
-    [cpmBanner, "Current configuration:", "",showConfiguration cfg]
   if configAll opts
     then readRepository cfg >>= \repo ->
          readGlobalCache cfg repo |>= \gc ->
+         putStrLn configS >>
          putStrLn "Installed packages:\n" >>
          putStrLn (unwords (map packageId (allPackages gc))) >> succeedIO ()
-    else succeedIO ()
+    else putStrLn configS >> succeedIO ()
+ where
+  configS = unlines
+             [cpmBanner, "Current configuration:", "", showConfiguration cfg]
+
+------------------------------------------------------------------------------
+-- `update` command:
+updateCmd :: Config -> IO (ErrorLogger ())
+updateCmd cfg =
+  checkRequiredExecutables >> updateRepository cfg
   
 ------------------------------------------------------------------------------
 -- `deps` command:
@@ -761,7 +769,7 @@ checkoutCmd (CheckoutOptions pkgname Nothing pre) cfg repo =
  case findAllVersions repo pkgname pre of
   [] -> packageNotFoundFailure pkgname
   ps -> case filter (isCompatibleToCompiler cfg) ps of
-    []    -> compatPackageNotFoundFailure cfg pkgname cpmUpdate
+    []    -> compatPackageNotFoundFailure cfg pkgname useUpdateHelp
     (p:_) -> acquireAndInstallPackageWithDependencies cfg repo p |>
              checkoutPackage cfg p
 checkoutCmd (CheckoutOptions pkg (Just ver) _) cfg repo =
@@ -939,7 +947,7 @@ listCmd (ListOptions lv csv cat) cfg repo =
   
   renderTable colsizes rows =
     if csv then showCSV (head rows : drop 2 rows)
-           else unlines [render (table rows colsizes), cpmInfo, cpmUpdate]
+           else unlines [render (table rows colsizes), cpmInfo, useUpdateHelp]
 
 --- Returns the first package of a list of packages compatible to the
 --- current compiler (according to the given configuration).
@@ -971,9 +979,6 @@ showVersionIfCompatible cfg p =
 cpmInfo :: String
 cpmInfo = "Use 'cypm info PACKAGE' for more information about a package."
 
-cpmUpdate :: String
-cpmUpdate = "Use 'cypm update' to download the newest package index."
-
 
 --- Search in all (compiler-compatible) packages in the given repository.
 searchCmd :: SearchOptions -> Config -> Repository -> IO (ErrorLogger ())
@@ -986,8 +991,8 @@ searchCmd (SearchOptions q smod sexec) cfg repo =
   (colsizes,rows) = packageVersionAsTable cfg results
   rendered = unlines $
                if null results
-                 then ["No packages found for '" ++ q ++ "'", cpmUpdate]
-                 else [ render (table rows colsizes), cpmInfo, cpmUpdate ]
+                 then [ "No packages found for '" ++ q ++ "'", useUpdateHelp ]
+                 else [ render (table rows colsizes), cpmInfo, useUpdateHelp ]
 
 
 --- `upgrade` command.
@@ -1066,7 +1071,7 @@ addDependencyCmd pkgname force config =
   case allpkgs of
     [] -> packageNotFoundFailure pkgname
     ps -> case filter (isCompatibleToCompiler config) ps of
-             []    -> compatPackageNotFoundFailure config pkgname cpmUpdate
+             []    -> compatPackageNotFoundFailure config pkgname useUpdateHelp
              (p:_) -> searchLocalPackageSpec "." |>=
                       maybe (genNewLocalPackage (version p))
                             (addDepToLocalPackage (version p))
@@ -1432,7 +1437,7 @@ newPackage (NewOptions pname) = do
 packageNotFoundFailure :: String -> IO (ErrorLogger _)
 packageNotFoundFailure pkgname =
   failIO $ "Package '" ++ pkgname ++ "' not found in package repository.\n" ++
-           cpmUpdate
+           useUpdateHelp
 
 --- Fail with a "compatible package not found" message and a comment
 compatPackageNotFoundFailure :: Config -> String -> String -> IO (ErrorLogger _)

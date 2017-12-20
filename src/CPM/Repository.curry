@@ -15,7 +15,7 @@ module CPM.Repository
   , findAllVersions, findVersion, findLatestVersion
   , searchPackages
   , listPackages
-  , updateRepository, updateRepositoryCache
+  , useUpdateHelp, updateRepository, updateRepositoryCache
   , readPackageFromRepository, getAllPackageVersions, getPackageVersion
   ) where
 
@@ -27,7 +27,8 @@ import IO
 import IOExts       ( readCompleteFile )
 import List
 import ReadShowTerm ( showQTerm, readQTerm )
-import System       ( exitWith )
+import System       ( exitWith, system )
+import Time
 
 import CPM.Config        ( Config, repositoryDir, packageIndexRepository
                          , packageInstallDir )
@@ -130,6 +131,7 @@ allPackages (Repository ps) = ps
 --- @param cfg the configuration to use
 readRepository :: Config -> IO Repository
 readRepository cfg = do
+  warnOldRepo cfg
   mbrepo <- readRepositoryCache cfg
   case mbrepo of
     Nothing -> do
@@ -141,6 +143,28 @@ readRepository cfg = do
                 mapIO putStrLn repoErrors
                 exitWith 1
     Just repo -> return repo
+
+--- Sets the date of the last update by touching README.md.
+setLastUpdate :: Config -> IO ()
+setLastUpdate cfg =
+  system (unwords ["touch", repositoryDir cfg </> "README.md"]) >> done
+
+--- Prints a warning if the repository index is older than 10 days.
+warnOldRepo :: Config -> IO ()
+warnOldRepo cfg = do
+  utime <- getModificationTime (repositoryDir cfg </> "README.md")
+  ctime <- getClockTime
+  let warntime = addDays 10 utime
+  when (compareClockTime ctime warntime == GT) $ do
+    -- We assume that clock time is measured in seconds (as in PAKCS or KiCS2)
+    let timediff = clockTimeToInt ctime - clockTimeToInt utime
+        days = timediff `div` (60*60*24)
+    putStrLn $  "Warning: your repository index is older than " ++
+                show days ++ " days."
+    putStrLn useUpdateHelp
+
+useUpdateHelp :: String
+useUpdateHelp = "Use 'cypm update' to download the newest package index."
 
 --- Reads all package specifications from a repository.
 ---
@@ -183,13 +207,15 @@ updateRepository cfg = do
     then do
       c <- inDirectory (repositoryDir cfg) $ execQuietCmd $ cleanPullCmd
       if c == 0
-        then do updateRepositoryCache cfg
+        then do setLastUpdate cfg
+                updateRepositoryCache cfg
                 log Info "Successfully updated repository"
         else failIO $ "Failed to update git repository, return code " ++ show c
     else do
       c <- inDirectory (repositoryDir cfg) $ execQuietCmd cloneCommand
       if c == 0
-        then do updateRepositoryCache cfg
+        then do setLastUpdate cfg
+                updateRepositoryCache cfg
                 log Info "Successfully updated repository"
         else failIO $ "Failed to update git repository, return code " ++ show c
  where
