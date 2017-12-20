@@ -176,17 +176,21 @@ getLocalPackageSpec dir =
 
 --- Tries to find a package specification in the current directory or one of its
 --- ancestors. Returns `Nothing` if there is not package specifiction.
+--- In order to avoid infinite loops due to cyclic file structures,
+--- the search is limited to 10 ancestor hierarchies.
 searchLocalPackageSpec :: String -> IO (ErrorLogger (Maybe String))
-searchLocalPackageSpec dir = do
-  existsLocal <- doesFileExist $ dir </> "package.json"
-  if existsLocal
-    then succeedIO (Just dir)
-    else log Debug ("No package.json in " ++ show dir ++ ", trying " ++
-                    show (dir </> "..")) |> do
-      parentExists <- doesDirectoryExist $ dir </> ".."
-      if parentExists
-        then searchLocalPackageSpec $ dir </> ".."
-        else succeedIO Nothing
+searchLocalPackageSpec = searchLocalSpec 10
+ where
+  searchLocalSpec m dir = do
+    existsLocal <- doesFileExist $ dir </> "package.json"
+    if existsLocal
+      then succeedIO (Just dir)
+      else log Debug ("No package.json in " ++ show dir ++ ", trying " ++
+                      show (dir </> "..")) |> do
+           parentExists <- doesDirectoryExist $ dir </> ".."
+           if m>0 && parentExists
+             then searchLocalSpec (m-1) $ dir </> ".."
+             else succeedIO Nothing
 
 --- Resolves the dependencies for a package copy and fills the package caches.
 resolveAndCopyDependencies :: Config -> Repository -> GC.GlobalCache -> String 
