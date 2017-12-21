@@ -35,6 +35,7 @@ import List   ( intercalate, intersect, nub, splitOn, isPrefixOf, isInfixOf
 import Maybe  ( isJust, fromJust, fromMaybe, listToMaybe )
 import System ( getEnviron, setEnviron, unsetEnviron )
 
+import AbstractCurry.Select ( tconsArgsOfType )
 import Analysis.Types       ( Analysis )
 import Analysis.ProgInfo    ( ProgInfo, emptyProgInfo, combineProgInfo
                             , lookupProgInfo)
@@ -43,8 +44,7 @@ import Analysis.TypeUsage   ( typesInValuesAnalysis )
 import CASS.Server          ( analyzeGeneric )
 import Text.Pretty          ( pPrint, text, indent, vcat, (<+>), (<$$>) )
 
-import CPM.AbstractCurry ( readAbstractCurryFromDeps, loadPathForPackage
-                         , tcArgsOfType )
+import CPM.AbstractCurry ( readAbstractCurryFromDeps, loadPathForPackage )
 import CPM.Config        ( Config (curryExec) )
 import CPM.Diff.API as APIDiff
 import CPM.Diff.CurryComments (readComments, getFuncComment)
@@ -334,7 +334,7 @@ genLimitFunction typeinfos tdecl = case tdecl of
       error "type2LimOp: cannot generate limit operation for function type"
     _ -> maybe (error "type2LimOp: cannot generate limit operation for type application")
                (\ (tc,ts) -> applyF (transCTCon2Limit tc) (map type2LimOp ts))
-               (tcArgsOfType texp)
+               (tconsArgsOfType texp)
 
 
 --- Generates a test function to compare two versions of the given function.
@@ -394,7 +394,7 @@ genTestFunction info tm (isprod,f) =
             (\_ -> case findTrans tm texp of
                      Just  n -> applyF ("Compare", n) [CVar v]
                      Nothing -> CVar v)
-            (tcArgsOfType texp)
+            (tconsArgsOfType texp)
     _ -> error "CPM.Diff.Behavior.transformedVar: This case should be impossible to reach"
 
 -- encode a Curry identifier into an alphanum form:
@@ -526,7 +526,7 @@ genTranslatorFunction cfg repo gc info acy tm texp =
                  "Cannot generate translator function for type:\n" ++
                  pPrint (ppCTypeExpr defaultOptions texp))
         fst
-        (tcArgsOfType texp)
+        (tconsArgsOfType texp)
  in
   -- Don't generate another translator if there already is one for the current
   -- type.
@@ -648,7 +648,7 @@ instantiate tdecl texp = case texp of
   CFuncType _ _ -> error "CPM.Diff.Behavior.instantiate: Cannot instantiate CFuncType"
   _ -> maybe (error "CPM.Diff.Behavior.instantiate: Cannot instantiate CTApply")
              (\ (_,texps) -> instantiate' tdecl texps)
-             (tcArgsOfType texp)
+             (tconsArgsOfType texp)
  where
   instantiate' (CType n v vs cs d) es = CType n v vs (map cons cs) d
    where
@@ -705,7 +705,7 @@ type2LimitFunc texp = case texp of
         (error
         "type2LimitFunc: cannot generate limit operation for type application")
         (\ (tc,ts) -> applyF (transCTCon2Limit tc) (map type2LimitFunc ts))
-        (tcArgsOfType texp)
+        (tconsArgsOfType texp)
 
 -- Translate a type constructor name to the name of the corresponding limit
 -- operation:
@@ -1065,9 +1065,9 @@ filterNonMatchingTypes dirA dirB deps acyCache allFuncs =
 typesEqual :: CTypeExpr -> String -> String -> [Package] -> ACYCache
            -> [CTypeExpr] -> IO (ErrorLogger (ACYCache, Bool))
 typesEqual texp dirA dirB deps acyCache checked =
-  maybe (failIO "typesEqual not called on type constructor")
+  maybe (failIO $ "typesEqual not called on type constructor: " ++ show texp)
         (succeedIO . fst)
-        (tcArgsOfType texp) |>= \n -> let (mod,_) = n in
+        (tconsArgsOfType texp) |>= \n -> let (mod,_) = n in
   if texp `elem` checked
     then succeedIO (acyCache, True)
     else readCached dirA deps acyCache mod |>= \(acy',modA) ->

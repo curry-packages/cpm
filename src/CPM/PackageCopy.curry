@@ -113,12 +113,13 @@ elemBy f (x:xs) = if f x
   else elemBy f xs
 
 --- Links the dependencies of a package to its local cache and copies them to
---- its runtime cache.
+--- its runtime cache. Returns the package specifications of the dependencies.
 copyDependencies :: Config -> Package -> [Package] -> String 
-                 -> IO (ErrorLogger ())
+                 -> IO (ErrorLogger [Package])
 copyDependencies cfg pkg pkgs dir = 
   LocalCache.linkPackages cfg dir pkgs |>
-  RuntimeCache.copyPackages cfg pkgs' dir >> succeedIO ()
+  RuntimeCache.copyPackages cfg pkgs' dir |>= \pkgspecs ->
+  succeedIO (if pkg `elem` pkgs then pkg : pkgspecs else pkgspecs)
  where 
   pkgs' = filter (/= pkg) pkgs
 
@@ -128,7 +129,7 @@ upgradeAllPackages cfg repo dir =
   loadPackageSpec dir |>= \pkgSpec ->
   LocalCache.clearCache dir >> succeedIO () |>
   installLocalDependencies cfg repo dir |>= \ (_,deps) ->
-  copyDependencies cfg pkgSpec deps dir
+  copyDependencies cfg pkgSpec deps dir |> succeedIO ()
 
 --- Upgrades a single package and its transitive dependencies.
 upgradeSinglePackage :: Config -> Repository -> String -> String
@@ -142,7 +143,7 @@ upgradeSinglePackage cfg repo dir pkgName =
                         (LS.setLocallyIgnored originalLS transitiveDeps) |>=
   \result -> GC.installMissingDependencies cfg gc (resolvedPackages result) |>
   log Info (showDependencies result) |>
-  copyDependencies cfg pkgSpec (resolvedPackages result) dir
+  copyDependencies cfg pkgSpec (resolvedPackages result) dir |> succeedIO ()
 
 --- Installs the dependencies of a package.
 installLocalDependencies :: Config -> Repository -> String 
@@ -153,8 +154,8 @@ installLocalDependencies cfg repo dir =
   resolveDependenciesForPackageCopy cfg pkgSpec repo gc dir |>= \result ->
   GC.installMissingDependencies cfg gc (resolvedPackages result) |>
   log Info (showDependencies result) |> 
-  copyDependencies cfg pkgSpec (resolvedPackages result) dir |>
-  succeedIO (pkgSpec, resolvedPackages result)
+  copyDependencies cfg pkgSpec (resolvedPackages result) dir |>= \cpkgs ->
+  succeedIO (pkgSpec, cpkgs)
 
 --- Links a directory into the local package cache. Used for `cypm link`.
 linkToLocalCache :: String -> String -> IO (ErrorLogger ())
@@ -202,7 +203,7 @@ resolveAndCopyDependencies cfg repo gc dir =
 resolveAndCopyDependenciesForPackage ::
      Config -> String -> Package -> IO (ErrorLogger [Package])
 resolveAndCopyDependenciesForPackage cfg dir pkgSpec =
-  readRepository cfg >>= \repo ->
+  readRepository cfg False >>= \repo ->
   GC.readGlobalCache cfg repo |>= \gc ->
   resolveAndCopyDependenciesForPackage' cfg repo gc dir pkgSpec
 
@@ -217,14 +218,13 @@ resolveAndCopyDependenciesForPackage' cfg repo gc dir pkgSpec =
                   ++ (intercalate "," $ map packageId missingDeps) 
                   ++ "\nUse `cypm install` to install missing dependencies."
     in if null missingDeps
-         then copyDependencies cfg pkgSpec deps dir |>= \_ ->
-              succeedIO deps
+         then copyDependencies cfg pkgSpec deps dir
          else failIO failMsg
 
 --- Resolves the dependencies for a package copy.
 resolveDependencies :: Config -> String -> IO (ErrorLogger ResolutionResult)
 resolveDependencies cfg dir =
-  readRepository cfg >>= \repo ->
+  readRepository cfg False >>= \repo ->
   GC.readGlobalCache cfg repo |>= \gc ->
   loadPackageSpec dir |->
   log Info ("Read package spec from " ++ dir) |>= \pkgSpec ->

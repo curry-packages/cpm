@@ -15,7 +15,7 @@ module CPM.Repository
   , findAllVersions, findVersion, findLatestVersion
   , searchPackages
   , listPackages
-  , useUpdateHelp, updateRepository, updateRepositoryCache
+  , useUpdateHelp, updateRepository, cleanRepositoryCache
   , readPackageFromRepository, getAllPackageVersions, getPackageVersion
   ) where
 
@@ -26,7 +26,7 @@ import FilePath
 import IO
 import IOExts       ( readCompleteFile )
 import List
-import ReadShowTerm ( showQTerm, readQTerm )
+import ReadShowTerm ( showQTerm, readQTerm, showTerm, readUnqualifiedTerm )
 import System       ( exitWith, system )
 import Time
 
@@ -128,17 +128,20 @@ allPackages (Repository ps) = ps
 --- Uses the cache if it is present or update the cache after reading.
 --- If some errors occur, show them and terminate with error exit status.
 ---
---- @param cfg the configuration to use
-readRepository :: Config -> IO Repository
-readRepository cfg = do
+--- @param cfg   - the configuration to use
+--- @param large - if true reads the larger cache with more package information
+---                (e.g., for searching all packages)
+readRepository :: Config -> Bool -> IO Repository
+readRepository cfg large = do
   warnOldRepo cfg
-  mbrepo <- readRepositoryCache cfg
+  mbrepo <- readRepositoryCache cfg large
   case mbrepo of
     Nothing -> do
-      infoMessage "Writing repository cache..."
+      infoMessage $ "Writing " ++ (if large then "large " else "") ++
+                    "repository cache..."
       (repo, repoErrors) <- readRepositoryFrom (repositoryDir cfg)
       if null repoErrors
-        then writeRepositoryCache cfg repo >> return repo
+        then writeRepositoryCache cfg large repo >> return repo
         else do putStrLn "Problems while reading the package index:"
                 mapIO putStrLn repoErrors
                 exitWith 1
@@ -208,14 +211,14 @@ updateRepository cfg = do
       c <- inDirectory (repositoryDir cfg) $ execQuietCmd $ cleanPullCmd
       if c == 0
         then do setLastUpdate cfg
-                updateRepositoryCache cfg
+                cleanRepositoryCache cfg
                 log Info "Successfully updated repository"
         else failIO $ "Failed to update git repository, return code " ++ show c
     else do
       c <- inDirectory (repositoryDir cfg) $ execQuietCmd cloneCommand
       if c == 0
         then do setLastUpdate cfg
-                updateRepositoryCache cfg
+                cleanRepositoryCache cfg
                 log Info "Successfully updated repository"
         else failIO $ "Failed to update git repository, return code " ++ show c
  where
@@ -230,83 +233,103 @@ updateRepository cfg = do
 -- which is not relevant for the repository data structure.
 --
 -- The relevant package fields are:
--- name version synopsis category dependencies
--- compilerCompatibility sourceDirs exportedModules
+-- * small cache: name version dependencies compilerCompatibility
+-- * large cache: synopsis category sourceDirs exportedModules executableSpec
 
 --- The local file name containing the repository cache as a Curry term.
 repositoryCacheFileName :: String
 repositoryCacheFileName = "REPOSITORY_CACHE"
 
 --- The file containing the repository cache as a Curry term.
-repositoryCache :: Config -> String
-repositoryCache cfg = repositoryDir cfg </> repositoryCacheFileName
+repositoryCache :: Config -> Bool -> String
+repositoryCache cfg large =
+  repositoryDir cfg </> repositoryCacheFileName ++
+  (if large then "_LARGE" else "")
 
---- Updates the repository cache with the current repository index.
-updateRepositoryCache :: Config -> IO ()
-updateRepositoryCache cfg = do
-  cleanRepositoryCache cfg
-  repo <- readRepository cfg
-  writeRepositoryCache cfg repo
+--- The first line of the repository cache (to check version compatibility):
+repoCacheVersion :: String
+repoCacheVersion = packageVersion ++ "-1"
 
 --- Stores the given repository in the cache.
-writeRepositoryCache :: Config -> Repository -> IO ()
-writeRepositoryCache cfg repo =
-  writeFile (repositoryCache cfg)
-            (packageVersion ++ "\n" ++
-             showQTerm (map package2tuple (allPackages repo)))
+---
+--- @param cfg   - the configuration to use
+--- @param large - if true writes the larger cache with more package information
+---                (e.g., for searching all packages)
+--- @param repo  - the repository to write
+writeRepositoryCache :: Config -> Bool -> Repository -> IO ()
+writeRepositoryCache cfg large repo =
+  writeFile (repositoryCache cfg large) $ unlines $
+    repoCacheVersion :
+    map (if large then showTerm . package2largetuple
+                  else showTerm . package2smalltuple)
+        (allPackages repo)
  where
-  package2tuple p =
-    ( name p
-    , version p
-    , synopsis p
-    , category p
-    , dependencies p
-    , compilerCompatibility p
-    , sourceDirs p
-    , exportedModules p
-    )
+  package2smalltuple p =
+    ( name p, version p, dependencies p, compilerCompatibility p )
+
+  package2largetuple p =
+    (package2smalltuple p,
+    (synopsis p, category p, sourceDirs p, exportedModules p,
+     executableSpec  p))
 
 --- Reads the given repository from the cache.
-readRepositoryCache :: Config -> IO (Maybe Repository)
-readRepositoryCache cfg = do
-  let cf = repositoryCache cfg
+---
+--- @param cfg   - the configuration to use
+--- @param large - if true reads the larger cache with more package information
+---                (e.g., for searching all packages)
+readRepositoryCache :: Config -> Bool -> IO (Maybe Repository)
+readRepositoryCache cfg large = do
+  let cf = repositoryCache cfg large
   excache <- doesFileExist cf
   if excache
     then debugMessage ("Reading repository cache from '" ++ cf ++ "'...") >>
-         catch (readTermInCacheFile cf >>= \repo ->
+         catch ((if large
+                  then readTermInCacheFile cfg (largetuple2package . uread) cf
+                  else readTermInCacheFile cfg (smalltuple2package . uread) cf)
+                  >>= \repo ->
                 debugMessage "Finished reading repository cache" >> return repo)
                (\_ -> do infoMessage "Cleaning broken repository cache..."
                          cleanRepositoryCache cfg
                          return Nothing )
     else return Nothing
  where
-  readTermInCacheFile cf = do
-    h <- openFile cf ReadMode
-    pv <- hGetLine h
-    if pv == packageVersion
-      then hGetContents h >>= \t ->
-           return $!! Just (Repository (map tuple2package (readQTerm t)))
-      else do infoMessage "Cleaning repository cache (wrong version)..."
-              cleanRepositoryCache cfg
-              return Nothing
+  uread s = readUnqualifiedTerm ["CPM.Package","Prelude"] s
 
-  tuple2package (nm,vs,sy,cat,dep,cmp,srcs,exps) =
+  smalltuple2package (nm,vs,dep,cmp) =
     emptyPackage { name = nm
                  , version = vs
-                 , synopsis = sy
-                 , category = cat
                  , dependencies = dep
                  , compilerCompatibility = cmp
-                 , sourceDirs = srcs
-                 , exportedModules = exps
                  }
 
+  largetuple2package (basics,(sy,cat,srcs,exps,exec)) =
+    (smalltuple2package basics)
+      { synopsis = sy
+      , category = cat
+      , sourceDirs = srcs
+      , exportedModules = exps
+      , executableSpec  = exec
+      }
+
+readTermInCacheFile :: Config -> (String -> Package) -> String
+                    -> IO (Maybe Repository)
+readTermInCacheFile cfg trans cf = do
+  h <- openFile cf ReadMode
+  pv <- hGetLine h
+  if pv == repoCacheVersion
+    then hGetContents h >>= \t ->
+         return $!! Just (Repository (map trans (lines  t)))
+    else do infoMessage "Cleaning repository cache (wrong version)..."
+            cleanRepositoryCache cfg
+            return Nothing
 
 --- Cleans the repository cache.
 cleanRepositoryCache :: Config -> IO ()
 cleanRepositoryCache cfg = do
-  let cachefile = repositoryCache cfg
-  whenFileExists cachefile $ removeFile cachefile
+  let smallcachefile = repositoryCache cfg False
+      largecachefile = repositoryCache cfg True
+  whenFileExists smallcachefile $ removeFile smallcachefile
+  whenFileExists largecachefile $ removeFile largecachefile
 
 ------------------------------------------------------------------------------
 --- Reads a given package from the default repository directory.
@@ -328,8 +351,9 @@ readPackageFromRepository cfg pkg =
 --- @param pkgname - the package name to be retrieved
 --- @param pre     - should pre-release versions be included?
 getAllPackageVersions :: Config -> String -> Bool -> IO [Package]
-getAllPackageVersions cfg pkgname pre =
-  readRepository cfg >>= \repo -> return (findAllVersions repo pkgname pre)
+getAllPackageVersions cfg pkgname pre = do
+  repo <- readRepository cfg False
+  return (findAllVersions repo pkgname pre)
 
 --- Retrieves a package with a given name and version from the repository.
 ---
@@ -337,7 +361,8 @@ getAllPackageVersions cfg pkgname pre =
 --- @param pkgname - the package name to be retrieved
 --- @param ver     - the requested version of the package
 getPackageVersion :: Config -> String -> Version -> IO (Maybe Package)
-getPackageVersion cfg pkgname ver =
-  readRepository cfg >>= \repo -> return (findVersion repo pkgname ver)
+getPackageVersion cfg pkgname ver = do
+  repo <- readRepository cfg False
+  return (findVersion repo pkgname ver)
 
 ------------------------------------------------------------------------------

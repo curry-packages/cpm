@@ -118,12 +118,7 @@ setCompilerVersion cfg0 = do
                     , baseVersion         = if null initbase
                                               then Dist.baseVersion
                                               else initbase }
-    else do (c1,sname,e1) <- evalCmd (curryExec cfg) ["--compiler-name"] ""
-            (c2,svers,e2) <- evalCmd (curryExec cfg) ["--numeric-version"] ""
-            (c3,sbver,e3) <- evalCmd (curryExec cfg) ["--base-version"] ""
-            when (c1 > 0 || c2 > 0 || c3 > 0) $
-              error $ "Cannot determine compiler version:\n" ++
-                      unlines (filter (not . null) [e1,e2,e3])
+    else do (sname,svers,sbver) <- getCompilerVersion (curryExec cfg)
             let cname = strip sname
                 cvers = strip svers
                 bvers = strip sbver
@@ -136,6 +131,23 @@ setCompilerVersion cfg0 = do
                                                  then bvers
                                                  else initbase }
  where
+  getCompilerVersion currybin = do
+    debugMessage $ "Getting version information from " ++ currybin
+    (r,s,e) <- evalCmd currybin
+                 ["--compiler-name","--numeric-version","--base-version"] ""
+    if r>0
+      then error $ "Cannot determine compiler version:\n" ++ e
+      else case lines s of
+        [sname,svers,sbver] -> return (sname,svers,sbver)
+        _ -> do debugMessage $ "Query version information again..."
+                (c1,sname,e1) <- evalCmd currybin ["--compiler-name"] ""
+                (c2,svers,e2) <- evalCmd currybin ["--numeric-version"] ""
+                (c3,sbver,e3) <- evalCmd currybin ["--base-version"] ""
+                when (c1 > 0 || c2 > 0 || c3 > 0) $
+                  error $ "Cannot determine compiler version:\n" ++
+                          unlines (filter (not . null) [e1,e2,e3])
+                return (sname,svers,sbver)
+
   currVersion = (Dist.curryCompiler, Dist.curryCompilerMajorVersion,
                                      Dist.curryCompilerMinorVersion)
 

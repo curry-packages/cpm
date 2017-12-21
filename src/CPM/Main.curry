@@ -37,7 +37,7 @@ import CPM.Package
 import CPM.Resolution ( isCompatibleToCompiler, showResult )
 import CPM.Repository ( Repository, readRepository, findVersion, listPackages
                       , findAllVersions, findLatestVersion, updateRepository
-                      , useUpdateHelp, searchPackages, updateRepositoryCache
+                      , useUpdateHelp, searchPackages, cleanRepositoryCache
                       , readPackageFromRepository
                       , getAllPackageVersions, getPackageVersion )
 import CPM.PackageCache.Runtime ( dependencyPathsSeparate, writePackageConfig )
@@ -51,7 +51,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 20/12/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 21/12/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -96,21 +96,26 @@ runWithArgs opts = do
     Add  o      -> addCmd    o config
     Clean       -> cleanPackage Info
     New o       -> newPackage o
-    _ -> do repo <- readRepository config
-            case optCommand opts of
-              List     o -> listCmd     o config repo
-              Search   o -> searchCmd   o config repo
-              Checkout o -> checkoutCmd o config repo
-              Install  o -> installCmd  o config repo
-              Upgrade  o -> upgradeCmd  o config repo
-              Diff     o -> diffCmd     o config repo
-              _ -> error "Internal command processing error!"
+    cmd -> do repo <- readRepository config (cmdWithLargeRepoCache cmd)
+              case optCommand opts of
+                List     o -> listCmd     o config repo
+                Search   o -> searchCmd   o config repo
+                Checkout o -> checkoutCmd o config repo
+                Install  o -> installCmd  o config repo
+                Upgrade  o -> upgradeCmd  o config repo
+                Diff     o -> diffCmd     o config repo
+                _ -> error "Internal command processing error!"
   mapIO showLogEntry msgs
   let allOk =  all (levelGte Info) (map logLevelOf msgs) &&
                either (\le -> levelGte Info (logLevelOf le))
                       (const True)
                       result
   exitWith (if allOk then 0 else 1)
+ where
+  cmdWithLargeRepoCache cmd =
+    case cmd of List   _ -> True
+                Search _ -> True
+                _        -> False
 
 data Options = Options
   { optLogLevel  :: LogLevel
@@ -698,7 +703,7 @@ checkExecutables executables = do
 configCmd :: ConfigOptions -> Config -> IO (ErrorLogger ())
 configCmd opts cfg = do
   if configAll opts
-    then readRepository cfg >>= \repo ->
+    then readRepository cfg False >>= \repo ->
          readGlobalCache cfg repo |>= \gc ->
          putStrLn configS >>
          putStrLn "Installed packages:\n" >>
@@ -1058,7 +1063,7 @@ addPackageCmd pkgdir force config = do
     createDirectoryIfMissing True pkgRepositoryDir
     copyFile (pkgdir </> "package.json") (pkgRepositoryDir </> "package.json")
     copyDirectory pkgdir pkgInstallDir
-    updateRepositoryCache config
+    cleanRepositoryCache config
 
 useForce :: String
 useForce = "Use option '-f' or '--force' to overwrite it."

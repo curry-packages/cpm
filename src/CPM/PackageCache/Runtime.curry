@@ -46,9 +46,9 @@ cacheDirectory :: String -> Package -> String
 cacheDirectory dir pkg = dir </> ".cpm" </> "packages" </> packageId pkg
 
 --- Copies a set of packages from the local package cache to the runtime 
---- package cache.
-copyPackages :: Config -> [Package] -> String -> IO ()
-copyPackages cfg pkgs dir = mapIO copyPackage pkgs >> return ()
+--- package cache and returns the package specifications.
+copyPackages :: Config -> [Package] -> String -> IO (ErrorLogger [Package])
+copyPackages cfg pkgs dir = mapEL copyPackage pkgs
   where
     copyPackage pkg = do
       cdir <- ensureCacheDirectory dir
@@ -59,7 +59,7 @@ copyPackages cfg pkgs dir = mapIO copyPackage pkgs >> return ()
         then -- in order to obtain complete package specification:
              readPackageFromRepository cfg pkg |>= \reppkg ->
              copyDirectoryFollowingSymlinks pkgDir cdir >>
-             writePackageConfig cfg destDir reppkg |> succeedIO ()
+             writePackageConfig cfg destDir reppkg >> succeedIO reppkg
         else error $ "Package " ++ packageId pkg ++
                      " could not be found in package cache." 
      where 

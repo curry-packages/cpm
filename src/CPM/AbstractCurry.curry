@@ -10,18 +10,17 @@ module CPM.AbstractCurry
   , readAbstractCurryFromDeps
   , transformAbstractCurryInDeps 
   , applyModuleRenames
-  , tcArgsOfType
   ) where
 
-import Distribution (FrontendTarget (..), FrontendParams (..), defaultParams
+import Distribution ( FrontendTarget (..), FrontendParams (..), defaultParams
                     , callFrontendWithParams, setQuiet, setFullPath
                     , sysLibPath, inCurrySubdir, modNameToPath
-                    , inCurrySubdirModule, lookupModuleSource)
-import List (intercalate, nub)
-import FilePath ((</>), (<.>), takeFileName, replaceExtension)
-import AbstractCurry.Files (readAbstractCurryFile, writeAbstractCurryFile)
-import AbstractCurry.Pretty (showCProg)
-import AbstractCurry.Select (imports)
+                    , inCurrySubdirModule, lookupModuleSource )
+import List                 ( intercalate, nub )
+import FilePath             ( (</>), (<.>), takeFileName, replaceExtension )
+import AbstractCurry.Files  ( readAbstractCurryFile, writeAbstractCurryFile )
+import AbstractCurry.Pretty ( showCProg )
+import AbstractCurry.Select ( imports )
 import AbstractCurry.Transform
 import AbstractCurry.Types
 import System
@@ -110,20 +109,3 @@ applyModuleRenames names prog =
     Just mod' -> (mod', n)
     Nothing   -> mn
 
-
---- Checks whether a type expression is a type constructor application.
---- If this is the case, return the type constructor and the type arguments.
-tcArgsOfType :: CTypeExpr -> Maybe (QName,[CTypeExpr])
-tcArgsOfType texp =
-  maybe Nothing
-        (\tc -> Just (tc, targsOfApply texp))
-        (tconOfApply texp)
- where
-  tconOfApply te = case te of CTApply (CTCons qn) _ -> Just qn
-                              CTApply tc _          -> tconOfApply tc
-                              _                     -> Nothing
-                                 
-  targsOfApply te = case te of
-    CTApply (CTCons _) ta -> [ta]
-    CTApply tc         ta -> targsOfApply tc ++ [ta]
-    _                     -> [] -- should not occur
