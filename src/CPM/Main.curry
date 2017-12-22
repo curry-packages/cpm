@@ -10,11 +10,13 @@ import Directory    ( doesFileExist, getAbsolutePath, doesDirectoryExist
                     , getCurrentDirectory, getDirectoryContents
                     , getModificationTime
                     , renameFile, removeFile, setCurrentDirectory )
-import Distribution ( stripCurrySuffix, addCurrySubdir )
+import Distribution ( installDir, stripCurrySuffix, addCurrySubdir )
 import Either
-import FilePath     ( (</>), splitSearchPath, replaceExtension, takeExtension )
+import FilePath     ( (</>), splitSearchPath, replaceExtension, takeExtension
+                    , pathSeparator, isPathSeparator )
 import IO           ( hFlush, stdout )
-import List         ( groupBy, intercalate, isSuffixOf, nub, split, splitOn )
+import List         ( groupBy, intercalate, isPrefixOf, isSuffixOf, nub, split
+                    , splitOn )
 import Sort         ( sortBy )
 import System       ( getArgs, getEnviron, setEnviron, unsetEnviron, exitWith
                     , system )
@@ -209,10 +211,12 @@ data ExecOptions = ExecOptions
   }
 
 data DocOptions = DocOptions
-  { docDir      :: Maybe String    -- documentation directory
-  , docModules  :: Maybe [String]  -- modules to be documented
-  , docPrograms :: Bool            -- generate documentation for programs
-  , docManual   :: Bool            -- generate manual (if specified)
+  { docDir        :: Maybe String    -- documentation directory
+  , docModules    :: Maybe [String]  -- modules to be documented
+  , docPrograms   :: Bool            -- generate documentation for programs
+  , docManual     :: Bool            -- generate manual (if specified)
+  , docGenImports :: Bool            -- generate documentation for imported pkgs
+                                     -- (otherwise, use their standard docs)
   }
 
 data TestOptions = TestOptions
@@ -293,7 +297,7 @@ execOpts s = case optCommand s of
 docOpts :: Options -> DocOptions
 docOpts s = case optCommand s of
   Doc opts -> opts
-  _        -> DocOptions Nothing Nothing True True
+  _        -> DocOptions Nothing Nothing True True False
 
 testOpts :: Options -> TestOptions
 testOpts s = case optCommand s of
@@ -564,6 +568,12 @@ optionParser allargs = optParser
           (  short "t"
           <> long "text"
           <> help "Generate only manual (according to package specification)"
+          <> optional )
+    <.> flag (\a -> Right $ a { optCommand = Doc (docOpts a)
+                                               { docGenImports = True } })
+          (  short "f"
+          <> long "full"
+          <> help "Generate full program documentation (i.e., also imported packages)"
           <> optional )
 
   testArgs =
@@ -1119,12 +1129,12 @@ docCmd :: DocOptions -> Config -> IO (ErrorLogger ())
 docCmd opts cfg =
   getLocalPackageSpec "." |>= \specDir ->
   loadPackageSpec specDir |>= \pkg -> do
-  let docdir = maybe "cdoc" id (docDir opts)
+  let docdir = maybe "cdoc" id (docDir opts) </> packageId pkg
   absdocdir <- getAbsolutePath docdir
   createDirectoryIfMissing True absdocdir
   (if docManual opts then genPackageManual opts cfg pkg absdocdir
                      else succeedIO ()) |>
-    (if docPrograms opts then genDocForPrograms opts cfg specDir pkg
+    (if docPrograms opts then genDocForPrograms opts cfg absdocdir specDir pkg
                          else succeedIO ())
 
 --- Generate manual according to  documentation specification of package.
@@ -1174,12 +1184,12 @@ replaceSubString sub newsub s = replString s
 --- or, if they are not given, on exported modules (if specified in the
 --- package), on the main executable (if specified in the package),
 --- or on all source modules of the package.
-genDocForPrograms :: DocOptions -> Config -> String -> Package
+genDocForPrograms :: DocOptions -> Config -> String -> String -> Package
                   -> IO (ErrorLogger ())
-genDocForPrograms opts cfg specDir pkg = do
+genDocForPrograms opts cfg docdir specDir pkg = do
+  abspkgdir <- getAbsolutePath specDir
   checkCompiler cfg pkg
-  let docdir  = maybe "cdoc" id (docDir opts)
-      exports = exportedModules pkg
+  let exports = exportedModules pkg
       mainmod = maybe Nothing
                       (\ (PackageExecutable _ emain _) -> Just emain)
                       (executableSpec pkg)
@@ -1195,26 +1205,50 @@ genDocForPrograms opts cfg specDir pkg = do
   if null docmods
     then putStrLn "No modules to be documented!" >> succeedIO ()
     else
+      loadCurryPathFromCache cfg specDir |>=
+      maybe (computePackageLoadPath cfg specDir)
+            succeedIO |>= \currypath ->
+      let pkgurls = path2packages abspkgdir currypath in
       if apidoc
-        then foldEL (\_ -> docModule specDir docdir) () docmods |>
-             runDocCmd specDir
-                       ([currydoc, "--title", apititle, "--onlyindexhtml",
-                         docdir] ++ docmods) |>
+        then foldEL (\_ -> docModule currypath pkgurls) () docmods |>
+             runDocCmd currypath pkgurls
+                       (["--title", apititle, "--onlyindexhtml", docdir]
+                        ++ docmods) |>
              log Info ("Documentation generated in '"++docdir++"'")
-        else runDocCmd specDir [currydoc, docdir, head docmods]
+        else runDocCmd currypath pkgurls [docdir, head docmods]
  where
   apititle = "\"API Documentation of Package '" ++ name pkg ++ "'\""
 
   currydoc = curryExec cfg ++ " doc"
 
-  docModule pkgdir docdir mod =
-    runDocCmd pkgdir [currydoc, "--noindexhtml", docdir, mod]
+  docModule currypath uses mod =
+    runDocCmd currypath uses ["--noindexhtml", docdir, mod]
 
-  runDocCmd pkgdir doccmd = do
-    let cmd = unwords doccmd
+  runDocCmd currypath uses docparams = do
+    let useopts = if docGenImports opts
+                    then []
+                    else map (\ (d,u) -> "--use "++d++"@"++u) uses
+        cmd = unwords (currydoc : useopts ++ docparams)
     infoMessage $ "Running CurryDoc: " ++ cmd
-    execWithPkgDir (ExecOptions cmd) cfg pkgdir
+    execWithCurryPath (ExecOptions cmd) cfg currypath
 
+  -- translates a path into a list of package paths and their doc URLs:
+  path2packages absdir path =
+    let dirs = splitSearchPath path
+        importPkgDir = absdir </> ".cpm" </> "packages" ++ [pathSeparator]
+        isImportedPackage d = importPkgDir `isPrefixOf` d
+        impPkg2URL p =
+          let (d,_) = break isPathSeparator (drop (length importPkgDir) p)
+          in baseDocURL ++ "/" ++ d
+    in map (\ip -> (ip,impPkg2URL ip)) (filter isImportedPackage dirs) ++
+       if name pkg == "base"
+         then [] -- in order to generate base package documentation
+         else [(installDir </> "lib",
+                baseDocURL ++ "/base-" ++ compilerBaseVersion cfg)]
+
+-- The URL prefix where all repository packages are documented.
+baseDocURL :: String
+baseDocURL = "http://www-ps.informatik.uni-kiel.de/~mh/curry/cpm/DOC"
 
 ------------------------------------------------------------------------------
 --- `test` command: run `curry check` on the modules provided as an argument
@@ -1347,7 +1381,10 @@ execWithPkgDir :: ExecOptions -> Config -> String -> IO (ErrorLogger ())
 execWithPkgDir o cfg specDir =
   loadCurryPathFromCache cfg specDir |>=
   maybe (computePackageLoadPath cfg specDir)
-        succeedIO |>= \currypath ->
+        succeedIO |>= execWithCurryPath o cfg
+
+execWithCurryPath :: ExecOptions -> Config -> String -> IO (ErrorLogger ())
+execWithCurryPath o _ currypath =
   log Debug ("Setting CURRYPATH to " ++ currypath) |>
   do setEnviron "CURRYPATH" currypath
      ecode <- showExecCmd (exeCommand o)
