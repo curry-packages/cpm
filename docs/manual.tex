@@ -905,6 +905,16 @@ are documented.
 Using the option \code{--modules}, one can also specify a comma-separated
 list of module names to be documented.
 
+In the default case, modules from packages used by the current package
+are not documented. Instead, it is assumed that these packages are
+already documented\footnote{See
+\url{http://www.informatik.uni-kiel.de/~mh/curry/cpm/}
+for the documentation of all packages.}
+so that links to these package documentations are generated.
+Using the option \code{--full}, one can generate also the documentation
+of packages used by the current package. This might be reasonable
+if one uses packages which are only locally installed.
+
 The manual is generated only if the package specification contains
 a field \code{documentation} where the main file of the manual
 is specified (see Section~\ref{sec:reference} for more details).

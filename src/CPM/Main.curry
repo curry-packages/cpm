@@ -53,7 +53,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 21/12/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 23/12/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -1248,7 +1248,7 @@ genDocForPrograms opts cfg docdir specDir pkg = do
 
 -- The URL prefix where all repository packages are documented.
 baseDocURL :: String
-baseDocURL = "http://www-ps.informatik.uni-kiel.de/~mh/curry/cpm/DOC"
+baseDocURL = "http://www.informatik.uni-kiel.de/~mh/curry/cpm/DOC"
 
 ------------------------------------------------------------------------------
 --- `test` command: run `curry check` on the modules provided as an argument
