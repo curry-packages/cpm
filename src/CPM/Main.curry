@@ -30,7 +30,7 @@ import CPM.Config   ( Config (..)
                     , readConfigurationWith, showCompilerVersion
                     , showConfiguration )
 import CPM.PackageCache.Global ( GlobalCache, readInstalledPackagesFromDir
-                               , installFromZip, checkoutPackage
+                               , installFromZip, checkoutPackage, allPackages
                                , uninstallPackage, isPackageInstalled )
 import CPM.Package
 import CPM.Resolution ( isCompatibleToCompiler, showResult )
@@ -48,7 +48,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 14/11/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 23/12/2017)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -58,7 +58,7 @@ main = do
   case parseResult of
     Left err -> do putStrLn cpmBanner
                    putStrLn err
-                   putStrLn "(use option -h for usage information)"
+                   --putStrLn "(use option -h for usage information)"
                    exitWith 1
     Right  r -> case applyParse r of
       Left err   -> do putStrLn cpmBanner
@@ -82,6 +82,7 @@ runWithArgs opts = do
                   getGlobalCache config repo >>= \gc -> return (repo,gc)
   (msgs, result) <- case optCommand opts of
     NoCommand   -> failIO "NoCommand"
+    Config o    -> configCmd o config
     Update      -> checkRequiredExecutables >> updateRepository config
     Compiler o  -> compiler  o config getRepoGC
     Exec o      -> execCmd   o config getRepoGC
@@ -130,6 +131,7 @@ data Options = Options
 
 data Command 
   = NoCommand
+  | Config     ConfigOptions
   | Deps       DepsOptions
   | Checkout   CheckoutOptions
   | InstallApp CheckoutOptions
@@ -149,6 +151,10 @@ data Command
   | Diff       DiffOptions
   | New        NewOptions
   | Clean
+
+data ConfigOptions = ConfigOptions
+  { configAll :: Bool  -- show also installed packages?
+  }
 
 data DepsOptions = DepsOptions
   { depsPath :: Bool  -- show CURRYPATH only?
@@ -225,6 +231,11 @@ data DiffOptions = DiffOptions
   , diffAPI      :: Bool
   , diffBehavior :: Bool
   , diffUseAna   :: Bool }
+
+configOpts :: Options -> ConfigOptions
+configOpts s = case optCommand s of
+  Config opts -> opts
+  _           -> ConfigOptions False
 
 depsOpts :: Options -> DepsOptions
 depsOpts s = case optCommand s of
@@ -319,7 +330,8 @@ readVersion' s = case readVersion s of
   Nothing -> Left $ "'" ++ s ++ "' is not a valid version"
   Just  v -> Right v
 
-applyEither :: [Options -> Either String Options] -> Options -> Either String Options
+applyEither :: [Options -> Either String Options] -> Options
+            -> Either String Options
 applyEither [] z = Right z
 applyEither (f:fs) z = case f z of
   Left err -> Left err
@@ -353,7 +365,11 @@ optionParser allargs = optParser
         <> short "t"
         <> help "Show elapsed time with every log output" )
   <.> commands (metavar "COMMAND")
-        (   command "checkout" (help "Checkout a package.") Right
+        (   command "config"
+                    (help "Show current configuration of CPM")
+                    (\a -> Right $ a { optCommand = Config (configOpts a) })
+                    configArgs
+        <|> command "checkout" (help "Checkout a package.") Right
                     (checkoutArgs Checkout)
         <|> command "install" (help "Install a package with its dependencies.")
                      (\a -> Right $ a { optCommand = Install (installOpts a) })
@@ -410,6 +426,14 @@ optionParser allargs = optParser
               Right
               addArgs ) )
  where
+  configArgs =
+    flag (\a -> Right $ a { optCommand = Config (configOpts a)
+                                                { configAll = True } })
+         (  short "a"
+         <> long "all"
+         <> help "Show also names of installed packages"
+         <> optional )
+
   depsArgs =
     flag (\a -> Right $ a { optCommand = Deps (depsOpts a)
                                               { depsPath = True } })
@@ -685,6 +709,20 @@ checkExecutables executables = do
   present <- mapIO fileInPath executables
   return $ map fst $ filter (not . snd) (zip executables present)
 
+------------------------------------------------------------------------------
+-- `config` command: show current CPM configuration
+configCmd :: ConfigOptions -> Config -> IO (ErrorLogger ())
+configCmd opts cfg = do
+  if configAll opts
+    then readRepository cfg >>= \repo ->
+         getGlobalCache cfg repo >>= \gc ->
+         putStrLn configS >>
+         putStrLn "Installed packages:\n" >>
+         putStrLn (unwords (map packageId (allPackages gc))) >> succeedIO ()
+    else putStrLn configS >> succeedIO ()
+ where
+  configS = unlines
+             [cpmBanner, "Current configuration:", "", showConfiguration cfg]
 
 depsCmd :: DepsOptions -> Config -> IO (Repository,GlobalCache)
         -> IO (ErrorLogger ())
