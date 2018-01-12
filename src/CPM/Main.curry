@@ -79,7 +79,7 @@ runWithArgs opts = do
   debugMessage "Reading CPM configuration..."
   config <- readConfigurationWith (optDefConfig opts) >>= \c ->
    case c of
-    Left err -> do putStrLn $ "Error reading .cpmrc settings: " ++ err
+    Left err -> do errorMessage $ "Error reading .cpmrc settings: " ++ err
                    exitWith 1
     Right c' -> return c'
   debugMessage ("Current configuration:\n" ++ showConfiguration config)
@@ -688,10 +688,10 @@ checkRequiredExecutables = do
   debugMessage "Checking whether all required executables can be found..."
   missingExecutables <- checkExecutables listOfExecutables
   unless (null missingExecutables) $ do
-      putStrLn $ "The following programs could not be found on the PATH " ++
-                 "(they are required for CPM to work):\n" ++
-                 intercalate ", " missingExecutables
-      exitWith 1
+    errorMessage $ "The following programs could not be found on the PATH " ++
+                   "(they are required for CPM to work):\n" ++
+                   intercalate ", " missingExecutables
+    exitWith 1
   debugMessage "All required executables found."
  where
   listOfExecutables = 
@@ -1191,7 +1191,7 @@ genDocForPrograms opts cfg docdir specDir pkg = do
            (\ms -> return (ms,True))
            (docModules opts)
   if null docmods
-    then putStrLn "No modules to be documented!" >> succeedIO ()
+    then log Info "No modules to be documented!"
     else
       loadCurryPathFromCache cfg specDir |>=
       maybe (computePackageLoadPath cfg specDir)
@@ -1251,7 +1251,7 @@ testCmd opts cfg =
     mainprogs <- curryModulesInDir (aspecDir </> "src")
     let tests = testsuites pkg mainprogs
     if null tests
-      then putStrLn "No modules to be tested!" >> succeedIO ()
+      then log Info "No modules to be tested!"
       else foldEL (\_ -> execTest aspecDir) () tests
  where
   currycheck = curryExec cfg ++ " check"
@@ -1418,8 +1418,8 @@ newPackage :: NewOptions -> IO (ErrorLogger ())
 newPackage (NewOptions pname) = do
   exists <- doesDirectoryExist pname
   when exists $ do
-    putStrLn $ "There is already a directory with the new project name. " ++
-               "I cannot create new project!"
+    errorMessage $ "There is already a directory with the new project name.\n"
+                ++ "I cannot create new project!"
     exitWith 1
   let emptyAuthor   = "YOUR NAME <YOUR EMAIL ADDRESS>"
       emptySynopsis = "PLEASE PROVIDE A ONE-LINE SUMMARY ABOUT THE PACKAGE"

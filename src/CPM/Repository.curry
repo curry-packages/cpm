@@ -142,8 +142,8 @@ readRepository cfg large = do
       (repo, repoErrors) <- readRepositoryFrom (repositoryDir cfg)
       if null repoErrors
         then writeRepositoryCache cfg large repo >> return repo
-        else do putStrLn "Problems while reading the package index:"
-                mapIO putStrLn repoErrors
+        else do errorMessage "Problems while reading the package index:"
+                mapM_ errorMessage repoErrors
                 exitWith 1
     Just repo -> return repo
 
@@ -162,9 +162,8 @@ warnOldRepo cfg = do
     -- We assume that clock time is measured in seconds (as in PAKCS or KiCS2)
     let timediff = clockTimeToInt ctime - clockTimeToInt utime
         days = timediff `div` (60*60*24)
-    putStrLn $  "Warning: your repository index is older than " ++
-                show days ++ " days."
-    putStrLn useUpdateHelp
+    infoMessage $ "Warning: your repository index is older than " ++
+                  show days ++ " days.\n" ++ useUpdateHelp
 
 useUpdateHelp :: String
 useUpdateHelp = "Use 'cypm update' to download the newest package index."

@@ -17,13 +17,14 @@ module CPM.ErrorLogger
   , failIO
   , log
   , showLogEntry
-  , infoMessage, debugMessage, fromErrorLogger
+  , infoMessage, debugMessage, errorMessage, fromErrorLogger
   , showExecCmd, execQuietCmd
   ) where
 
 import Global
+import IO      ( hPutStrLn, stderr )
 import Profile -- for show run-time
-import System (exitWith, system)
+import System  ( exitWith, system )
 
 import Text.Pretty
 
@@ -135,12 +136,13 @@ foldEL f z (x:xs) = do
     Right v -> foldEL f v xs
     Left m -> return $ ([], Left m)
 
---- Renders a log entry.
+--- Renders a log entry to stderr.
 showLogEntry :: LogEntry -> IO ()
 showLogEntry (LogEntry lvl msg) = do
   minLevel <- getLogLevel
   if levelGte lvl minLevel
-    then putStrLn $ pPrint lvlText ++ msg
+    then mapM_ (\l -> hPutStrLn stderr $ pPrint $ lvlText <+> text l)
+               (lines msg)
     else return ()
  where
   lvlText = case lvl of
@@ -214,6 +216,10 @@ infoMessage msg = (log Info msg |> succeedIO ()) >> done
 --- Prints a debug message in the standard IO monad.
 debugMessage :: String -> IO ()
 debugMessage msg = (log Debug msg |> succeedIO ()) >> done
+
+--- Prints an error message in the standard IO monad.
+errorMessage :: String -> IO ()
+errorMessage msg = (log Error msg |> succeedIO ()) >> done
 
 --- Transforms an error logger actions into a standard IO action.
 --- It shows all messages and, if the result is not available,
