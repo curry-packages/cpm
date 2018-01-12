@@ -193,16 +193,16 @@ getLocalPackageSpec cfg dir = do
                     "' generated"
     succeedIO homepkgdir
 
-  searchLocalSpec m dir = do
-    existsLocal <- doesFileExist $ dir </> "package.json"
+  searchLocalSpec m sdir = do
+    existsLocal <- doesFileExist $ sdir </> "package.json"
     if existsLocal
-      then return (Just dir)
+      then return (Just sdir)
       else do
-        debugMessage ("No package.json in " ++ show dir ++ ", trying " ++
-                      show (dir </> ".."))
-        parentExists <- doesDirectoryExist $ dir </> ".."
+        debugMessage ("No package.json in " ++ show sdir ++ ", trying " ++
+                      show (sdir </> ".."))
+        parentExists <- doesDirectoryExist $ sdir </> ".."
         if m>0 && parentExists
-          then searchLocalSpec (m-1) $ dir </> ".."
+          then searchLocalSpec (m-1) $ sdir </> ".."
           else return Nothing
 
 --- Resolves the dependencies for a package copy and fills the package caches.
