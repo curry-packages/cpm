@@ -6,7 +6,7 @@
 
 module CPM.Config 
   ( Config ( Config, packageInstallDir, binInstallDir, repositoryDir
-           , appPackageDir, packageIndexRepository, curryExec
+           , appPackageDir, packageIndexRepository, homePackageDir, curryExec
            , compilerVersion, compilerBaseVersion, baseVersion )
   , readConfigurationWith, defaultConfig
   , showConfiguration, showCompilerVersion ) where
@@ -45,6 +45,8 @@ data Config = Config {
   , appPackageDir :: String
     --- URL to the package index repository
   , packageIndexRepository :: String
+    --- The directory where the default home package is stored
+  , homePackageDir :: String
     --- The executable of the Curry system used to compile and check packages
   , curryExec :: String
     --- The compiler version (name,major,minor) used to compile packages
@@ -64,6 +66,7 @@ defaultConfig = Config
   , repositoryDir          = "$HOME/.cpm/index" 
   , appPackageDir          = "$HOME/.cpm/app_packages" 
   , packageIndexRepository = packageIndexURI
+  , homePackageDir         = ""
   , curryExec              = Dist.installDir </> "bin" </> Dist.curryCompiler
   , compilerVersion        = ( Dist.curryCompiler
                              , Dist.curryCompilerMajorVersion
@@ -83,6 +86,7 @@ showConfiguration cfg = unlines
   , "PACKAGE_INSTALL_PATH   : " ++ packageInstallDir   cfg
   , "BIN_INSTALL_PATH       : " ++ binInstallDir       cfg
   , "APP_PACKAGE_PATH       : " ++ appPackageDir       cfg
+  , "HOME_PACKAGE_PATH      : " ++ homePackageDir      cfg
   ]
   
 --- Shows the compiler version in the configuration.
@@ -106,6 +110,19 @@ setCompilerExecutable cfg = do
     getFileInPath exec >>=
     maybe (error $ "Executable '" ++ exec ++ "' not found in path!")
           (\absexec -> return cfg { curryExec = absexec })
+
+--- Sets the `homePackageDir` depending on the compiler version.
+setHomePackageDir :: Config -> IO Config
+setHomePackageDir cfg
+  | null (homePackageDir cfg)
+  = do homedir <- getHomeDirectory
+       if null homedir
+         then return cfg
+         else let (cname,cmaj,cmin) = compilerVersion cfg
+                  cvname      = cname ++ "-" ++ show cmaj ++ "." ++ show cmin
+                  homepkgdir  = homedir </> ".cpm" </> cvname ++ "-homepackage"
+              in return cfg { homePackageDir = homepkgdir }
+  | otherwise = return cfg
 
 --- Sets the correct compiler version in the configuration.
 setCompilerVersion :: Config -> IO Config
@@ -171,7 +188,8 @@ readConfigurationWith defsettings = do
     Right s0 -> do s1 <- replaceHome s0
                    createDirectories s1
                    s2 <- setCompilerVersion s1
-                   return $ Right s2
+                   s3 <- setHomePackageDir s2
+                   return $ Right s3
 
 replaceHome :: Config -> IO Config
 replaceHome cfg = do
@@ -222,6 +240,7 @@ keySetters =
   , ("PACKAGEINSTALLPATH" , \v c -> c { packageInstallDir = v })
   , ("BININSTALLPATH"     , \v c -> c { binInstallDir     = v })
   , ("APPPACKAGEPATH"     , \v c -> c { appPackageDir     = v })
+  , ("HOMEPACKAGEPATH"    , \v c -> c { homePackageDir    = v })
   , ("CURRYBIN"           , \v c -> c { curryExec         = v })
   , ("BASEVERSION"        , \v c -> c { baseVersion       = v })
   ]

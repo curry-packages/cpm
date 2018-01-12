@@ -140,7 +140,7 @@ showLogEntry :: LogEntry -> IO ()
 showLogEntry (LogEntry lvl msg) = do
   minLevel <- getLogLevel
   if levelGte lvl minLevel
-    then putStrLn $ pPrint $ lvlText <+> (text msg)
+    then putStrLn $ pPrint lvlText ++ msg
     else return ()
  where
   lvlText = case lvl of

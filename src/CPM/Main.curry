@@ -53,7 +53,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 23/12/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 12/01/2018)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -96,7 +96,7 @@ runWithArgs opts = do
     PkgInfo   o -> infoCmd   o config
     Link o      -> linkCmd   o config
     Add  o      -> addCmd    o config
-    Clean       -> cleanPackage Info
+    Clean       -> cleanPackage config Info
     New o       -> newPackage o
     cmd -> do repo <- readRepository config (cmdWithLargeRepoCache cmd)
               case optCommand opts of
@@ -733,7 +733,7 @@ updateCmd cfg =
 -- `deps` command:
 depsCmd :: DepsOptions -> Config -> IO (ErrorLogger ())
 depsCmd opts cfg =
-  getLocalPackageSpec "." |>= \specDir ->
+  getLocalPackageSpec cfg "." |>= \specDir ->
   loadPackageSpec specDir |>= \pkg ->
   checkCompiler cfg pkg >>
   if depsPath opts -- show CURRYPATH only?
@@ -750,7 +750,7 @@ infoCmd :: InfoOptions -> Config -> IO (ErrorLogger ())
 infoCmd (InfoOptions Nothing (Just _) _ _) _ =
   failIO "Must specify package name"
 infoCmd (InfoOptions Nothing Nothing allinfos plain) cfg =
-  getLocalPackageSpec "." |>= \specDir ->
+  getLocalPackageSpec cfg "." |>= \specDir ->
   loadPackageSpec specDir |>= \p -> 
   printInfo cfg allinfos plain p
 infoCmd (InfoOptions (Just pkgname) Nothing allinfos plain) cfg =
@@ -795,7 +795,7 @@ checkoutCmd (CheckoutOptions pkg (Just ver) _) cfg repo =
 
 installCmd :: InstallOptions -> Config -> Repository -> IO (ErrorLogger ())
 installCmd (InstallOptions Nothing Nothing _ instexec False) cfg repo =
-  getLocalPackageSpec "." |>= \pkgdir ->
+  getLocalPackageSpec cfg "." |>= \pkgdir ->
   cleanCurryPathCache pkgdir |>
   installLocalDependencies cfg repo pkgdir |>= \ (pkg,_) ->
   saveBaseVersionToCache cfg pkgdir >>
@@ -803,7 +803,7 @@ installCmd (InstallOptions Nothing Nothing _ instexec False) cfg repo =
   if instexec then installExecutable cfg pkg else succeedIO ()
 -- Install executable only:
 installCmd (InstallOptions Nothing Nothing _ _ True) cfg _ =
-  getLocalPackageSpec "." |>= \pkgdir ->
+  getLocalPackageSpec cfg "." |>= \pkgdir ->
   loadPackageSpec pkgdir |>= \pkg ->
   installExecutable cfg pkg
 installCmd (InstallOptions (Just pkg) vers pre _ _) cfg repo = do
@@ -905,7 +905,7 @@ uninstall (UninstallOptions (Just pkgname) Nothing) cfg = do
 uninstall (UninstallOptions Nothing (Just _)) _ =
   log Error "Please provide a package and version number!"
 uninstall (UninstallOptions Nothing Nothing) cfg =
-  getLocalPackageSpec "." |>= \pkgdir ->
+  getLocalPackageSpec cfg "." |>= \pkgdir ->
   loadPackageSpec pkgdir |>= uninstallPackageExecutable cfg
 
 uninstallPackageExecutable :: Config -> Package -> IO (ErrorLogger ())
@@ -1013,20 +1013,20 @@ searchCmd (SearchOptions q smod sexec) cfg repo =
 --- `upgrade` command.
 upgradeCmd :: UpgradeOptions -> Config -> Repository -> IO (ErrorLogger ())
 upgradeCmd (UpgradeOptions Nothing) cfg repo =
-  getLocalPackageSpec "." |>= \specDir ->
+  getLocalPackageSpec cfg "." |>= \specDir ->
   cleanCurryPathCache specDir |>
   log Info "Upgrading all packages" |>
   upgradeAllPackages cfg repo specDir
 upgradeCmd (UpgradeOptions (Just pkg)) cfg repo =
-  getLocalPackageSpec "." |>= \specDir ->
+  getLocalPackageSpec cfg "." |>= \specDir ->
   log Info ("Upgrade " ++ pkg) |>
   upgradeSinglePackage cfg repo specDir pkg
 
 
 --- `link` command.
 linkCmd :: LinkOptions -> Config -> IO (ErrorLogger ())
-linkCmd (LinkOptions src) _ =
-  getLocalPackageSpec "." |>= \specDir ->
+linkCmd (LinkOptions src) cfg =
+  getLocalPackageSpec cfg "." |>= \specDir ->
   cleanCurryPathCache specDir |>
   log Info ("Linking '" ++ src ++ "' into local package cache...") |>
   linkToLocalCache src specDir
@@ -1087,9 +1087,8 @@ addDependencyCmd pkgname force config =
     [] -> packageNotFoundFailure pkgname
     ps -> case filter (isCompatibleToCompiler config) ps of
              []    -> compatPackageNotFoundFailure config pkgname useUpdateHelp
-             (p:_) -> searchLocalPackageSpec "." |>=
-                      maybe (genNewLocalPackage (version p))
-                            (addDepToLocalPackage (version p))
+             (p:_) -> getLocalPackageSpec config "." |>=
+                      addDepToLocalPackage (version p)
  where
   addDepToLocalPackage vers pkgdir =
     loadPackageSpec pkgdir |>= \pkgSpec ->
@@ -1100,20 +1099,9 @@ addDependencyCmd pkgname force config =
          then writePackageSpec newpkg (pkgdir </> "package.json") |>>
               log Info ("Dependency '" ++ pkgname ++ " >= " ++
                         showVersion vers ++
-                        "' added to current package specification")
+                        "' added to package '" ++ pkgdir ++ "'")
          else log Critical ("Dependency '" ++ pkgname ++
                             "' already exists!\n" ++ useForce)
-
-  genNewLocalPackage vers =
-    let newpkg  = emptyPackage { name            = "PSEUDO_PACKAGE"
-                               , version         = initialVersion
-                               , author          = "NN"
-                               , synopsis        = "UNKNOWN"
-                               , dependencies    = addDep [[VGte vers]] []
-                               }
-    in writePackageSpec newpkg "package.json" |>>
-       log Info ("New package specification 'package.json' with dependency '" ++
-                 pkgname ++ " >= " ++ showVersion vers ++ "' generated")
 
   addDep vcs [] = [Dependency pkgname vcs]
   addDep vcs (Dependency pn pvcs : deps) =
@@ -1127,7 +1115,7 @@ addDependencyCmd pkgname force config =
 --- or on all source modules of the package.
 docCmd :: DocOptions -> Config -> IO (ErrorLogger ())
 docCmd opts cfg =
-  getLocalPackageSpec "." |>= \specDir ->
+  getLocalPackageSpec cfg "." |>= \specDir ->
   loadPackageSpec specDir |>= \pkg -> do
   let docdir = maybe "cdoc" id (docDir opts) </> packageId pkg
   absdocdir <- getAbsolutePath docdir
@@ -1256,7 +1244,7 @@ baseDocURL = "http://www.informatik.uni-kiel.de/~mh/curry/cpm/DOC"
 --- or all source modules of the package.
 testCmd :: TestOptions -> Config -> IO (ErrorLogger ())
 testCmd opts cfg =
-  getLocalPackageSpec "." |>= \specDir ->
+  getLocalPackageSpec cfg "." |>= \specDir ->
   loadPackageSpec specDir |>= \pkg -> do
     checkCompiler cfg pkg
     aspecDir <- getAbsolutePath specDir
@@ -1318,7 +1306,7 @@ curryModulesInDir dir = getModules "" dir
 diffCmd :: DiffOptions -> Config -> Repository -> IO (ErrorLogger ())
 diffCmd opts cfg repo =
   readGlobalCache cfg repo |>= \gc ->
-  getLocalPackageSpec "." |>= \specDir ->
+  getLocalPackageSpec cfg "." |>= \specDir ->
   loadPackageSpec specDir     |>= \localSpec ->
   checkCompiler cfg localSpec >>
   let localname  = name localSpec
@@ -1366,7 +1354,7 @@ diffCmd opts cfg repo =
 -- Implementation of the "curry" command.
 compiler :: ExecOptions -> Config -> IO (ErrorLogger ())
 compiler o cfg =
-  getLocalPackageSpec "." |>= \pkgdir ->
+  getLocalPackageSpec cfg "." |>= \pkgdir ->
   loadPackageSpec pkgdir |>= \pkg ->
   checkCompiler cfg pkg >>
   execWithPkgDir
@@ -1375,7 +1363,7 @@ compiler o cfg =
 
 execCmd :: ExecOptions -> Config -> IO (ErrorLogger ())
 execCmd o cfg =
-  getLocalPackageSpec "." |>= execWithPkgDir o cfg
+  getLocalPackageSpec cfg "." |>= execWithPkgDir o cfg
 
 execWithPkgDir :: ExecOptions -> Config -> String -> IO (ErrorLogger ())
 execWithPkgDir o cfg specDir =
@@ -1410,9 +1398,9 @@ computePackageLoadPath cfg pkgdir =
                        showVersion (version pkg) /= compilerBaseVersion cfg
 
 -- Clean auxiliary files in the current package
-cleanPackage :: LogLevel -> IO (ErrorLogger ())
-cleanPackage ll =
-  getLocalPackageSpec "." |>= \specDir ->
+cleanPackage :: Config -> LogLevel -> IO (ErrorLogger ())
+cleanPackage cfg ll =
+  getLocalPackageSpec cfg "." |>= \specDir ->
   loadPackageSpec specDir     |>= \pkg ->
   let dotcpm   = specDir </> ".cpm"
       srcdirs  = map (specDir </>) (sourceDirsOf pkg)

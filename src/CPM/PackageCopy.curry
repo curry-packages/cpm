@@ -9,7 +9,7 @@ module CPM.PackageCopy
   , resolveDependencies
   , upgradeAllPackages
   , upgradeSinglePackage
-  , getLocalPackageSpec, searchLocalPackageSpec
+  , getLocalPackageSpec
   , linkToLocalCache
   , acquireAndInstallPackageWithDependencies
   , installLocalDependencies
@@ -21,7 +21,8 @@ import Directory ( doesFileExist, getAbsolutePath, createDirectoryIfMissing
                  , doesDirectoryExist, getTemporaryDirectory
                  , getCurrentDirectory, setCurrentDirectory, createDirectory
                  , removeDirectory, getDirectoryContents, copyFile )
-import FilePath ((</>), takeExtension, takeBaseName, joinPath, takeDirectory )
+import FilePath ( (</>), takeExtension, takeBaseName, joinPath, splitPath
+                , splitFileName, takeDirectory )
 import AbstractCurry.Types (CurryProg)
 import List      ( intercalate, splitOn )
 import Maybe     ( mapMaybe, fromJust )
@@ -30,8 +31,8 @@ import System    ( system )
 import Text.Pretty hiding ( (</>) )
 
 import CPM.AbstractCurry
-import CPM.Config (Config, packageInstallDir, baseVersion)
-import CPM.Repository (Repository, allPackages, readRepository)
+import CPM.Config ( Config, packageInstallDir, baseVersion, homePackageDir )
+import CPM.Repository ( Repository, allPackages, readRepository )
 import qualified CPM.LookupSet as LS
 import CPM.ErrorLogger
 import CPM.FileUtil ( copyDirectory, recreateDirectory )
@@ -39,14 +40,7 @@ import CPM.Helpers  ( strip )
 import qualified CPM.PackageCache.Global as GC
 import qualified CPM.PackageCache.Runtime as RuntimeCache
 import qualified CPM.PackageCache.Local as LocalCache
-import CPM.Package ( Package (..)
-                   , readPackageSpec, packageId, readVersion, Version 
-                   , showVersion, PackageSource (..), showDependency
-                   , showCompilerDependency, showPackageSource
-                   , VersionConstraint (..)
-                   , Dependency (..), GitRevision (..), PackageExecutable (..)
-                   , PackageTest (..), PackageDocumentation (..)
-                   , packageIdEq, loadPackageSpec)
+import CPM.Package
 import CPM.Resolution
 
 --- Resolves dependencies for a package copy.
@@ -168,30 +162,48 @@ linkToLocalCache src pkgDir = do
     else log Critical ("Directory '" ++ src ++ "' does not exist.") |>
          succeedIO ()
 
---- Tries to find a package specification in the current directory or one of its
---- ancestors.
-getLocalPackageSpec :: String -> IO (ErrorLogger String)
-getLocalPackageSpec dir =
-  searchLocalPackageSpec dir |>=
-  maybe (failIO "No package.json found") succeedIO
-
---- Tries to find a package specification in the current directory or one of its
---- ancestors. Returns `Nothing` if there is not package specifiction.
+--- Tries to find a package specification in the given directory or one of its
+--- ancestors. If there is no package specifiction in these directories,
+--- the home package specification (i.e., `~/.cpm/home-package/package.json`
+--- is returned (and created if it does not exist).
 --- In order to avoid infinite loops due to cyclic file structures,
---- the search is limited to 10 ancestor hierarchies.
-searchLocalPackageSpec :: String -> IO (ErrorLogger (Maybe String))
-searchLocalPackageSpec = searchLocalSpec 10
+--- the search is limited to the number of directories occurring in the
+--- current absolute path.
+getLocalPackageSpec :: Config -> String -> IO (ErrorLogger String)
+getLocalPackageSpec cfg dir = do
+  adir <- getAbsolutePath dir
+  searchLocalSpec (length (splitPath adir)) dir
+    >>= maybe returnHomePackage succeedIO
  where
+  returnHomePackage = do
+    let homepkgdir  = homePackageDir cfg
+        homepkgspec = homepkgdir </> "package.json"
+    specexists <- doesFileExist homepkgspec
+    unless (specexists || null homepkgdir) $ do
+      createDirectoryIfMissing True homepkgdir
+      let newpkg  = emptyPackage
+                      { name            = snd (splitFileName homepkgdir)
+                      , version         = initialVersion
+                      , author          = "CPM"
+                      , synopsis        = "Default home package"
+                      , dependencies    = []
+                      }
+      writePackageSpec newpkg homepkgspec
+      infoMessage $ "New empty package specification '" ++ homepkgspec ++
+                    "' generated"
+    succeedIO homepkgdir
+
   searchLocalSpec m dir = do
     existsLocal <- doesFileExist $ dir </> "package.json"
     if existsLocal
-      then succeedIO (Just dir)
-      else log Debug ("No package.json in " ++ show dir ++ ", trying " ++
-                      show (dir </> "..")) |> do
-           parentExists <- doesDirectoryExist $ dir </> ".."
-           if m>0 && parentExists
-             then searchLocalSpec (m-1) $ dir </> ".."
-             else succeedIO Nothing
+      then return (Just dir)
+      else do
+        debugMessage ("No package.json in " ++ show dir ++ ", trying " ++
+                      show (dir </> ".."))
+        parentExists <- doesDirectoryExist $ dir </> ".."
+        if m>0 && parentExists
+          then searchLocalSpec (m-1) $ dir </> ".."
+          else return Nothing
 
 --- Resolves the dependencies for a package copy and fills the package caches.
 resolveAndCopyDependencies :: Config -> Repository -> GC.GlobalCache -> String 
