@@ -59,7 +59,7 @@ copyPackages cfg pkgs dir = mapEL copyPackage pkgs
         then -- in order to obtain complete package specification:
              readPackageFromRepository cfg pkg |>= \reppkg ->
              copyDirectoryFollowingSymlinks pkgDir cdir >>
-             writePackageConfig cfg destDir reppkg >> succeedIO reppkg
+             writePackageConfig cfg destDir reppkg "" >> succeedIO reppkg
         else error $ "Package " ++ packageId pkg ++
                      " could not be found in package cache." 
      where 
@@ -75,8 +75,9 @@ ensureCacheDirectory dir = do
 
 --- Writes the package configuration module (if specified) into the
 --- the package sources.
-writePackageConfig :: Config -> String -> Package -> IO (ErrorLogger ())
-writePackageConfig cfg pkgdir pkg =
+writePackageConfig :: Config -> String -> Package -> String
+                   -> IO (ErrorLogger ())
+writePackageConfig cfg pkgdir pkg loadpath =
   maybe (succeedIO ())
         (\configmod ->
            let binname = maybe ""
@@ -100,7 +101,11 @@ writePackageConfig cfg pkgdir pkg =
       , ""
       , "--- Package location."
       , "packagePath :: String"
-      , "packagePath = \"" ++ abspkgdir ++ "\""
+      , "packagePath = " ++ show abspkgdir
+      , ""
+      , "--- Load path for the package (if it is the main package)."
+      , "packageLoadPath :: String"
+      , "packageLoadPath = " ++ show loadpath
       ] ++
       if null binname
       then []

@@ -737,10 +737,8 @@ depsCmd opts cfg =
   loadPackageSpec specDir |>= \pkg ->
   checkCompiler cfg pkg >>
   if depsPath opts -- show CURRYPATH only?
-    then loadCurryPathFromCache cfg specDir |>=
-         maybe (computePackageLoadPath cfg specDir)
-               succeedIO |>= \currypath ->
-         putStrLn currypath >> succeedIO ()
+    then getCurryLoadPath cfg specDir |>= \loadpath ->
+         putStrLn loadpath >> succeedIO ()
     else resolveDependencies cfg specDir |>= \result ->
          putStrLn (showResult result) >> succeedIO ()
 
@@ -799,7 +797,8 @@ installCmd (InstallOptions Nothing Nothing _ instexec False) cfg repo =
   cleanCurryPathCache pkgdir |>
   installLocalDependencies cfg repo pkgdir |>= \ (pkg,_) ->
   saveBaseVersionToCache cfg pkgdir >>
-  writePackageConfig cfg pkgdir pkg |>
+  getCurryLoadPath cfg pkgdir |>= \currypath ->
+  writePackageConfig cfg pkgdir pkg currypath |>
   if instexec then installExecutable cfg pkg else succeedIO ()
 -- Install executable only:
 installCmd (InstallOptions Nothing Nothing _ _ True) cfg _ =
@@ -1193,9 +1192,7 @@ genDocForPrograms opts cfg docdir specDir pkg = do
   if null docmods
     then log Info "No modules to be documented!"
     else
-      loadCurryPathFromCache cfg specDir |>=
-      maybe (computePackageLoadPath cfg specDir)
-            succeedIO |>= \currypath ->
+      getCurryLoadPath cfg specDir |>= \currypath ->
       let pkgurls = path2packages abspkgdir currypath in
       if apidoc
         then foldEL (\_ -> docModule currypath pkgurls) () docmods |>
@@ -1367,9 +1364,7 @@ execCmd o cfg =
 
 execWithPkgDir :: ExecOptions -> Config -> String -> IO (ErrorLogger ())
 execWithPkgDir o cfg specDir =
-  loadCurryPathFromCache cfg specDir |>=
-  maybe (computePackageLoadPath cfg specDir)
-        succeedIO |>= execWithCurryPath o cfg
+  getCurryLoadPath cfg specDir |>= execWithCurryPath o cfg
 
 execWithCurryPath :: ExecOptions -> Config -> String -> IO (ErrorLogger ())
 execWithCurryPath o _ currypath =
@@ -1516,6 +1511,13 @@ saveCurryPathToCache cfg pkgdir path = do
   createDirectoryIfMissing False cpmdir
   writeFile (curryPathCacheFile pkgdir)
             (unlines [path, showCompilerVersion cfg, baseVersion cfg])
+
+--- Gets CURRYPATH of the given package (either from the local cache file
+--- in the package dir or compute it).
+getCurryLoadPath :: Config -> String -> IO (ErrorLogger String)
+getCurryLoadPath cfg pkgdir =
+  loadCurryPathFromCache cfg pkgdir |>=
+  maybe (computePackageLoadPath cfg pkgdir) succeedIO
 
 --- Restores package CURRYPATH from local cache file in the given package dir,
 --- if it is still up-to-date, i.e., it exists and is newer than the package
