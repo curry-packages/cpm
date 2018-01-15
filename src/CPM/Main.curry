@@ -53,7 +53,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 12/01/2018)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 15/01/2018)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -217,7 +217,9 @@ data DocOptions = DocOptions
   , docManual     :: Bool            -- generate manual (if specified)
   , docGenImports :: Bool            -- generate documentation for imported pkgs
                                      -- (otherwise, use their standard docs)
-  }
+  , docPackageURL :: String          -- the URL prefix where all repository
+                                     -- packages are documented
+}
 
 data TestOptions = TestOptions
   { testModules :: Maybe [String] }
@@ -297,7 +299,13 @@ execOpts s = case optCommand s of
 docOpts :: Options -> DocOptions
 docOpts s = case optCommand s of
   Doc opts -> opts
-  _        -> DocOptions Nothing Nothing True True False
+  _        -> DocOptions Nothing Nothing True True False defaultBaseDocURL
+
+-- The default URL prefix where all repository packages are documented.
+-- Can be overwritten with a doc command option.
+defaultBaseDocURL :: String
+defaultBaseDocURL = "https://www.informatik.uni-kiel.de/~curry/cpm/DOC"
+
 
 testOpts :: Options -> TestOptions
 testOpts s = case optCommand s of
@@ -544,7 +552,7 @@ optionParser allargs = optParser
 
   docArgs =
     option (\s a -> Right $ a { optCommand =
-                                  Doc (docOpts a) { docDir = Just $ s } })
+                                  Doc (docOpts a) { docDir = Just s } })
           (  long "docdir"
           <> short "d"
           <> help "The documentation directory (default: 'cdoc')"
@@ -574,6 +582,13 @@ optionParser allargs = optParser
           (  short "f"
           <> long "full"
           <> help "Generate full program documentation (i.e., also imported packages)"
+          <> optional )
+    <.> option (\s a -> Right $ a { optCommand =
+                                      Doc (docOpts a) { docPackageURL = s } })
+          (  long "url"
+          <> short "u"
+          <> help ("The URL prefix where all repository packages are " ++
+                   "documented. Default: " ++ defaultBaseDocURL)
           <> optional )
 
   testArgs =
@@ -1224,16 +1239,12 @@ genDocForPrograms opts cfg docdir specDir pkg = do
         isImportedPackage d = importPkgDir `isPrefixOf` d
         impPkg2URL p =
           let (d,_) = break isPathSeparator (drop (length importPkgDir) p)
-          in baseDocURL ++ "/" ++ d
+          in docPackageURL opts ++ "/" ++ d
     in map (\ip -> (ip,impPkg2URL ip)) (filter isImportedPackage dirs) ++
        if name pkg == "base"
          then [] -- in order to generate base package documentation
          else [(installDir </> "lib",
-                baseDocURL ++ "/base-" ++ compilerBaseVersion cfg)]
-
--- The URL prefix where all repository packages are documented.
-baseDocURL :: String
-baseDocURL = "http://www.informatik.uni-kiel.de/~mh/curry/cpm/DOC"
+                docPackageURL opts ++ "/base-" ++ compilerBaseVersion cfg)]
 
 ------------------------------------------------------------------------------
 --- `test` command: run `curry check` on the modules provided as an argument
