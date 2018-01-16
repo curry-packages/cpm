@@ -155,15 +155,21 @@ setLastUpdate cfg =
 --- Prints a warning if the repository index is older than 10 days.
 warnOldRepo :: Config -> IO ()
 warnOldRepo cfg = do
-  utime <- getModificationTime (repositoryDir cfg </> "README.md")
-  ctime <- getClockTime
-  let warntime = addDays 10 utime
-  when (compareClockTime ctime warntime == GT) $ do
-    -- We assume that clock time is measured in seconds (as in PAKCS or KiCS2)
-    let timediff = clockTimeToInt ctime - clockTimeToInt utime
-        days = timediff `div` (60*60*24)
-    infoMessage $ "Warning: your repository index is older than " ++
-                  show days ++ " days.\n" ++ useUpdateHelp
+  let updatefile = repositoryDir cfg </> "README.md"
+  updexists <- doesFileExist updatefile
+  if updexists
+    then do
+      utime <- getModificationTime updatefile
+      ctime <- getClockTime
+      let warntime = addDays 10 utime
+      when (compareClockTime ctime warntime == GT) $ do
+        -- we assume that clock time is measured in seconds
+        let timediff = clockTimeToInt ctime - clockTimeToInt utime
+            days = timediff `div` (60*60*24)
+        infoMessage $ "Warning: your repository index is older than " ++
+                      show days ++ " days.\n" ++ useUpdateHelp
+    else infoMessage $ "Warning: your repository index is not up-to-date.\n" ++
+                       useUpdateHelp
 
 useUpdateHelp :: String
 useUpdateHelp = "Use 'cypm update' to download the newest package index."
