@@ -37,11 +37,12 @@ import CPM.PackageCache.Global ( GlobalCache, readGlobalCache, allPackages
                                , uninstallPackage, packageInstalled )
 import CPM.Package
 import CPM.Resolution ( isCompatibleToCompiler, showResult )
-import CPM.Repository ( Repository, readRepository, findVersion, listPackages
+import CPM.Repository ( Repository, findVersion, listPackages
                       , findAllVersions, findLatestVersion, updateRepository
                       , useUpdateHelp, searchPackages, cleanRepositoryCache
-                      , readPackageFromRepository
-                      , getAllPackageVersions, getPackageVersion )
+                      , readPackageFromRepository )
+import CPM.RepositoryCache.Init ( tryWriteRepositoryDB )
+import CPM.RepositoryCache.Select
 import CPM.PackageCache.Runtime ( dependencyPathsSeparate, writePackageConfig )
 import CPM.PackageCopy
 import CPM.Diff.API as APIDiff
@@ -53,7 +54,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 15/01/2018)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 27/03/2018)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -85,39 +86,31 @@ runWithArgs opts = do
   debugMessage ("Current configuration:\n" ++ showConfiguration config)
   (msgs, result) <- case optCommand opts of
     NoCommand   -> failIO "NoCommand"
-    Config o    -> configCmd o config
+    Config o    -> configCmd   o config
     Update      -> updateCmd   config
-    Compiler o  -> compiler  o config
-    Exec o      -> execCmd   o config
-    Doc  o      -> docCmd    o config
-    Test o      -> testCmd   o config
-    Uninstall o -> uninstall o config
-    Deps o      -> depsCmd   o config
-    PkgInfo   o -> infoCmd   o config
-    Link o      -> linkCmd   o config
-    Add  o      -> addCmd    o config
+    Compiler o  -> compiler    o config
+    Exec o      -> execCmd     o config
+    Doc  o      -> docCmd      o config
+    Test o      -> testCmd     o config
+    Uninstall o -> uninstall   o config
+    Deps o      -> depsCmd     o config
+    PkgInfo   o -> infoCmd     o config
+    Link o      -> linkCmd     o config
+    Add  o      -> addCmd      o config
+    New o       -> newPackage  o 
+    List      o -> listCmd     o config
+    Search    o -> searchCmd   o config
+    Upgrade   o -> upgradeCmd  o config
+    Diff      o -> diffCmd     o config
+    Checkout  o -> checkoutCmd o config
+    Install   o -> installCmd  o config
     Clean       -> cleanPackage config Info
-    New o       -> newPackage o
-    cmd -> do repo <- readRepository config (cmdWithLargeRepoCache cmd)
-              case optCommand opts of
-                List     o -> listCmd     o config repo
-                Search   o -> searchCmd   o config repo
-                Checkout o -> checkoutCmd o config repo
-                Install  o -> installCmd  o config repo
-                Upgrade  o -> upgradeCmd  o config repo
-                Diff     o -> diffCmd     o config repo
-                _ -> error "Internal command processing error!"
   mapIO showLogEntry msgs
   let allOk =  all (levelGte Info) (map logLevelOf msgs) &&
                either (\le -> levelGte Info (logLevelOf le))
                       (const True)
                       result
   exitWith (if allOk then 0 else 1)
- where
-  cmdWithLargeRepoCache cmd =
-    case cmd of List   _ -> True
-                Search _ -> True
-                _        -> False
 
 data Options = Options
   { optLogLevel  :: LogLevel
@@ -728,7 +721,7 @@ checkExecutables executables = do
 configCmd :: ConfigOptions -> Config -> IO (ErrorLogger ())
 configCmd opts cfg = do
   if configAll opts
-    then readRepository cfg False >>= \repo ->
+    then getBaseRepository cfg >>= \repo ->
          readGlobalCache cfg repo |>= \gc ->
          putStrLn configS >>
          putStrLn "Installed packages:\n" >>
@@ -741,9 +734,10 @@ configCmd opts cfg = do
 ------------------------------------------------------------------------------
 -- `update` command:
 updateCmd :: Config -> IO (ErrorLogger ())
-updateCmd cfg =
-  checkRequiredExecutables >> updateRepository cfg
-  
+updateCmd cfg = do
+  checkRequiredExecutables
+  updateRepository cfg |> tryWriteRepositoryDB cfg
+
 ------------------------------------------------------------------------------
 -- `deps` command:
 depsCmd :: DepsOptions -> Config -> IO (ErrorLogger ())
@@ -792,40 +786,42 @@ printInfo cfg allinfos plain pkg =
 
 ------------------------------------------------------------------------------
 -- `checkout` command:
-checkoutCmd :: CheckoutOptions -> Config -> Repository -> IO (ErrorLogger ())
-checkoutCmd (CheckoutOptions pkgname Nothing pre) cfg repo =
+checkoutCmd :: CheckoutOptions -> Config -> IO (ErrorLogger ())
+checkoutCmd (CheckoutOptions pkgname Nothing pre) cfg =
+ getRepoForPackages cfg [pkgname] >>= \repo ->
  case findAllVersions repo pkgname pre of
   [] -> packageNotFoundFailure pkgname
   ps -> case filter (isCompatibleToCompiler cfg) ps of
     []    -> compatPackageNotFoundFailure cfg pkgname useUpdateHelp
     (p:_) -> acquireAndInstallPackageWithDependencies cfg repo p |>
              checkoutPackage cfg p
-checkoutCmd (CheckoutOptions pkg (Just ver) _) cfg repo =
- case findVersion repo pkg ver of
-  Nothing -> packageNotFoundFailure $ pkg ++ "-" ++ showVersion ver
+checkoutCmd (CheckoutOptions pkgname (Just ver) _) cfg =
+ getRepoForPackages cfg [pkgname] >>= \repo ->
+ case findVersion repo pkgname ver of
+  Nothing -> packageNotFoundFailure $ pkgname ++ "-" ++ showVersion ver
   Just  p -> acquireAndInstallPackageWithDependencies cfg repo p |>
              checkoutPackage cfg p
 
-installCmd :: InstallOptions -> Config -> Repository -> IO (ErrorLogger ())
-installCmd (InstallOptions Nothing Nothing _ instexec False) cfg repo =
+installCmd :: InstallOptions -> Config -> IO (ErrorLogger ())
+installCmd (InstallOptions Nothing Nothing _ instexec False) cfg =
   getLocalPackageSpec cfg "." |>= \pkgdir ->
   cleanCurryPathCache pkgdir |>
-  installLocalDependencies cfg repo pkgdir |>= \ (pkg,_) ->
+  installLocalDependencies cfg pkgdir |>= \ (pkg,_) ->
   saveBaseVersionToCache cfg pkgdir >>
   getCurryLoadPath cfg pkgdir |>= \currypath ->
   writePackageConfig cfg pkgdir pkg currypath |>
   if instexec then installExecutable cfg pkg else succeedIO ()
 -- Install executable only:
-installCmd (InstallOptions Nothing Nothing _ _ True) cfg _ =
+installCmd (InstallOptions Nothing Nothing _ _ True) cfg =
   getLocalPackageSpec cfg "." |>= \pkgdir ->
   loadPackageSpec pkgdir |>= \pkg ->
   installExecutable cfg pkg
-installCmd (InstallOptions (Just pkg) vers pre _ _) cfg repo = do
+installCmd (InstallOptions (Just pkg) vers pre _ _) cfg = do
   fileExists <- doesFileExist pkg
   if fileExists
     then installFromZip cfg pkg
-    else installapp (CheckoutOptions pkg vers pre) cfg repo
-installCmd (InstallOptions Nothing (Just _) _ _ _) _ _ =
+    else installapp (CheckoutOptions pkg vers pre) cfg
+installCmd (InstallOptions Nothing (Just _) _ _ _) _ =
   failIO "Must specify package name"
 
 --- Installs the application (i.e., binary) provided by a package.
@@ -836,15 +832,15 @@ installCmd (InstallOptions Nothing (Just _) _ _ _) _ _ =
 --- Internal note: the installed package should not be cleaned or removed
 --- after the installation since its execution might refer (via the
 --- config module) to some data stored in the package.
-installapp :: CheckoutOptions -> Config -> Repository -> IO (ErrorLogger ())
-installapp opts cfg repo = do
+installapp :: CheckoutOptions -> Config -> IO (ErrorLogger ())
+installapp opts cfg = do
   let apppkgdir = appPackageDir cfg
       copkgdir  = apppkgdir </> coPackage opts
   curdir <- getCurrentDirectory
   removeDirectoryComplete copkgdir
   debugMessage ("Change into directory " ++ apppkgdir)
   inDirectory apppkgdir
-    ( checkoutCmd opts cfg repo |>
+    ( checkoutCmd opts cfg |>
       log Debug ("Change into directory " ++ copkgdir) |>
       (setCurrentDirectory copkgdir >> succeedIO ()) |>
       loadPackageSpec "." |>= \pkg ->
@@ -853,7 +849,7 @@ installapp opts cfg repo = do
              failIO ("Package '" ++ name pkg ++
                      "' does not contain an executable, nothing installed."))
             (\_ -> installCmd (InstallOptions Nothing Nothing False True False)
-                              cfg repo)
+                              cfg)
             (executableSpec pkg)
     )
 
@@ -940,19 +936,21 @@ tryFindVersion pkg ver repo = case findVersion repo pkg ver of
 
 --- Lists all (compiler-compatible if `lall` is false) packages
 --- in the given repository.
-listCmd :: ListOptions -> Config -> Repository -> IO (ErrorLogger ())
-listCmd (ListOptions lv csv cat) cfg repo =
-  let listresult = if cat then renderCats catgroups
-                          else renderPkgs allpkgs
-  in putStr listresult >> succeedIO ()
+listCmd :: ListOptions -> Config -> IO (ErrorLogger ())
+listCmd (ListOptions lv csv cat) cfg = do
+  repo <- if cat then getRepositoryWithNameVersionCategory cfg
+                 else getRepositoryWithNameVersionSynopsis cfg
+  let listresult = if cat then renderCats (catgroups repo)
+                          else renderPkgs (allpkgs repo)
+  putStr listresult >> succeedIO ()
  where
   -- all packages (and versions if `lv`)
-  allpkgs = concatMap (if lv then id else ((:[]) . filterCompatPkgs cfg))
-                      (sortBy (\ps1 ps2 -> name (head ps1) <= name (head ps2))
-                              (listPackages repo))
+  allpkgs repo = concatMap (if lv then id else ((:[]) . filterCompatPkgs cfg))
+                    (sortBy (\ps1 ps2 -> name (head ps1) <= name (head ps2))
+                            (listPackages repo))
 
   -- all categories together with their package names:
-  catgroups =
+  catgroups repo =
     let pkgid p = name p ++ '-' : showVersionIfCompatible cfg p
         newpkgs = map (filterCompatPkgs cfg) (listPackages repo)
         catpkgs = concatMap (\p -> map (\c -> (c, pkgid p)) (category p))
@@ -1010,31 +1008,36 @@ cpmInfo = "Use 'cypm info PACKAGE' for more information about a package."
 
 
 --- Search in all (compiler-compatible) packages in the given repository.
-searchCmd :: SearchOptions -> Config -> Repository -> IO (ErrorLogger ())
-searchCmd (SearchOptions q smod sexec) cfg repo =
-  putStr rendered >> succeedIO ()
- where
-  results = sortBy (\p1 p2 -> name p1 <= name p2)
-                   (map (filterCompatPkgs cfg)
-                        (searchPackages repo smod sexec q))
-  (colsizes,rows) = packageVersionAsTable cfg results
-  rendered = unlines $
-               if null results
-                 then [ "No packages found for '" ++ q ++ "'", useUpdateHelp ]
-                 else [ render (table rows colsizes), cpmInfo, useUpdateHelp ]
+searchCmd :: SearchOptions -> Config -> IO (ErrorLogger ())
+searchCmd (SearchOptions q smod sexec) cfg = do
+  let searchaction = if smod then searchExportedModules
+                             else if sexec then searchExecutable
+                                           else searchNameSynopsisModules
+  allpkgs <- searchaction cfg q
+  let results = sortBy (\p1 p2 -> name p1 <= name p2)
+                       (map (filterCompatPkgs cfg)
+                            (map (sortBy (\a b -> version a `vgt` version b))
+                                 (groupBy (\a b -> name a == name b)
+                                 allpkgs)))
+      (colsizes,rows) = packageVersionAsTable cfg results
+  putStr $ unlines $
+             if null results
+               then [ "No packages found for '" ++ q ++ "'", useUpdateHelp ]
+               else [ render (table rows colsizes), cpmInfo, useUpdateHelp ]
+  succeedIO ()
 
 
 --- `upgrade` command.
-upgradeCmd :: UpgradeOptions -> Config -> Repository -> IO (ErrorLogger ())
-upgradeCmd (UpgradeOptions Nothing) cfg repo =
+upgradeCmd :: UpgradeOptions -> Config -> IO (ErrorLogger ())
+upgradeCmd (UpgradeOptions Nothing) cfg =
   getLocalPackageSpec cfg "." |>= \specDir ->
   cleanCurryPathCache specDir |>
   log Info "Upgrading all packages" |>
-  upgradeAllPackages cfg repo specDir
-upgradeCmd (UpgradeOptions (Just pkg)) cfg repo =
+  upgradeAllPackages cfg specDir
+upgradeCmd (UpgradeOptions (Just pkg)) cfg =
   getLocalPackageSpec cfg "." |>= \specDir ->
   log Info ("Upgrade " ++ pkg) |>
-  upgradeSinglePackage cfg repo specDir pkg
+  upgradeSinglePackage cfg specDir pkg
 
 
 --- `link` command.
@@ -1088,6 +1091,7 @@ addPackageCmd pkgdir force config = do
     copyFile (pkgdir </> "package.json") (pkgRepositoryDir </> "package.json")
     copyDirectory pkgdir pkgInstallDir
     cleanRepositoryCache config
+    tryWriteRepositoryDB config
 
 useForce :: String
 useForce = "Use option '-f' or '--force' to overwrite it."
@@ -1311,9 +1315,8 @@ curryModulesInDir dir = getModules "" dir
     return $ map ((p ++) . stripCurrySuffix) newprogs ++ concat subdirentries
 
 
-diffCmd :: DiffOptions -> Config -> Repository -> IO (ErrorLogger ())
-diffCmd opts cfg repo =
-  readGlobalCache cfg repo |>= \gc ->
+diffCmd :: DiffOptions -> Config -> IO (ErrorLogger ())
+diffCmd opts cfg =
   getLocalPackageSpec cfg "." |>= \specDir ->
   loadPackageSpec specDir     |>= \localSpec ->
   checkCompiler cfg localSpec >>
@@ -1321,15 +1324,17 @@ diffCmd opts cfg repo =
       localv     = version localSpec
       showlocalv = showVersion localv
   in
-  getDiffVersion localname |>= \diffv ->
+  getRepoForPackageSpec cfg localSpec >>= \repo ->
+  readGlobalCache cfg repo |>= \gc ->
+  getDiffVersion repo localname |>= \diffv ->
   if diffv == localv
     then failIO $ "Cannot diff identical package versions " ++ showlocalv
     else putStrLn ("Comparing local version " ++ showlocalv ++
                    " and repository version " ++ showVersion diffv ++ ":\n") >>
-         diffAPIIfEnabled      gc specDir localSpec diffv |> 
-         diffBehaviorIfEnabled gc specDir localSpec diffv
+         diffAPIIfEnabled      repo gc specDir localSpec diffv |> 
+         diffBehaviorIfEnabled repo gc specDir localSpec diffv
  where
-  getDiffVersion localname = case diffVersion opts of
+  getDiffVersion repo localname = case diffVersion opts of
     Nothing -> case findLatestVersion cfg repo localname False of
       Nothing -> failIO $
         "No other version of local package '" ++ localname ++
@@ -1338,7 +1343,7 @@ diffCmd opts cfg repo =
       Just p  -> succeedIO (version p)
     Just v  -> succeedIO v
  
-  diffAPIIfEnabled gc specDir localSpec diffversion =
+  diffAPIIfEnabled repo gc specDir localSpec diffversion =
     if diffAPI opts
     then (putStrLn "Running API diff...\n" >> succeedIO ()) |>
          APIDiff.compareModulesFromPackageAndDir cfg repo gc specDir
@@ -1350,7 +1355,7 @@ diffCmd opts cfg repo =
             succeedIO ()
     else succeedIO () 
 
-  diffBehaviorIfEnabled gc specDir localSpec diffversion =
+  diffBehaviorIfEnabled repo gc specDir localSpec diffversion =
     if diffBehavior opts
       then (putStrLn "Preparing behavior diff...\n" >> succeedIO ()) |>
            BDiff.preparePackageAndDir cfg repo gc specDir (name localSpec)

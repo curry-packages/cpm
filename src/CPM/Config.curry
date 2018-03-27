@@ -12,7 +12,8 @@ module CPM.Config
   , showConfiguration, showCompilerVersion ) where
 
 import Char         ( toUpper )
-import Directory    ( getHomeDirectory, createDirectoryIfMissing )
+import Directory    ( doesDirectoryExist, createDirectoryIfMissing
+                    , getHomeDirectory )
 import qualified Distribution as Dist
 import FilePath     ( (</>), isAbsolute )
 import Function     ( (***) )
@@ -116,12 +117,14 @@ setHomePackageDir :: Config -> IO Config
 setHomePackageDir cfg
   | null (homePackageDir cfg)
   = do homedir <- getHomeDirectory
-       if null homedir
-         then return cfg
-         else let (cname,cmaj,cmin) = compilerVersion cfg
+       let cpmdir = homedir </> ".cpm"
+       excpmdir <- doesDirectoryExist cpmdir
+       if excpmdir
+         then let (cname,cmaj,cmin) = compilerVersion cfg
                   cvname      = cname ++ "-" ++ show cmaj ++ "." ++ show cmin
-                  homepkgdir  = homedir </> ".cpm" </> cvname ++ "-homepackage"
+                  homepkgdir  = cpmdir </> cvname ++ "-homepackage"
               in return cfg { homePackageDir = homepkgdir }
+         else return cfg
   | otherwise = return cfg
 
 --- Sets the correct compiler version in the configuration.

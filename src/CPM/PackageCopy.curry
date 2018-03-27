@@ -32,7 +32,8 @@ import Text.Pretty hiding ( (</>) )
 
 import CPM.AbstractCurry
 import CPM.Config ( Config, packageInstallDir, baseVersion, homePackageDir )
-import CPM.Repository ( Repository, allPackages, readRepository )
+import CPM.Repository ( Repository, allPackages )
+import CPM.RepositoryCache.Select
 import qualified CPM.LookupSet as LS
 import CPM.ErrorLogger
 import CPM.FileUtil ( copyDirectory, recreateDirectory )
@@ -118,18 +119,18 @@ copyDependencies cfg pkg pkgs dir =
   pkgs' = filter (/= pkg) pkgs
 
 --- Upgrades all dependencies of a package copy.
-upgradeAllPackages :: Config -> Repository -> String -> IO (ErrorLogger ())
-upgradeAllPackages cfg repo dir =
+upgradeAllPackages :: Config -> String -> IO (ErrorLogger ())
+upgradeAllPackages cfg dir =
   loadPackageSpec dir |>= \pkgSpec ->
   LocalCache.clearCache dir >> succeedIO () |>
-  installLocalDependencies cfg repo dir |>= \ (_,deps) ->
+  installLocalDependencies cfg dir |>= \ (_,deps) ->
   copyDependencies cfg pkgSpec deps dir |> succeedIO ()
 
 --- Upgrades a single package and its transitive dependencies.
-upgradeSinglePackage :: Config -> Repository -> String -> String
-                     -> IO (ErrorLogger ())
-upgradeSinglePackage cfg repo dir pkgName =
+upgradeSinglePackage :: Config -> String -> String -> IO (ErrorLogger ())
+upgradeSinglePackage cfg dir pkgName =
   loadPackageSpec dir |>= \pkgSpec ->
+  getRepoForPackageSpec cfg pkgSpec >>= \repo ->
   GC.readGlobalCache cfg repo |>= \gc ->
   lookupSetForPackageCopy cfg pkgSpec repo gc dir |>= \originalLS ->
   let transitiveDeps = pkgName : allTransitiveDependencies originalLS pkgName in
@@ -140,10 +141,17 @@ upgradeSinglePackage cfg repo dir pkgName =
   copyDependencies cfg pkgSpec (resolvedPackages result) dir |> succeedIO ()
 
 --- Installs the dependencies of a package.
-installLocalDependencies :: Config -> Repository -> String 
+installLocalDependencies :: Config -> String
                          -> IO (ErrorLogger (Package,[Package]))
-installLocalDependencies cfg repo dir =
+installLocalDependencies cfg dir =
   loadPackageSpec dir |>= \pkgSpec ->
+  getRepoForPackageSpec cfg pkgSpec >>= \repo ->
+  installLocalDependenciesWithRepo cfg repo dir pkgSpec
+
+--- Installs the dependencies of a package.
+installLocalDependenciesWithRepo :: Config -> Repository -> String -> Package
+                                 -> IO (ErrorLogger (Package,[Package]))
+installLocalDependenciesWithRepo cfg repo dir pkgSpec =
   GC.readGlobalCache cfg repo |>= \gc ->
   resolveDependenciesForPackageCopy cfg pkgSpec repo gc dir |>= \result ->
   GC.installMissingDependencies cfg gc (resolvedPackages result) |>
@@ -215,7 +223,7 @@ resolveAndCopyDependencies cfg repo gc dir =
 resolveAndCopyDependenciesForPackage ::
      Config -> String -> Package -> IO (ErrorLogger [Package])
 resolveAndCopyDependenciesForPackage cfg dir pkgSpec =
-  readRepository cfg False >>= \repo ->
+  getRepoForPackageSpec cfg pkgSpec >>= \repo ->
   GC.readGlobalCache cfg repo |>= \gc ->
   resolveAndCopyDependenciesForPackage' cfg repo gc dir pkgSpec
 
@@ -236,10 +244,10 @@ resolveAndCopyDependenciesForPackage' cfg repo gc dir pkgSpec =
 --- Resolves the dependencies for a package copy.
 resolveDependencies :: Config -> String -> IO (ErrorLogger ResolutionResult)
 resolveDependencies cfg dir =
-  readRepository cfg False >>= \repo ->
-  GC.readGlobalCache cfg repo |>= \gc ->
   loadPackageSpec dir |->
   log Info ("Read package spec from " ++ dir) |>= \pkgSpec ->
+  getRepoForPackageSpec cfg pkgSpec >>= \repo ->
+  GC.readGlobalCache cfg repo |>= \gc ->
   resolveDependenciesForPackageCopy cfg pkgSpec repo gc dir
 
 --- Renders information on a package.

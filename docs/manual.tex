@@ -94,6 +94,13 @@ using UTF-8 encoding by default. Haskell uses the system locale charmap for its
 default encoding. You can check the current value using 
 \code{System.IO.localeEncoding} inside a \code{ghci} session.
 
+It is also recommended that
+SQLite\footnote{\url{https://www.sqlite.org}} is installed
+so that the executable \code{sqlite3} is in your path.
+In this case, CPM uses a SQLite database for caching
+the central package index (see Section~\ref{sec:internals}).
+This yields faster response times of various CPM commands.
+
 To install CPM from the sources, enter the 
 root directory of the CPM source distribution.
 The main executable \code{curry} of your Curry system must be in your

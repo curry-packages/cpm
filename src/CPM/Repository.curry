@@ -9,14 +9,13 @@
 
 module CPM.Repository 
   ( Repository
-  , emptyRepository
-  , allPackages
-  , readRepository
+  , emptyRepository, allPackages, pkgsToRepository
+  , warnIfRepositoryOld, readRepositoryFrom
   , findAllVersions, findVersion, findLatestVersion
-  , searchPackages
-  , listPackages
+  , searchPackages, listPackages
   , useUpdateHelp, updateRepository, cleanRepositoryCache
-  , readPackageFromRepository, getAllPackageVersions, getPackageVersion
+  , readPackageFromRepository
+  , repositoryCacheFilePrefix
   ) where
 
 import Char         ( toLower )
@@ -36,15 +35,26 @@ import CPM.ConfigPackage ( packageVersion )
 import CPM.ErrorLogger
 import CPM.Package
 import CPM.FileUtil      ( checkAndGetVisibleDirectoryContents, inDirectory
-                         , whenFileExists, removeDirectoryComplete )
+                         , quote, whenFileExists, removeDirectoryComplete )
 import CPM.Resolution    ( isCompatibleToCompiler )
 
+------------------------------------------------------------------------------
+--- Abstract data type of a repository.
 data Repository = Repository [Package]
 
 --- Creates an empty repository.
 emptyRepository :: Repository
 emptyRepository = Repository []
 
+--- Get all packages in the central package index.
+allPackages :: Repository -> [Package]
+allPackages (Repository ps) = ps
+
+--- Construct a repository from a list of packages.
+pkgsToRepository :: [Package] -> Repository
+pkgsToRepository ps = Repository ps
+
+------------------------------------------------------------------------------
 --- Finds all versions of a package known to the repository. Returns the 
 --- packages sorted from newest to oldest.
 ---
@@ -115,37 +125,10 @@ findLatestVersion cfg repo pn pre =
 
 --- Finds a specific version of a package.
 findVersion :: Repository -> String -> Version -> Maybe Package
-findVersion repo p v =
-  maybeHead $ filter ((== v) . version) $ findAllVersions repo p True
+findVersion repo pn v =
+  maybeHead $ filter ((== v) . version) $ findAllVersions repo pn True
  where maybeHead []    = Nothing
        maybeHead (x:_) = Just x
-
---- Get all packages in the central package index.
-allPackages :: Repository -> [Package]
-allPackages (Repository ps) = ps
-
---- Reads all package specifications from the default repository.
---- Uses the cache if it is present or update the cache after reading.
---- If some errors occur, show them and terminate with error exit status.
----
---- @param cfg   - the configuration to use
---- @param large - if true reads the larger cache with more package information
----                (e.g., for searching all packages)
-readRepository :: Config -> Bool -> IO Repository
-readRepository cfg large = do
-  warnOldRepo cfg
-  mbrepo <- readRepositoryCache cfg large
-  case mbrepo of
-    Nothing -> do
-      infoMessage $ "Writing " ++ (if large then "large " else "") ++
-                    "repository cache..."
-      (repo, repoErrors) <- readRepositoryFrom (repositoryDir cfg)
-      if null repoErrors
-        then writeRepositoryCache cfg large repo >> return repo
-        else do errorMessage "Problems while reading the package index:"
-                mapM_ errorMessage repoErrors
-                exitWith 1
-    Just repo -> return repo
 
 --- Sets the date of the last update by touching README.md.
 setLastUpdate :: Config -> IO ()
@@ -153,8 +136,8 @@ setLastUpdate cfg =
   system (unwords ["touch", repositoryDir cfg </> "README.md"]) >> done
 
 --- Prints a warning if the repository index is older than 10 days.
-warnOldRepo :: Config -> IO ()
-warnOldRepo cfg = do
+warnIfRepositoryOld :: Config -> IO ()
+warnIfRepositoryOld cfg = do
   let updatefile = repositoryDir cfg </> "README.md"
   updexists <- doesFileExist updatefile
   if updexists
@@ -175,10 +158,25 @@ useUpdateHelp :: String
 useUpdateHelp = "Use 'cypm update' to download the newest package index."
 
 --- Reads all package specifications from a repository.
+--- If some errors occur, show them and terminate with error exit status.
 ---
 --- @param path the location of the repository
-readRepositoryFrom :: String -> IO (Repository, [String])
+--- @return repository
+readRepositoryFrom :: String -> IO Repository
 readRepositoryFrom path = do
+  (repo, repoErrors) <- tryReadRepositoryFrom path
+  if null repoErrors
+    then return repo
+    else do errorMessage "Problems while reading the package index:"
+            mapM_ errorMessage repoErrors
+            exitWith 1
+
+--- Reads all package specifications from a repository.
+---
+--- @param path the location of the repository
+--- @return repository and possible repository reading errors
+tryReadRepositoryFrom :: String -> IO (Repository, [String])
+tryReadRepositoryFrom path = do
   debugMessage $ "Reading repository index from '" ++ path ++ "'..."
   repos     <- checkAndGetVisibleDirectoryContents path
   pkgPaths  <- mapIO getDir (map (path </>) repos) >>= return . concat
@@ -186,14 +184,15 @@ readRepositoryFrom path = do
   verPaths  <- return $ concatMap (\ (d, p) -> map (d </>) p)
                      $ zip pkgPaths verDirs
   specPaths <- return $ map (</> "package.json") verPaths
+  putStr "Reading repository index"
   specs     <- mapIO readPackageFile specPaths
+  putChar '\n'
   when (null (lefts specs)) $ debugMessage "Finished reading repository"
   return $ (Repository $ rights specs, lefts specs)
  where
-  readPackageSpecIO = liftIO readPackageSpec
-
   readPackageFile f = do
-    spec <- readPackageSpecIO $ readCompleteFile f
+    spec <- liftM readPackageSpec $ readCompleteFile f
+    seq (id $!! spec) (putChar '.')
     return $ case spec of
       Left err -> Left $ "Problem reading '" ++ f ++ "': " ++ err
       Right  s -> Right s
@@ -215,126 +214,35 @@ updateRepository cfg = do
     then do
       c <- inDirectory (repositoryDir cfg) $ execQuietCmd $ cleanPullCmd
       if c == 0
-        then do setLastUpdate cfg
-                cleanRepositoryCache cfg
-                log Info "Successfully updated repository"
+        then finishUpdate
         else failIO $ "Failed to update git repository, return code " ++ show c
     else do
       c <- inDirectory (repositoryDir cfg) $ execQuietCmd cloneCommand
       if c == 0
-        then do setLastUpdate cfg
-                cleanRepositoryCache cfg
-                log Info "Successfully updated repository"
+        then finishUpdate
         else failIO $ "Failed to update git repository, return code " ++ show c
  where
   cleanPullCmd q = "git clean -d -f && git pull " ++ q ++ " origin master"
+
   cloneCommand q = unwords ["git clone", q, packageIndexRepository cfg, "."]
 
+  finishUpdate = do
+    setLastUpdate cfg
+    cleanRepositoryCache cfg
+    log Info "Successfully downloaded repository index"
 
 ------------------------------------------------------------------------------
--- Operations implementing the repository cache for faster reading.
--- The repository cache contains reduced package specifications
--- for faster reading/writing by removing some information
--- which is not relevant for the repository data structure.
---
--- The relevant package fields are:
--- * small cache: name version dependencies compilerCompatibility
--- * large cache: synopsis category sourceDirs exportedModules executableSpec
-
---- The local file name containing the repository cache as a Curry term.
-repositoryCacheFileName :: String
-repositoryCacheFileName = "REPOSITORY_CACHE"
-
---- The file containing the repository cache as a Curry term.
-repositoryCache :: Config -> Bool -> String
-repositoryCache cfg large =
-  repositoryDir cfg </> repositoryCacheFileName ++
-  (if large then "_LARGE" else "")
-
---- The first line of the repository cache (to check version compatibility):
-repoCacheVersion :: String
-repoCacheVersion = packageVersion ++ "-1"
-
---- Stores the given repository in the cache.
----
---- @param cfg   - the configuration to use
---- @param large - if true writes the larger cache with more package information
----                (e.g., for searching all packages)
---- @param repo  - the repository to write
-writeRepositoryCache :: Config -> Bool -> Repository -> IO ()
-writeRepositoryCache cfg large repo =
-  writeFile (repositoryCache cfg large) $ unlines $
-    repoCacheVersion :
-    map (if large then showTerm . package2largetuple
-                  else showTerm . package2smalltuple)
-        (allPackages repo)
- where
-  package2smalltuple p =
-    ( name p, version p, dependencies p, compilerCompatibility p )
-
-  package2largetuple p =
-    (package2smalltuple p,
-    (synopsis p, category p, sourceDirs p, exportedModules p,
-     executableSpec  p))
-
---- Reads the given repository from the cache.
----
---- @param cfg   - the configuration to use
---- @param large - if true reads the larger cache with more package information
----                (e.g., for searching all packages)
-readRepositoryCache :: Config -> Bool -> IO (Maybe Repository)
-readRepositoryCache cfg large = do
-  let cf = repositoryCache cfg large
-  excache <- doesFileExist cf
-  if excache
-    then debugMessage ("Reading repository cache from '" ++ cf ++ "'...") >>
-         catch ((if large
-                  then readTermInCacheFile cfg (largetuple2package . uread) cf
-                  else readTermInCacheFile cfg (smalltuple2package . uread) cf)
-                  >>= \repo ->
-                debugMessage "Finished reading repository cache" >> return repo)
-               (\_ -> do infoMessage "Cleaning broken repository cache..."
-                         cleanRepositoryCache cfg
-                         return Nothing )
-    else return Nothing
- where
-  uread s = readUnqualifiedTerm ["CPM.Package","Prelude"] s
-
-  smalltuple2package (nm,vs,dep,cmp) =
-    emptyPackage { name = nm
-                 , version = vs
-                 , dependencies = dep
-                 , compilerCompatibility = cmp
-                 }
-
-  largetuple2package (basics,(sy,cat,srcs,exps,exec)) =
-    (smalltuple2package basics)
-      { synopsis = sy
-      , category = cat
-      , sourceDirs = srcs
-      , exportedModules = exps
-      , executableSpec  = exec
-      }
-
-readTermInCacheFile :: Config -> (String -> Package) -> String
-                    -> IO (Maybe Repository)
-readTermInCacheFile cfg trans cf = do
-  h <- openFile cf ReadMode
-  pv <- hGetLine h
-  if pv == repoCacheVersion
-    then hGetContents h >>= \t ->
-         return $!! Just (Repository (map trans (lines  t)))
-    else do infoMessage "Cleaning repository cache (wrong version)..."
-            cleanRepositoryCache cfg
-            return Nothing
+--- The prefix of all file names implementing the repository cache.
+repositoryCacheFilePrefix :: Config -> String
+repositoryCacheFilePrefix cfg = repositoryDir cfg </> "REPOSITORY_CACHE"
 
 --- Cleans the repository cache.
 cleanRepositoryCache :: Config -> IO ()
 cleanRepositoryCache cfg = do
-  let smallcachefile = repositoryCache cfg False
-      largecachefile = repositoryCache cfg True
-  whenFileExists smallcachefile $ removeFile smallcachefile
-  whenFileExists largecachefile $ removeFile largecachefile
+  debugMessage $ "Cleaning repository cache '" ++
+                 repositoryCacheFilePrefix cfg ++ "*'"
+  system $ "/bin/rm -f " ++ quote (repositoryCacheFilePrefix cfg) ++ "*"
+  done
 
 ------------------------------------------------------------------------------
 --- Reads a given package from the default repository directory.
@@ -344,30 +252,5 @@ readPackageFromRepository :: Config -> Package -> IO (ErrorLogger Package)
 readPackageFromRepository cfg pkg =
   let pkgdir = repositoryDir cfg </> name pkg </> showVersion (version pkg)
   in loadPackageSpec pkgdir
-
-------------------------------------------------------------------------------
--- Some operations to access the repository. In the future, these
--- operations might be implemented by a better database structure
--- of the repository to speed-up the repository access.
-
---- Retrieves all versions of a package with a given name from the repository.
----
---- @param cfg     - the current CPM configuration
---- @param pkgname - the package name to be retrieved
---- @param pre     - should pre-release versions be included?
-getAllPackageVersions :: Config -> String -> Bool -> IO [Package]
-getAllPackageVersions cfg pkgname pre = do
-  repo <- readRepository cfg False
-  return (findAllVersions repo pkgname pre)
-
---- Retrieves a package with a given name and version from the repository.
----
---- @param cfg     - the current CPM configuration
---- @param pkgname - the package name to be retrieved
---- @param ver     - the requested version of the package
-getPackageVersion :: Config -> String -> Version -> IO (Maybe Package)
-getPackageVersion cfg pkgname ver = do
-  repo <- readRepository cfg False
-  return (findVersion repo pkgname ver)
 
 ------------------------------------------------------------------------------
