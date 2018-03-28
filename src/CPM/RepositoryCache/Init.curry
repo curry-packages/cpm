@@ -6,7 +6,7 @@
 ------------------------------------------------------------------------------
 
 module CPM.RepositoryCache.Init
-  ( repositoryCacheDB, tryWriteRepositoryDB )
+  ( repositoryCacheDB, tryWriteRepositoryDB, addPackagesToRepositoryDB )
  where
 
 import Directory    ( removeFile )
@@ -42,22 +42,23 @@ writeRepositoryDB cfg = do
   whenFileExists sqlitefile (removeFile sqlitefile)
   createNewDB sqlitefile
   repo <- readRepositoryFrom (repositoryDir cfg)
-  add2repodb sqlitefile (allPackages repo)
+  debugMessage $ "Writing repository cache DB '" ++ sqlitefile ++ "'"
+  putStr "Writing repository cache"
+  addPackagesToRepositoryDB cfg False (allPackages repo)
+  putChar '\n'
+  log Info "Repository cache DB written"
 
 -- Add a list of package specifications to the database.
-add2repodb :: String -> [Package] -> IO (ErrorLogger ())
-add2repodb sqlitefile pkgs =
-  log Debug ("Writing repository cache DB '" ++ sqlitefile ++ "'") |>
-  putStr "Writing repository cache" >>
-  mapEL (runDBAction . newEntry) pkgs |> putChar '\n' >>
-  log Info "Repository cache DB written"
+addPackagesToRepositoryDB :: Config -> Bool -> [Package] -> IO (ErrorLogger ())
+addPackagesToRepositoryDB cfg quiet pkgs =
+  mapEL (runDBAction . newEntry) pkgs |> succeedIO ()
  where
   runDBAction act = do
-    result <- runWithDB sqlitefile act
+    result <- runWithDB (repositoryCacheDB cfg) act
     case result of
       Left (DBError kind str) -> log Critical $ "Repository DB failure: " ++
                                                 show kind ++ " " ++ str
-      Right _ -> putChar '.' >> succeedIO ()
+      Right _ -> (unless quiet $ putChar '.') >> succeedIO ()
   
   newEntry p = newIndexEntry
     (name p)

@@ -38,10 +38,10 @@ import CPM.PackageCache.Global ( GlobalCache, readGlobalCache, allPackages
 import CPM.Package
 import CPM.Resolution ( isCompatibleToCompiler, showResult )
 import CPM.Repository ( Repository, findVersion, listPackages
-                      , findAllVersions, findLatestVersion, updateRepository
+                      , findAllVersions, findLatestVersion
                       , useUpdateHelp, searchPackages, cleanRepositoryCache
                       , readPackageFromRepository )
-import CPM.RepositoryCache.Init ( tryWriteRepositoryDB )
+import CPM.RepositoryUpdate ( addPackageToRepository, updateRepository )
 import CPM.RepositoryCache.Select
 import CPM.PackageCache.Runtime ( dependencyPathsSeparate, writePackageConfig )
 import CPM.PackageCopy
@@ -54,7 +54,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 27/03/2018)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 28/03/2018)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -734,9 +734,7 @@ configCmd opts cfg = do
 ------------------------------------------------------------------------------
 -- `update` command:
 updateCmd :: Config -> IO (ErrorLogger ())
-updateCmd cfg = do
-  checkRequiredExecutables
-  updateRepository cfg |> tryWriteRepositoryDB cfg
+updateCmd cfg = checkRequiredExecutables >> updateRepository cfg
 
 ------------------------------------------------------------------------------
 -- `deps` command:
@@ -1048,50 +1046,17 @@ linkCmd (LinkOptions src) cfg =
   log Info ("Linking '" ++ src ++ "' into local package cache...") |>
   linkToLocalCache src specDir
 
---- `add` command: copy the given package to the repository index
+--- `add` command:
+--- Option `--package`: copy the given package to the repository index
 --- and package installation directory so that it is available as
 --- any other package.
+--- Option `--dependency`: add the package name as a dependency to the
+--- current package
 addCmd :: AddOptions -> Config -> IO (ErrorLogger ())
 addCmd (AddOptions addpkg adddep pkg force) config
-  | addpkg    = addPackageCmd    pkg force config
+  | addpkg    = addPackageToRepository config pkg force True
   | adddep    = addDependencyCmd pkg force config
   | otherwise = log Critical "Option --package or --dependency missing!"
-
---- `add --package` command: copy the given package to the repository index
---- and package installation directory so that it is available as
---- any other package.
-addPackageCmd :: String -> Bool -> Config -> IO (ErrorLogger ())
-addPackageCmd pkgdir force config = do
-  dirExists <- doesDirectoryExist pkgdir
-  if dirExists
-    then loadPackageSpec pkgdir |>= \pkgSpec ->
-         (copyPackage pkgSpec >> succeedIO ()) |>
-         log Info ("Package in directory '" ++ pkgdir ++
-                   "' installed into local repository")
-    else log Critical ("Directory '" ++ pkgdir ++ "' does not exist.") |>
-         succeedIO ()
- where
-  copyPackage pkg = do
-    let pkgName          = name pkg
-        pkgVersion       = version pkg
-        pkgIndexDir      = pkgName </> showVersion pkgVersion
-        pkgRepositoryDir = repositoryDir config </> pkgIndexDir
-        pkgInstallDir    = packageInstallDir config </> packageId pkg
-    exrepodir <- doesDirectoryExist pkgRepositoryDir
-    when (exrepodir && not force) $ error $
-      "Package repository directory '" ++
-      pkgRepositoryDir ++ "' already exists!\n" ++ useForce
-    expkgdir <- doesDirectoryExist pkgInstallDir
-    when expkgdir $
-      if force then removeDirectoryComplete pkgInstallDir
-               else error $ "Package installation directory '" ++
-                            pkgInstallDir ++ "' already exists!\n" ++ useForce
-    infoMessage $ "Create directory: " ++ pkgRepositoryDir
-    createDirectoryIfMissing True pkgRepositoryDir
-    copyFile (pkgdir </> "package.json") (pkgRepositoryDir </> "package.json")
-    copyDirectory pkgdir pkgInstallDir
-    cleanRepositoryCache config
-    tryWriteRepositoryDB config
 
 useForce :: String
 useForce = "Use option '-f' or '--force' to overwrite it."

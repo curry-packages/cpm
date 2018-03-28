@@ -13,7 +13,7 @@ module CPM.Repository
   , warnIfRepositoryOld, readRepositoryFrom
   , findAllVersions, findVersion, findLatestVersion
   , searchPackages, listPackages
-  , useUpdateHelp, updateRepository, cleanRepositoryCache
+  , useUpdateHelp, cleanRepositoryCache
   , readPackageFromRepository
   , repositoryCacheFilePrefix
   ) where
@@ -34,7 +34,8 @@ import CPM.Config        ( Config, repositoryDir, packageIndexRepository
 import CPM.ConfigPackage ( packageVersion )
 import CPM.ErrorLogger
 import CPM.Package
-import CPM.FileUtil      ( checkAndGetVisibleDirectoryContents, inDirectory
+import CPM.FileUtil      ( checkAndGetVisibleDirectoryContents
+                         , copyDirectory, inDirectory
                          , quote, whenFileExists, removeDirectoryComplete )
 import CPM.Resolution    ( isCompatibleToCompiler )
 
@@ -130,11 +131,6 @@ findVersion repo pn v =
  where maybeHead []    = Nothing
        maybeHead (x:_) = Just x
 
---- Sets the date of the last update by touching README.md.
-setLastUpdate :: Config -> IO ()
-setLastUpdate cfg =
-  system (unwords ["touch", repositoryDir cfg </> "README.md"]) >> done
-
 --- Prints a warning if the repository index is older than 10 days.
 warnIfRepositoryOld :: Config -> IO ()
 warnIfRepositoryOld cfg = do
@@ -199,37 +195,6 @@ tryReadRepositoryFrom path = do
 
   getDir d = doesDirectoryExist d >>= \b -> return $ if b then [d] else []
 
-
---- Updates the package index from the central Git repository.
---- Cleans also the global package cache in order to support
---- downloading the newest versions.
-updateRepository :: Config -> IO (ErrorLogger ())
-updateRepository cfg = do
-  cleanRepositoryCache cfg
-  debugMessage $ "Deleting global package cache: '" ++
-                 packageInstallDir cfg ++ "'"
-  removeDirectoryComplete (packageInstallDir cfg)
-  gitExists <- doesDirectoryExist $ (repositoryDir cfg) </> ".git"
-  if gitExists 
-    then do
-      c <- inDirectory (repositoryDir cfg) $ execQuietCmd $ cleanPullCmd
-      if c == 0
-        then finishUpdate
-        else failIO $ "Failed to update git repository, return code " ++ show c
-    else do
-      c <- inDirectory (repositoryDir cfg) $ execQuietCmd cloneCommand
-      if c == 0
-        then finishUpdate
-        else failIO $ "Failed to update git repository, return code " ++ show c
- where
-  cleanPullCmd q = "git clean -d -f && git pull " ++ q ++ " origin master"
-
-  cloneCommand q = unwords ["git clone", q, packageIndexRepository cfg, "."]
-
-  finishUpdate = do
-    setLastUpdate cfg
-    cleanRepositoryCache cfg
-    log Info "Successfully downloaded repository index"
 
 ------------------------------------------------------------------------------
 --- The prefix of all file names implementing the repository cache.

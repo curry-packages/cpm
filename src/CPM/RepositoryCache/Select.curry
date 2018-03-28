@@ -15,6 +15,8 @@ module CPM.RepositoryCache.Select
   , getRepoForPackageSpec
   , getRepoForPackages
   , getAllPackageVersions, getPackageVersion
+  , addPackageToRepositoryCache
+  , updatePackageInRepositoryCache
   )
  where
 
@@ -31,7 +33,7 @@ import CPM.ErrorLogger
 import CPM.FileUtil    ( ifFileExists )
 import CPM.RepositoryCache.RepositoryDB
 import CPM.RepositoryCache.File ( readRepository )
-import CPM.RepositoryCache.Init ( repositoryCacheDB )
+import CPM.RepositoryCache.Init
 import CPM.Package
 import CPM.Repository
 
@@ -254,3 +256,28 @@ queryDBorCache cfg large dbaction = do
 --- Reads an unqualified Curry term w.r.t. the module `CPM.Package`.
 pkgRead :: String -> a
 pkgRead = readUnqualifiedTerm ["CPM.Package","Prelude"]
+
+------------------------------------------------------------------------------
+--- Adds a new package to the repository cache.
+--- In the file-based implementation, we simply clean the cache files.
+addPackageToRepositoryCache :: Config -> Package -> IO (ErrorLogger ())
+addPackageToRepositoryCache cfg pkg = do
+  dbexists <- doesFileExist (repositoryCacheDB cfg)
+  if dbexists then addPackagesToRepositoryDB cfg True [pkg]
+              else cleanRepositoryCache cfg >> succeedIO ()
+
+--- Updates an existing package in the repository cache.
+--- In the file-based implementation, we simply clean the cache files.
+updatePackageInRepositoryCache :: Config -> Package -> IO (ErrorLogger ())
+updatePackageInRepositoryCache cfg pkg = do
+  dbexists <- doesFileExist (repositoryCacheDB cfg)
+  if dbexists then removePackageFromRepositoryDB pkg >>
+                   addPackagesToRepositoryDB cfg True [pkg]
+              else cleanRepositoryCache cfg >> succeedIO ()
+ where
+  removePackageFromRepositoryDB pkg = runQuery cfg 
+    (Database.CDBI.ER.deleteEntries CPM.RepositoryCache.RepositoryDB.indexEntry_CDBI_Description (Just (Database.CDBI.ER.And [Database.CDBI.ER.equal (Database.CDBI.ER.colNum CPM.RepositoryCache.RepositoryDB.indexEntryColumnName 0) (Database.CDBI.ER.string (name pkg)) ,Database.CDBI.ER.equal (Database.CDBI.ER.colNum CPM.RepositoryCache.RepositoryDB.indexEntryColumnVersion 0) (Database.CDBI.ER.string (showTerm (version pkg)))])))
+
+
+
+------------------------------------------------------------------------------
