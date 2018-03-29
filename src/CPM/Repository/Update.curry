@@ -19,9 +19,9 @@ import CPM.ErrorLogger
 import CPM.Package
 import CPM.FileUtil      ( copyDirectory, inDirectory, removeDirectoryComplete )
 import CPM.Repository
-import CPM.RepositoryCache.Init ( tryWriteRepositoryDB )
-import CPM.RepositoryCache.Select ( addPackageToRepositoryCache
-                                  , updatePackageInRepositoryCache )
+import CPM.Repository.CacheDB ( tryWriteRepositoryDB )
+import CPM.Repository.Select  ( addPackageToRepositoryCache
+                              , updatePackageInRepositoryCache )
 
 ------------------------------------------------------------------------------
 --- Updates the package index from the central Git repository.

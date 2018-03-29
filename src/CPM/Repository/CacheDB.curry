@@ -1,11 +1,11 @@
 ------------------------------------------------------------------------------
---- Operations to initialize the repository cache database.
+--- Operations to initialize and manipulate the repository cache database.
 ---
 --- @author Michael Hanus
 --- @version March 2018
 ------------------------------------------------------------------------------
 
-module CPM.RepositoryCache.Init
+module CPM.Repository.CacheDB
   ( repositoryCacheDB, tryWriteRepositoryDB, addPackagesToRepositoryDB )
  where
 
@@ -19,7 +19,7 @@ import Database.CDBI.Connection
 import CPM.Config      ( Config, readConfigurationWith, repositoryDir )
 import CPM.ErrorLogger
 import CPM.FileUtil    ( fileInPath, whenFileExists )
-import CPM.RepositoryCache.RepositoryDB
+import CPM.Repository.RepositoryDB
 import CPM.Package
 import CPM.Repository
 

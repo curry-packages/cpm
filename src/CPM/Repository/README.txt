@@ -14,11 +14,11 @@ The initial version of the module `RepositoryDB` has been generated with
 The following changes to the initially generated module were applied
 after its generation:
 
-* Rename the module from `RepositoryDB` to `CPM.RepositoryCache.RepositoryDB`
+* Rename the module from `RepositoryDB` to `CPM.Repository.RepositoryDB`
   (also in `RepositoryDB_SQLCode.info`).
 
 The actual database queries are defined in the module
-`CPM.RepositoryCache.Select`.
+`CPM.Repository.Select`.
 Since these queries are defined as embedded SQL code which requires
 the Curry preprocessor to translate them, the distribution of CPM
 contains the already preprocessed module whereas the original

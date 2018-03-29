@@ -1,5 +1,5 @@
 SQLParserInfoType.PInfo "REPOSITORY_CACHE.db"
- "CPM.RepositoryCache.RepositoryDB"
+ "CPM.Repository.RepositoryDB"
  []
  [("indexEntryKey",False)
  ,("indexEntryName",False)

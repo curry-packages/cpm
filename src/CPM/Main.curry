@@ -42,7 +42,7 @@ import CPM.Repository ( Repository, findVersion, listPackages
                       , useUpdateHelp, searchPackages, cleanRepositoryCache
                       , readPackageFromRepository )
 import CPM.Repository.Update ( addPackageToRepository, updateRepository )
-import CPM.RepositoryCache.Select
+import CPM.Repository.Select
 import CPM.PackageCache.Runtime ( dependencyPathsSeparate, writePackageConfig )
 import CPM.PackageCopy
 import CPM.Diff.API as APIDiff
@@ -54,7 +54,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 28/03/2018)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 29/03/2018)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()

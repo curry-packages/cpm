@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
---- Some queries on the repository cache database.
+--- Some queries on the repository cache.
 ---
 --- @author Michael Hanus
 --- @version March 2018
 ------------------------------------------------------------------------------
 {-# OPTIONS_CYMAKE -F --pgmF=currypp --optF=foreigncode --optF=-o #-}
 
-module CPM.RepositoryCache.Select
+module CPM.Repository.Select
   ( searchNameSynopsisModules
   , searchExportedModules, searchExecutable
   , getRepositoryWithNameVersionSynopsis
@@ -31,9 +31,9 @@ import Database.CDBI.Connection
 import CPM.Config      ( Config )
 import CPM.ErrorLogger
 import CPM.FileUtil    ( ifFileExists )
-import CPM.RepositoryCache.RepositoryDB
-import CPM.RepositoryCache.File ( readRepository )
-import CPM.RepositoryCache.Init
+import CPM.Repository.RepositoryDB
+import CPM.Repository.CacheFile ( readRepository )
+import CPM.Repository.CacheDB
 import CPM.Package
 import CPM.Repository
 

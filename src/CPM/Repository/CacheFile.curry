@@ -15,7 +15,7 @@
 --- @version March 2018
 ------------------------------------------------------------------------------
 
-module CPM.RepositoryCache.File
+module CPM.Repository.CacheFile
   ( readRepository )
  where
 

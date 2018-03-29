@@ -1,11 +1,11 @@
 --- This file has been generated from
 --- 
----     cpm/src/CPM/RepositoryCache/RepositoryDB.erdterm
+---     cpm/src/CPM/Repository/RepositoryDB.erdterm
 --- 
 --- and contains definitions for all entities and relations
 --- specified in this model.
 
-module CPM.RepositoryCache.RepositoryDB where
+module CPM.Repository.RepositoryDB where
 
 import qualified Time
 import qualified Database.CDBI.ER

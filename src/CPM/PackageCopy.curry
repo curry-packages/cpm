@@ -33,7 +33,7 @@ import Text.Pretty hiding ( (</>) )
 import CPM.AbstractCurry
 import CPM.Config ( Config, packageInstallDir, baseVersion, homePackageDir )
 import CPM.Repository ( Repository, allPackages )
-import CPM.RepositoryCache.Select
+import CPM.Repository.Select
 import qualified CPM.LookupSet as LS
 import CPM.ErrorLogger
 import CPM.FileUtil ( copyDirectory, recreateDirectory )
