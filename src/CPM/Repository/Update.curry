@@ -54,7 +54,7 @@ updateRepository cfg = do
   finishUpdate = do
     setLastUpdate cfg
     cleanRepositoryCache cfg
-    log Info "Successfully downloaded repository index"
+    infoMessage "Successfully downloaded repository index"
     tryWriteRepositoryDB cfg
 
 --- Sets the date of the last update by touching README.md.

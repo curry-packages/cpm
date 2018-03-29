@@ -32,8 +32,10 @@ repositoryCacheDB cfg = repositoryCacheFilePrefix cfg ++ ".db"
 tryWriteRepositoryDB :: Config -> IO (ErrorLogger ())
 tryWriteRepositoryDB cfg = do
   withsqlite <- fileInPath "sqlite3"
-  if withsqlite then writeRepositoryDB cfg
-                else log Debug "Command 'sqlite3' not found"
+  if withsqlite
+    then writeRepositoryDB cfg
+    else log Info
+      "Command 'sqlite3' not found: install package 'sqlite3' to speed up CPM"
 
 --- Writes the repository database with the current repository index.
 writeRepositoryDB :: Config -> IO (ErrorLogger ())
@@ -43,7 +45,7 @@ writeRepositoryDB cfg = do
   createNewDB sqlitefile
   repo <- readRepositoryFrom (repositoryDir cfg)
   debugMessage $ "Writing repository cache DB '" ++ sqlitefile ++ "'"
-  putStr "Writing repository cache"
+  putStr "Writing repository cache DB"
   addPackagesToRepositoryDB cfg False (allPackages repo)
   putChar '\n'
   log Info "Repository cache DB written"
