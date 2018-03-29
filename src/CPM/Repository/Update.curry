@@ -4,7 +4,7 @@
 --- to the package manager.
 ------------------------------------------------------------------------------
 
-module CPM.RepositoryUpdate
+module CPM.Repository.Update
   ( addPackageToRepository, updateRepository
   )
  where
@@ -80,9 +80,7 @@ addPackageToRepository cfg pkgdir force cpdir = do
          succeedIO ()
  where
   copyPackage pkg = do
-    let pkgName          = name pkg
-        pkgVersion       = version pkg
-        pkgIndexDir      = pkgName </> showVersion pkgVersion
+    let pkgIndexDir      = name pkg </> showVersion (version pkg)
         pkgRepositoryDir = repositoryDir cfg </> pkgIndexDir
         pkgInstallDir    = packageInstallDir cfg </> packageId pkg
     exrepodir <- doesDirectoryExist pkgRepositoryDir

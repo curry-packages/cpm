@@ -41,7 +41,7 @@ import CPM.Repository ( Repository, findVersion, listPackages
                       , findAllVersions, findLatestVersion
                       , useUpdateHelp, searchPackages, cleanRepositoryCache
                       , readPackageFromRepository )
-import CPM.RepositoryUpdate ( addPackageToRepository, updateRepository )
+import CPM.Repository.Update ( addPackageToRepository, updateRepository )
 import CPM.RepositoryCache.Select
 import CPM.PackageCache.Runtime ( dependencyPathsSeparate, writePackageConfig )
 import CPM.PackageCopy
