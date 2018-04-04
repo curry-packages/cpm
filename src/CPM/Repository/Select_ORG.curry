@@ -2,7 +2,7 @@
 --- Some queries on the repository cache.
 ---
 --- @author Michael Hanus
---- @version March 2018
+--- @version April 2018
 ------------------------------------------------------------------------------
 {-# OPTIONS_CYMAKE -F --pgmF=currypp --optF=foreigncode --optF=-o #-}
 
@@ -271,13 +271,15 @@ addPackageToRepositoryCache cfg pkg = do
 updatePackageInRepositoryCache :: Config -> Package -> IO (ErrorLogger ())
 updatePackageInRepositoryCache cfg pkg = do
   dbexists <- doesFileExist (repositoryCacheDB cfg)
-  if dbexists then removePackageFromRepositoryDB pkg >>
+  if dbexists then removePackageFromRepositoryDB cfg pkg >>
                    addPackagesToRepositoryDB cfg True [pkg]
               else cleanRepositoryCache cfg >> succeedIO ()
- where
-  removePackageFromRepositoryDB pkg = runQuery cfg 
-    ``sql* Delete
-           From   IndexEntry
-           Where  Name = {name pkg} And Version = {showTerm (version pkg)};''
+
+--- Removes a package from the repository cache DB.
+removePackageFromRepositoryDB :: Config -> Package -> IO ()
+removePackageFromRepositoryDB cfg pkg = runQuery cfg 
+  ``sql* Delete
+         From   IndexEntry
+         Where  Name = {name pkg} And Version = {showTerm (version pkg)};''
 
 ------------------------------------------------------------------------------
