@@ -164,7 +164,8 @@ installPkgFromSource _ pkg (Http url) pkgDir = do
     else do
       tmpdir <- tempDir
       let tmppkgfile = tmpdir </> pkgfile
-      c <- showExecCmd $ "curl -s -o " ++ tmppkgfile ++ " " ++ quote url
+      c <- inTempDir $ showExecCmd $ "curl -s -o " ++ tmppkgfile ++
+                                     " " ++ quote url
       if c == 0
         then installPkgFromFile pkg tmppkgfile pkgDir True
         else failIO $ "`curl` failed with exit status " ++ show c
