@@ -48,7 +48,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 23/12/2017)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 25/04/2018)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -101,7 +101,6 @@ runWithArgs opts = do
               Search o -> searchCmd  o config repo
               _ -> do globalCache <- getGlobalCache config repo
                       case optCommand opts of
-                        --PkgInfo    o -> infoCmd    o config repo globalCache
                         Checkout   o -> checkout   o config repo globalCache
                         InstallApp o -> installapp o config repo globalCache
                         Install    o -> install    o config repo globalCache
@@ -1087,6 +1086,7 @@ addPackageCmd pkgdir force config = do
     createDirectoryIfMissing True pkgRepositoryDir
     copyFile (pkgdir </> "package.json") (pkgRepositoryDir </> "package.json")
     copyDirectory pkgdir pkgInstallDir
+    inDirectory pkgInstallDir (cleanPackage Debug)
     updateRepositoryCache config
 
 useForce :: String

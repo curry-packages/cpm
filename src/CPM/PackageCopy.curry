@@ -14,6 +14,7 @@ module CPM.PackageCopy
   , acquireAndInstallPackageWithDependencies
   , installLocalDependencies
   , renderPackageInfo
+  , cleanPackage
   ) where
 
 import Debug
@@ -21,9 +22,10 @@ import Directory (doesFileExist, getAbsolutePath, createDirectoryIfMissing
                  , doesDirectoryExist, getTemporaryDirectory
                  , getCurrentDirectory, setCurrentDirectory, createDirectory
                  , removeDirectory, getDirectoryContents, copyFile)
+import Distribution ( addCurrySubdir )
 import FilePath ((</>), takeExtension, takeBaseName, joinPath, takeDirectory)
 import AbstractCurry.Types (CurryProg)
-import List (intercalate, splitOn)
+import List (intercalate, splitOn, nub )
 import Maybe (mapMaybe, fromJust)
 import System (system)
 import Pretty hiding ((</>))
@@ -38,13 +40,7 @@ import CPM.Helpers  ( strip )
 import qualified CPM.PackageCache.Global as GC
 import qualified CPM.PackageCache.Runtime as RuntimeCache
 import qualified CPM.PackageCache.Local as LocalCache
-import CPM.Package ( Package (..)
-                   , readPackageSpec, packageId, readVersion, Version 
-                   , showVersion, PackageSource (..), showDependency
-                   , showCompilerDependency, showPackageSource
-                   , Dependency, GitRevision (..), PackageExecutable (..)
-                   , PackageTest (..), PackageDocumentation (..)
-                   , packageIdEq, loadPackageSpec)
+import CPM.Package
 import CPM.Resolution
 
 --- Resolves dependencies for a package copy.
@@ -335,4 +331,23 @@ renderPackageInfo allinfos plain mbinstalled pkg = pPrint doc
     Nothing -> empty
     Just  s -> boldText fname <$$>
                indent 4 (fillSep (map text (words s)))
+
+------------------------------------------------------------------------------
+--- Cleans auxiliary files in the local package, i.e., the package
+--- containing the current working directory.
+cleanPackage :: LogLevel -> IO (ErrorLogger ())
+cleanPackage ll =
+  getLocalPackageSpec "." |>= \specDir ->
+  loadPackageSpec specDir     |>= \pkg ->
+  let dotcpm   = specDir </> ".cpm"
+      srcdirs  = map (specDir </>) (sourceDirsOf pkg)
+      testdirs = map (specDir </>)
+                     (maybe []
+                            (map (\ (PackageTest m _ _ _) -> m))
+                            (testSuite pkg))
+      rmdirs   = nub (dotcpm : map addCurrySubdir (srcdirs ++ testdirs))
+  in log ll ("Removing directories: " ++ unwords rmdirs) |>
+     (showExecCmd (unwords $ ["rm", "-rf"] ++ rmdirs) >> succeedIO ())
+
+------------------------------------------------------------------------------
 
