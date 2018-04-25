@@ -706,6 +706,7 @@ checkRequiredExecutables = do
     [ "curl"  
     , "git"   
     , "unzip" 
+    , "tar"
     , "cp"
     , "rm"
     , "ln"
@@ -1372,21 +1373,6 @@ computePackageLoadPath cfg pkgdir =
  where
   notCurrentBase pkg = name pkg /= "base" ||
                        showVersion (version pkg) /= compilerBaseVersion cfg
-
--- Clean auxiliary files in the current package
-cleanPackage :: Config -> LogLevel -> IO (ErrorLogger ())
-cleanPackage cfg ll =
-  getLocalPackageSpec cfg "." |>= \specDir ->
-  loadPackageSpec specDir     |>= \pkg ->
-  let dotcpm   = specDir </> ".cpm"
-      srcdirs  = map (specDir </>) (sourceDirsOf pkg)
-      testdirs = map (specDir </>)
-                     (maybe []
-                            (map (\ (PackageTest m _ _ _) -> m))
-                            (testSuite pkg))
-      rmdirs   = nub (dotcpm : map addCurrySubdir (srcdirs ++ testdirs))
-  in log ll ("Removing directories: " ++ unwords rmdirs) |>
-     (showExecCmd (unwords $ ["rm", "-rf"] ++ rmdirs) >> succeedIO ())
 
 
 --- Creates a new package.

@@ -17,6 +17,7 @@ import CPM.Config        ( Config, packageInstallDir, packageIndexRepository
                          , repositoryDir )
 import CPM.ErrorLogger
 import CPM.Package
+import CPM.PackageCopy   ( cleanPackage )
 import CPM.FileUtil      ( copyDirectory, inDirectory, removeDirectoryComplete )
 import CPM.Repository
 import CPM.Repository.CacheDB ( tryWriteRepositoryDB )
@@ -95,7 +96,9 @@ addPackageToRepository cfg pkgdir force cpdir = do
     infoMessage $ "Create directory: " ++ pkgRepositoryDir
     createDirectoryIfMissing True pkgRepositoryDir
     copyFile (pkgdir </> "package.json") (pkgRepositoryDir </> "package.json")
-    when cpdir $ copyDirectory pkgdir pkgInstallDir
+    when cpdir $ do copyDirectory pkgdir pkgInstallDir
+                    inDirectory pkgInstallDir (cleanPackage cfg Debug)
+                    done
     if exrepodir then updatePackageInRepositoryCache cfg pkg
                  else addPackageToRepositoryCache    cfg pkg
 

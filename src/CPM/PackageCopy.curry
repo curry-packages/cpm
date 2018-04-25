@@ -14,6 +14,7 @@ module CPM.PackageCopy
   , acquireAndInstallPackageWithDependencies
   , installLocalDependencies
   , renderPackageInfo
+  , cleanPackage
   ) where
 
 import Debug
@@ -21,10 +22,11 @@ import Directory ( doesFileExist, getAbsolutePath, createDirectoryIfMissing
                  , doesDirectoryExist, getTemporaryDirectory
                  , getCurrentDirectory, setCurrentDirectory, createDirectory
                  , removeDirectory, getDirectoryContents, copyFile )
+import Distribution ( addCurrySubdir )
 import FilePath ( (</>), takeExtension, takeBaseName, joinPath, splitPath
                 , splitFileName, takeDirectory )
 import AbstractCurry.Types (CurryProg)
-import List      ( intercalate, splitOn )
+import List      ( intercalate, splitOn, nub )
 import Maybe     ( mapMaybe, fromJust )
 import System    ( system )
 
@@ -398,5 +400,22 @@ addPackagesWOBase :: Config -> LS.LookupSet -> [Package] -> LS.LookupSource
                   -> LS.LookupSet
 addPackagesWOBase cfg ls pkgs src =
   LS.addPackages ls (map (setBaseDependency cfg) pkgs) src
+
+------------------------------------------------------------------------------
+--- Cleans auxiliary files in the local package, i.e., the package
+--- containing the current working directory.
+cleanPackage :: Config -> LogLevel -> IO (ErrorLogger ())
+cleanPackage cfg ll =
+  getLocalPackageSpec cfg "." |>= \specDir ->
+  loadPackageSpec specDir     |>= \pkg ->
+  let dotcpm   = specDir </> ".cpm"
+      srcdirs  = map (specDir </>) (sourceDirsOf pkg)
+      testdirs = map (specDir </>)
+                     (maybe []
+                            (map (\ (PackageTest m _ _ _) -> m))
+                            (testSuite pkg))
+      rmdirs   = nub (dotcpm : map addCurrySubdir (srcdirs ++ testdirs))
+  in log ll ("Removing directories: " ++ unwords rmdirs) |>
+     (showExecCmd (unwords $ ["rm", "-rf"] ++ rmdirs) >> succeedIO ())
 
 ------------------------------------------------------------------------------

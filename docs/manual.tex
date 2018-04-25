@@ -87,7 +87,8 @@ To install and use CPM, a working installation of either
 PAKCS in version 1.14.1 or greater, or
 KiCS2 in version 0.5.1 or greater is required. Additionally, CPM requires 
 \emph{Git}\footnote{\url{http://www.git-scm.com}},
-\emph{curl}\footnote{\url{https://curl.haxx.se}}
+\emph{curl}\footnote{\url{https://curl.haxx.se}},
+\emph{tar},
 and \emph{unzip} to be available on the \code{PATH} during installation and 
 operation. You also need to ensure that your Haskell installations reads files
 using UTF-8 encoding by default. Haskell uses the system locale charmap for its
@@ -570,7 +571,9 @@ There are three things that need to be done to publish a package: make the
 package accessible somewhere, add the location to the package specification, and
 add the package specification to the central package index.
 
-CPM supports ZIP files accessible over HTTP as well as Git repositories as 
+CPM supports ZIP (suffix \ccode{.zip}) or
+compressed TAR (suffix \ccode{.tar.gz}) files
+accessible over HTTP as well as Git repositories as 
 package sources. You are free to choose one of those, but a publicly accessible
 Git repository is preferred. To add the location to the package specification,
 use the \code{source} key. For a HTTP source, use:
