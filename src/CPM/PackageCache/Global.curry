@@ -33,7 +33,7 @@ import FilePath
 import CPM.Config   ( Config, packageInstallDir )
 import CPM.ErrorLogger
 import CPM.FileUtil ( copyDirectory, inTempDir, recreateDirectory, inDirectory
-                    , removeDirectoryComplete, tempDir
+                    , removeDirectoryComplete, tempDir, whenFileExists
                     , checkAndGetVisibleDirectoryContents, quote )
 import CPM.Package
 import CPM.Repository
@@ -203,7 +203,8 @@ installFromZip cfg zip = do
       installFromSource cfg pkgSpec (FileSource zip)
     else failIO "failed to extract ZIP file"
 
---- Checks out a specific ref of a Git repository
+--- Checks out a specific ref of a Git repository and deletes
+--- the Git auxiliary files (i.e., `.git` and `.gitignore`).
 --- 
 --- @param dir - the directory containing the repo
 --- @param ref - the ref to check out
@@ -211,9 +212,14 @@ checkoutGitRef :: String -> String -> IO (ErrorLogger ())
 checkoutGitRef dir ref = do
   c <- inDirectory dir $ execQuietCmd (\q -> unwords ["git checkout", q, ref])
   if c == 0
-    then succeedIO ()
+    then removeGitFiles >> succeedIO ()
     else removeDirectoryComplete dir >>
          failIO ("Failed to check out " ++ ref ++ ", return code " ++ show c)
+ where
+   removeGitFiles = do
+     removeDirectoryComplete (dir </> ".git")
+     let gitignore = dir </> ".gitignore"
+     whenFileExists gitignore (removeFile gitignore)
 
 --- Installs a package's missing dependencies.
 installMissingDependencies :: Config -> GlobalCache -> [Package] 
