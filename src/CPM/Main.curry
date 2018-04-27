@@ -33,6 +33,7 @@ import CPM.PackageCache.Global ( GlobalCache, readInstalledPackagesFromDir
                                , installFromZip, checkoutPackage, allPackages
                                , uninstallPackage, isPackageInstalled )
 import CPM.Package
+import CPM.Package.Helpers
 import CPM.Resolution ( isCompatibleToCompiler, showResult )
 import CPM.Repository ( Repository, readRepository, findVersion, listPackages
                       , findAllVersions, findLatestVersion, updateRepository
@@ -48,7 +49,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 26/04/2018)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 27/04/2018)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -1394,22 +1395,6 @@ computePackageLoadPath cfg pkgdir getRepoGC =
   let srcdirs = map (abs </>) (sourceDirsOf pkg)
       currypath = joinSearchPath (srcdirs ++ dependencyPathsSeparate pkgs abs)
   in saveCurryPathToCache pkgdir currypath >> succeedIO currypath
-
-
--- Clean auxiliary files in the current package
-cleanPackage :: LogLevel -> IO (ErrorLogger ())
-cleanPackage ll =
-  getLocalPackageSpec "." |>= \specDir ->
-  loadPackageSpec specDir     |>= \pkg ->
-  let dotcpm   = specDir </> ".cpm"
-      srcdirs  = map (specDir </>) (sourceDirsOf pkg)
-      testdirs = map (specDir </>)
-                     (maybe []
-                            (map (\ (PackageTest m _ _ _) -> m))
-                            (testSuite pkg))
-      rmdirs   = nub (dotcpm : map addCurrySubdir (srcdirs ++ testdirs))
-  in log ll ("Removing directories: " ++ unwords rmdirs) |>
-     (showExecCmd (unwords $ ["rm", "-rf"] ++ rmdirs) >> succeedIO ())
 
 
 --- Creates a new package.

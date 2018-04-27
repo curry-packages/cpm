@@ -36,6 +36,7 @@ import CPM.FileUtil ( copyDirectory, inTempDir, recreateDirectory, inDirectory
                     , removeDirectoryComplete, tempDir, whenFileExists
                     , checkAndGetDirectoryContents, quote )
 import CPM.Package
+import CPM.Package.Helpers ( installPackageSourceTo )
 import CPM.Repository
 
 ------------------------------------------------------------------------------
@@ -125,66 +126,9 @@ installFromSource cfg pkg pkgsource = do
     then
       log Info $ "Package '" ++ packageId pkg ++ "' already installed, skipping"
     else log Info ("Installing package from " ++ showPackageSource pkg) |> 
-         installPkgFromSource cfg pkg pkgsource pkgDir
+         installPackageSourceTo pkg pkgsource (packageInstallDir cfg)
  where
   pkgDir = installedPackageDir cfg pkg
-
-installPkgFromSource :: Config -> Package -> PackageSource -> String
-                     -> IO(ErrorLogger ())
-installPkgFromSource cfg pkg (Git url rev) pkgDir = do
-  c <- inDirectory (packageInstallDir cfg) $ execQuietCmd cloneCommand
-  if c == 0
-    then case rev of
-      Nothing           -> checkoutGitRef pkgDir "HEAD"
-      Just (Tag tag)    -> checkoutGitRef pkgDir
-                                          (replaceVersionInTag pkg tag)
-      Just (Ref ref)    -> checkoutGitRef pkgDir ref
-      Just VersionAsTag ->
-        let tag = "v" ++ (showVersion $ version pkg) 
-        in checkoutGitRef pkgDir tag |> 
-           log Info ("Package '" ++ packageId pkg ++ "' installed")
-    else removeDirectoryComplete pkgDir >>
-         failIO ("Failed to clone repository from '" ++ url ++
-                 "', return code " ++ show c)
- where
-  cloneCommand q = unwords ["git clone", q, quote url, quote $ packageId pkg]
-
-installPkgFromSource _ pkg (FileSource zipfile) pkgDir =
-  installPkgFromFile pkg zipfile pkgDir False
-
-installPkgFromSource _ pkg (Http url) pkgDir = do
-  let revurl  = reverse url
-      pkgfile = if take 4 revurl == "piz."    then "package.zip" else
-                if take 7 revurl == "zg.rat." then "package.tar.gz" else ""
-  if null pkgfile
-    then failIO $ "Illegal URL (only .zip or .tar.gz allowed):\n" ++ url
-    else do
-      tmpdir <- tempDir
-      let tmppkgfile = tmpdir </> pkgfile
-      c <- inTempDir $ showExecCmd $ "curl -s -o " ++ tmppkgfile ++
-                                     " " ++ quote url
-      if c == 0
-        then installPkgFromFile pkg tmppkgfile pkgDir True
-        else failIO $ "`curl` failed with exit status " ++ show c
-
---- Installs a package from a .zip or .tar.gz file into the specified
---- package directory. If the last argument is true, the file will be
---- deleted after unpacking.
-installPkgFromFile :: Package -> String -> String -> Bool -> IO (ErrorLogger ())
-installPkgFromFile pkg pkgfile pkgDir rmfile = do
-  let iszip = take 4 (reverse pkgfile) == "piz."
-  absfile <- getAbsolutePath pkgfile
-  createDirectory pkgDir
-  c <- if iszip
-         then inTempDir $ showExecCmd $ "unzip -qq -d " ++ quote pkgDir ++
-                                        " " ++ quote absfile
-         else inDirectory pkgDir $ showExecCmd $
-                "tar -xzf " ++ quote absfile
-  when rmfile (showExecCmd ("rm -f " ++ absfile) >> done)
-  if c == 0
-    then log Info $ "Installed " ++ packageId pkg
-    else do removeDirectoryComplete pkgDir
-            failIO ("Failed to unzip package, return code " ++ show c)
 
 --- Installs a package from a ZIP file to the global package cache.
 installFromZip :: Config -> String -> IO (ErrorLogger ())
@@ -199,24 +143,6 @@ installFromZip cfg zip = do
       log Debug ("ZIP contains " ++ packageId pkgSpec) |> 
       installFromSource cfg pkgSpec (FileSource zip)
     else failIO "failed to extract ZIP file"
-
---- Checks out a specific ref of a Git repository and deletes
---- the Git auxiliary files (i.e., `.git` and `.gitignore`).
---- 
---- @param dir - the directory containing the repo
---- @param ref - the ref to check out
-checkoutGitRef :: String -> String -> IO (ErrorLogger ())
-checkoutGitRef dir ref = do
-  c <- inDirectory dir $ execQuietCmd (\q -> unwords ["git checkout", q, ref])
-  if c == 0
-    then removeGitFiles >> succeedIO ()
-    else removeDirectoryComplete dir >>
-         failIO ("Failed to check out " ++ ref ++ ", return code " ++ show c)
- where
-   removeGitFiles = do
-     removeDirectoryComplete (dir </> ".git")
-     let gitignore = dir </> ".gitignore"
-     whenFileExists gitignore (removeFile gitignore)
 
 --- Installs a package's missing dependencies.
 installMissingDependencies :: Config -> GlobalCache -> [Package] 
