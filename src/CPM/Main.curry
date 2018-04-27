@@ -36,6 +36,8 @@ import CPM.PackageCache.Global ( GlobalCache, readGlobalCache, allPackages
                                , installFromZip, checkoutPackage
                                , uninstallPackage, packageInstalled )
 import CPM.Package
+import CPM.Package.Helpers ( cleanPackage, getLocalPackageSpec
+                           , renderPackageInfo )
 import CPM.Resolution ( isCompatibleToCompiler, showResult )
 import CPM.Repository ( Repository, findVersion, listPackages
                       , findAllVersions, findLatestVersion
@@ -54,7 +56,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 26/04/2018)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 27/04/2018)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()

@@ -17,7 +17,7 @@ import CPM.Config        ( Config, packageInstallDir, packageIndexRepository
                          , repositoryDir )
 import CPM.ErrorLogger
 import CPM.Package
-import CPM.PackageCopy   ( cleanPackage )
+import CPM.Package.Helpers ( cleanPackage )
 import CPM.FileUtil      ( copyDirectory, inDirectory, removeDirectoryComplete )
 import CPM.Repository
 import CPM.Repository.CacheDB ( tryWriteRepositoryDB )
