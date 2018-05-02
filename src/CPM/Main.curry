@@ -11,11 +11,14 @@ import Directory    ( doesFileExist, getAbsolutePath, doesDirectoryExist
                     , getCurrentDirectory, getDirectoryContents
                     , getModificationTime
                     , renameFile, removeFile, setCurrentDirectory )
-import Distribution ( stripCurrySuffix, addCurrySubdir )
+import Distribution ( curryCompiler, installDir, stripCurrySuffix
+                    , addCurrySubdir )
 import Either
-import FilePath     ( (</>), splitSearchPath, replaceExtension, takeExtension )
+import FilePath     ( (</>), splitSearchPath, replaceExtension, takeExtension
+                    , pathSeparator, isPathSeparator )
 import IO           ( hFlush, stdout )
-import List         ( groupBy, intercalate, isSuffixOf, nub, split, splitOn )
+import List         ( groupBy, intercalate, isPrefixOf, isSuffixOf, nub, split
+                    , splitOn )
 import Sort         ( sortBy )
 import System       ( getArgs, getEnviron, setEnviron, unsetEnviron, exitWith
                     , system )
@@ -49,7 +52,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 27/04/2018)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 02/05/2018)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -220,6 +223,10 @@ data DocOptions = DocOptions
   , docModules  :: Maybe [String]  -- modules to be documented
   , docPrograms :: Bool            -- generate documentation for programs
   , docManual   :: Bool            -- generate manual (if specified)
+  , docGenImports :: Bool          -- generate documentation for imported pkgs
+                                   -- (otherwise, use their standard docs)
+  , docPackageURL :: String        -- the URL prefix where all repository
+                                   -- packages are documented
   }
 
 data TestOptions = TestOptions
@@ -300,7 +307,12 @@ execOpts s = case optCommand s of
 docOpts :: Options -> DocOptions
 docOpts s = case optCommand s of
   Doc opts -> opts
-  _        -> DocOptions Nothing Nothing True True
+  _        -> DocOptions Nothing Nothing True True False defaultBaseDocURL
+
+-- The default URL prefix where all repository packages are documented.
+-- Can be overwritten with a doc command option.
+defaultBaseDocURL :: String
+defaultBaseDocURL = "https://www.informatik.uni-kiel.de/~curry/cpm/DOC"
 
 testOpts :: Options -> TestOptions
 testOpts s = case optCommand s of
@@ -575,6 +587,19 @@ optionParser allargs = optParser
           (  short "t"
           <> long "text"
           <> help "Generate only manual (according to package specification)"
+          <> optional )
+    <.> flag (\a -> Right $ a { optCommand = Doc (docOpts a)
+                                               { docGenImports = True } })
+          (  short "f"
+          <> long "full"
+          <> help "Generate full program documentation (i.e., also imported packages)"
+          <> optional )
+    <.> option (\s a -> Right $ a { optCommand =
+                                      Doc (docOpts a) { docPackageURL = s } })
+          (  long "url"
+          <> short "u"
+          <> help ("The URL prefix where all repository packages are " ++
+                   "documented. Default: " ++ defaultBaseDocURL)
           <> optional )
 
   testArgs =
@@ -1145,12 +1170,13 @@ docCmd :: DocOptions -> Config -> IO (Repository,GlobalCache)
 docCmd opts cfg getRepoGC =
   getLocalPackageSpec "." |>= \specDir ->
   loadPackageSpec specDir |>= \pkg -> do
-  let docdir = maybe "cdoc" id (docDir opts)
+  let docdir = maybe "cdoc" id (docDir opts) </> packageId pkg
   absdocdir <- getAbsolutePath docdir
   createDirectoryIfMissing True absdocdir
   (if docManual opts then genPackageManual opts cfg pkg absdocdir
                      else succeedIO ()) |>
-    (if docPrograms opts then genDocForPrograms opts cfg getRepoGC specDir pkg
+    (if docPrograms opts then genDocForPrograms opts cfg getRepoGC
+                                                absdocdir specDir pkg
                          else succeedIO ())
 
 --- Generate manual according to  documentation specification of package.
@@ -1201,11 +1227,11 @@ replaceSubString sub newsub s = replString s
 --- package), on the main executable (if specified in the package),
 --- or on all source modules of the package.
 genDocForPrograms :: DocOptions -> Config -> IO (Repository,GlobalCache)
-                  -> String -> Package -> IO (ErrorLogger ())
-genDocForPrograms opts cfg getRepoGC specDir pkg = do
+                  -> String -> String -> Package -> IO (ErrorLogger ())
+genDocForPrograms opts cfg getRepoGC docdir specDir pkg = do
+  abspkgdir <- getAbsolutePath specDir
   checkCompiler cfg pkg
-  let docdir  = maybe "cdoc" id (docDir opts)
-      exports = exportedModules pkg
+  let exports = exportedModules pkg
       mainmod = maybe Nothing
                       (\ (PackageExecutable _ emain _) -> Just emain)
                       (executableSpec pkg)
@@ -1221,26 +1247,49 @@ genDocForPrograms opts cfg getRepoGC specDir pkg = do
   if null docmods
     then putStrLn "No modules to be documented!" >> succeedIO ()
     else
+      getCurryLoadPath cfg specDir getRepoGC |>= \currypath ->
+      let pkgurls = path2packages abspkgdir currypath in
       if apidoc
-        then foldEL (\_ -> docModule specDir docdir) () docmods |>
-             runDocCmd specDir
-                       ([currydoc, "--title", apititle, "--onlyindexhtml",
-                         docdir] ++ docmods) |>
+        then foldEL (\_ -> docModule currypath pkgurls) () docmods |>
+             runDocCmd currypath pkgurls
+                       (["--title", apititle, "--onlyindexhtml", docdir]
+                        ++ docmods) |>
              log Info ("Documentation generated in '"++docdir++"'")
-        else runDocCmd specDir [currydoc, docdir, head docmods]
+        else runDocCmd currypath pkgurls [docdir, head docmods]
  where
   apititle = "\"API Documentation of Package '" ++ name pkg ++ "'\""
 
   currydoc = curryExec cfg ++ " doc"
 
-  docModule pkgdir docdir mod =
-    runDocCmd pkgdir [currydoc, "--noindexhtml", docdir, mod]
+  docModule currypath uses mod =
+    runDocCmd currypath uses ["--noindexhtml", docdir, mod]
 
-  runDocCmd pkgdir doccmd = do
-    let cmd = unwords doccmd
+  runDocCmd currypath uses docparams = do
+    let useopts = if docGenImports opts
+                    then []
+                    else map (\ (d,u) -> "--use "++d++"@"++u) uses
+        cmd = unwords (currydoc : useopts ++ docparams)
     infoMessage $ "Running CurryDoc: " ++ cmd
-    execWithPkgDir (ExecOptions cmd) cfg getRepoGC pkgdir
+    execWithCurryPath (ExecOptions cmd) cfg currypath
 
+  -- translates a path into a list of package paths and their doc URLs:
+  path2packages absdir path =
+    let dirs = splitSearchPath path
+        importPkgDir = absdir </> ".cpm" </> "packages" ++ [pathSeparator]
+        isImportedPackage d = importPkgDir `isPrefixOf` d
+        impPkg2URL p =
+          let (d,_) = break isPathSeparator (drop (length importPkgDir) p)
+          in docPackageURL opts ++ "/" ++ d
+    in map (\ip -> (ip,impPkg2URL ip)) (filter isImportedPackage dirs) ++
+       if name pkg == "base"
+         then [] -- in order to generate base package documentation
+         else [(installDir </> "lib",
+                -- docPackageURL opts ++ "/base-" ++ compilerBaseVersion cfg
+                if curryCompiler == "kics2" then kics2LibDocs else pakcsLibDocs
+               )]
+   where
+    pakcsLibDocs = "https://www.informatik.uni-kiel.de/~pakcs/lib/"
+    kics2LibDocs = "https://www-ps.informatik.uni-kiel.de/kics2/lib/"
 
 ------------------------------------------------------------------------------
 --- `test` command: run `curry check` on the modules provided as an argument
@@ -1377,7 +1426,10 @@ execWithPkgDir :: ExecOptions -> Config -> IO (Repository,GlobalCache)
 execWithPkgDir o cfg getRepoGC specDir =
   loadCurryPathFromCache specDir |>=
   maybe (computePackageLoadPath cfg specDir getRepoGC)
-        succeedIO |>= \currypath ->
+        succeedIO |>= execWithCurryPath o cfg
+
+execWithCurryPath :: ExecOptions -> Config -> String -> IO (ErrorLogger ())
+execWithCurryPath o _ currypath =
   log Debug ("Setting CURRYPATH to " ++ currypath) |>
   do setEnviron "CURRYPATH" currypath
      ecode <- showExecCmd (exeCommand o)
@@ -1473,6 +1525,14 @@ saveCurryPathToCache pkgdir path = do
   let cpmdir = pkgdir </> ".cpm"
   createDirectoryIfMissing False cpmdir
   writeFile (curryPathCacheFile pkgdir) (path ++ "\n")
+
+--- Gets CURRYPATH of the given package (either from the local cache file
+--- in the package dir or compute it).
+getCurryLoadPath :: Config -> String -> IO (Repository,GlobalCache)
+                 -> IO (ErrorLogger String)
+getCurryLoadPath cfg pkgdir getRepoGC =
+  loadCurryPathFromCache pkgdir |>=
+  maybe (computePackageLoadPath cfg pkgdir getRepoGC) succeedIO
 
 --- Restores package CURRYPATH from local cache file in the given package dir,
 --- if it is still up-to-date, i.e., it exists and is newer than the package
