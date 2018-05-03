@@ -1173,16 +1173,15 @@ docCmd opts cfg getRepoGC =
   let docdir = maybe "cdoc" id (docDir opts) </> packageId pkg
   absdocdir <- getAbsolutePath docdir
   createDirectoryIfMissing True absdocdir
-  (if docManual opts then genPackageManual opts cfg pkg absdocdir
+  (if docManual opts then genPackageManual pkg specDir absdocdir
                      else succeedIO ()) |>
     (if docPrograms opts then genDocForPrograms opts cfg getRepoGC
                                                 absdocdir specDir pkg
                          else succeedIO ())
 
 --- Generate manual according to  documentation specification of package.
-genPackageManual :: DocOptions -> Config -> Package -> String
-                 -> IO (ErrorLogger ())
-genPackageManual _ _ pkg outputdir = case documentation pkg of
+genPackageManual :: Package -> String -> String -> IO (ErrorLogger ())
+genPackageManual pkg specDir outputdir = case documentation pkg of
     Nothing -> succeedIO ()
     Just (PackageDocumentation docdir docmain doccmd) -> do
       let formatcmd = replaceSubString "OUTDIR" outputdir $
@@ -1193,7 +1192,7 @@ genPackageManual _ _ pkg outputdir = case documentation pkg of
                            docmain ++ "' (unknown kind)"
         else do
           debugMessage $ "Executing command: " ++ formatcmd
-          inDirectory docdir $ system formatcmd
+          inDirectory (specDir </> docdir) $ system formatcmd
           let outfile = outputdir </> replaceExtension docmain ".pdf"
           system ("chmod -f 644 " ++ quote outfile) -- make it readable
           infoMessage $ "Package documentation written to '" ++ outfile ++ "'."

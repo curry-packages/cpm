@@ -391,8 +391,8 @@ your own local copy.
 \code{cypm link} takes a directory containing a copy of one of the current 
 package's dependencies as its argument. It creates a symbolic link from that
 directory the the current package's local package cache. If you had a copy of
-\code{A-1.0.3} in the \code{~/src/A-1.0.3} directory, you could use 
-\code{cypm link ~/src/A-1.0.3} to ensure that any time \code{A-1.0.3} is used 
+\code{A-1.0.3} in the \code{\char126/src/A-1.0.3} directory, you could use 
+\code{cypm link \char126/src/A-1.0.3} to ensure that any time \code{A-1.0.3} is used 
 from the current package, your local copy is used instead of the one from the
 global package cache. To remove any links, use \code{cypm upgrade} without any
 arguments, which will clear the local package cache. See 
@@ -713,6 +713,12 @@ This option adds the elapsed time to every info or debug output line.
 The available commands of CPM are:
 
 \begin{description}
+\item[\fbox{\code{config}}]
+Shows the current configuration of CPM
+(see also Section~\ref{sec:config}).
+The option \code{--all} shows also the names and version
+of the packages installed in the global package cache.
+
 \item[\fbox{\code{info}}] Gives information on the current package, e.g. the
 package's name, author, synopsis and its dependency specifications.
 
@@ -868,6 +874,8 @@ Using the option \code{--docdir}, one can specify the
 target directory where the documentation should be stored.
 If this option is not provided, \ccode{cdoc} is used as the documentation
 directory.
+The actual documentation will be stored in the subdirectory
+\code{$name$-$version$} of the documentation directory.
 
 The API documentation in HTML format is generated with CurryDoc.
 If the package specification contains a list of exported modules
@@ -880,6 +888,17 @@ or all modules in the directory \code{src}
 are documented.
 Using the option \code{--modules}, one can also specify a comma-separated
 list of module names to be documented.
+
+In the default case, modules contained in packages used by the current package
+are not documented. Instead, it is assumed that these packages are
+already documented\footnote{See
+\url{http://www.informatik.uni-kiel.de/~curry/cpm/}
+for the documentation of all packages. This default location
+can be changed with the option \code{--url}.}
+so that links to these package documentations are generated.
+Using the option \code{--full}, one can generate also the documentation
+of packages used by the current package. This might be reasonable
+if one uses packages which are only locally installed.
 
 The manual is generated only if the package specification contains
 a field \code{documentation} where the main file of the manual
