@@ -6,7 +6,6 @@
 
 module CPM.Package
   ( Version, initialVersion
-  , Dependency
   , VersionConstraint (..)
   , CompilerCompatibility (..)
   , Package (..), emptyPackage
@@ -439,12 +438,12 @@ showVersionConstraints =
 
 --- Renders a single version constraint as a string.
 showVersionConstraint :: VersionConstraint -> String
-showVersionConstraint (VLt v)         = " < "  ++ (showVersion v)
-showVersionConstraint (VLte v)        = " <= " ++ (showVersion v)
-showVersionConstraint (VGt v)         = " > "  ++ (showVersion v)
-showVersionConstraint (VGte v)        = " >= " ++ (showVersion v)
-showVersionConstraint (VExact v)      = " = "  ++ (showVersion v)
-showVersionConstraint (VCompatible v) = " ~> " ++ (showVersion v)
+showVersionConstraint (VLt v)         = " < "  ++ showVersion v
+showVersionConstraint (VLte v)        = " <= " ++ showVersion v
+showVersionConstraint (VGt v)         = " > "  ++ showVersion v
+showVersionConstraint (VGte v)        = " >= " ++ showVersion v
+showVersionConstraint (VExact v)      = " = "  ++ showVersion v
+showVersionConstraint (VCompatible v) = " ~> " ++ showVersion v
 
 --- Renders the id of a package as a string. Package name and version separated
 --- by a dash.

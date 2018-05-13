@@ -95,6 +95,13 @@ using UTF-8 encoding by default. Haskell uses the system locale charmap for its
 default encoding. You can check the current value using 
 \code{System.IO.localeEncoding} inside a \code{ghci} session.
 
+It is also recommended that
+SQLite\footnote{\url{https://www.sqlite.org}} is installed
+so that the executable \code{sqlite3} is in your path.
+In this case, CPM uses a SQLite database for caching
+the central package index (see Section~\ref{sec:internals}).
+This yields faster response times of various CPM commands.
+
 To install CPM from the sources, enter the 
 root directory of the CPM source distribution.
 The main executable \code{curry} of your Curry system must be in your
@@ -220,7 +227,7 @@ creates a new project directory with a
 \code{package.json} file for you.\footnote{The \code{new} command
 also creates some other useful template files. Look into the
 output of this command.}
-Declare a dependency inside the new \code{package.json} file, e.g.:
+Then declare the dependencies inside the new \code{package.json} file, e.g.:
 
 \begin{lstlisting}
 {
@@ -347,23 +354,34 @@ This command will set the \code{CURRYPATH} environment variable
 and then execute the command given after \ccode{exec}.
 
 
-\subsection{Using Packages Without a Package}
+\subsection{Using Packages Outside a Package}
+\label{sec:meta-package}
 
 In principle, packages can be used only inside another package
-by declaring dependencies.
-Thus, if you develop a Curry application which is not a package
-but you want to use some package, you have to put
-a package specification file into the source directory of
-your application where you define the required packages.
-As a shortcut for this, you can use the CPM command
-\code{cypm add --dependency} (short: \code{cypm add -d})
-to install the package specification file.
+by declaring dependencies in the package specification file
+\code{package.json}.
+If you invoke \code{cypm} in a directory which contains
+no package specification file, CPM searches for such a file
+from the current directory to the parent directories (up to the
+root of the file system).
+Thus, if you are outside a package, such a file is not available.
+In order to support the use other packages outside package,
+CPM provides a meta-package which is usually stored in your home directory
+at \code{\char126/.cpm/$Curry system$-homepackage}.\footnote{%
+Use \code{cypm config} and look at \code{HOME_PACKAGE_PATH}
+to see the current location of this meta-package.}
+This meta-package is used when your are not inside another package.
+Hence, if you write some Curry program which is not a package
+but you want to use some package \code{P}, you have to add a dependency
+to \code{P} to this meta-package.
+CPM does this automatically for you with the CPM command
+\code{cypm add --dependency} (short: \code{cypm add -d}).
 
 For instance, to use the libraries of the JSON package
 in your application, one can use the following commands:
 %
 \begin{lstlisting}
-> cypm add -d json  # generate package specification with 'json' dependency
+> cypm add -d json  # add 'json' dependency to meta-package
 > cypm install      # download and install all dependencies
 > cypm curry        # start Curry system with JSON libraries in load path
 ...
@@ -634,11 +652,34 @@ The path to the package cache where packages are checked out if only
 their binaries are installed (see Section~\ref{sec:installapp}).
 Default value: \code{\$HOME/.cpm/app_packages}.
 
+\item[\fbox{\code{HOME_PACKAGE_PATH}}]
+The path to the meta-package which is used if you are outside another
+package (see Section~\ref{sec:meta-package}).
+Default value: \code{\$HOME/.cpm/$Curry system$-homepackage}.
+
 \item[\fbox{\code{CURRY_BIN}}]
 The name of the executable of the Curry system used
 to compile and test packages.
 The default value is the binary of the Curry system which has been used
 to compile CPM.
+
+\item[\fbox{\code{BASE_VERSION}}]
+The version of the base libraries which is used for package installations.
+In the default case, the base version is the version of the system libraries
+used by the Curry compiler. These system libraries are also available
+as package \ccode{base} so that they can listed as a dependency
+in the package specification.
+If the base version of the package is identical to the base version
+of the Curry compiler used by CPM, the installed copy
+of the base libraries is ignored.\footnote{Since the system libraries
+of a Curry compiler are usually pre-compiled, the usage of the
+system libraries instead of the \code{base} package might result
+in faster compilation times.}
+If one uses a different base version, e.g., enforced by a package
+dependency or by setting this configuration variable,
+then this version of the base package is used.
+Thus, one can use a package even if the current compiler
+has a different version of the base libraries.
 \end{description}
 %
 Note that one write the option names also in lowercase or omit
@@ -947,11 +988,11 @@ The option \ccode{--force} allows to overwrite existing copies
 in the central package index.
 
 \item[\fbox{\code{add --dependency $package$ [--force]}}]
-Adds the package $package$ as a new dependency of the current package.
-This command either modifies the package description file (\code{package.json})
-of the current package and adds a dependency to the given package
-in this file or, if there is no package description file,
-generates a new one with this dependency.
+Adds the package $package$ as a new dependency.
+This command adds a dependency to the given package
+either in the package description file (\code{package.json})
+of the current package or in the meta-package
+(see Section~\ref{sec:meta-package}).
 The option \ccode{--force} allows to overwrite existing dependencies
 in the package description file.
 

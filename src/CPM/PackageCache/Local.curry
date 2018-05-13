@@ -76,9 +76,8 @@ allPackages pkgDir = do
 --- @param dir the package directory
 --- @param gc the global package cache
 --- @param pkg the package to copy
-createLinkToGlobalCache :: Config -> String -> GlobalCache -> Package
-                        -> IO (ErrorLogger ())
-createLinkToGlobalCache cfg pkgDir _ pkg = 
+createLinkToGlobalCache :: Config -> String -> Package -> IO (ErrorLogger ())
+createLinkToGlobalCache cfg pkgDir pkg = 
   createLink pkgDir (installedPackageDir cfg pkg) (packageId pkg) False
 
 --- Links a list of packages from the global cache into the local cache. Does
@@ -88,10 +87,10 @@ createLinkToGlobalCache cfg pkgDir _ pkg =
 --- @param dir the package directory
 --- @param gc the global package cache
 --- @param pkgs the list of packages
-linkPackages :: Config -> String -> GlobalCache -> [Package]
+linkPackages :: Config -> String -> [Package]
              -> IO (ErrorLogger ())
-linkPackages cfg pkgDir gc pkgs = 
-  mapEL (createLinkToGlobalCache cfg pkgDir gc) pkgs |> succeedIO ()
+linkPackages cfg pkgDir pkgs = 
+  mapEL (createLinkToGlobalCache cfg pkgDir) pkgs |> succeedIO ()
 
 --- Tests whether a link in the local package cache points to a package in the
 --- global package cache.
@@ -100,8 +99,8 @@ linkPackages cfg pkgDir gc pkgs =
 --- @param gc the global package cache
 --- @param dir the package directory
 --- @param name the name of the link
-doesLinkPointToGlobalCache :: Config -> GlobalCache -> String -> String -> IO Bool
-doesLinkPointToGlobalCache cfg _ pkgDir name = do
+doesLinkPointToGlobalCache :: Config -> String -> String -> IO Bool
+doesLinkPointToGlobalCache cfg pkgDir name = do
   target <- linkTarget link
   return $ isPrefixOf (packageInstallDir cfg) target
  where

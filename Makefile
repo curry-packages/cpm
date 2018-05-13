@@ -16,7 +16,7 @@ CURRYCOMPILER := $(shell $(CURRY) :set v0 :set -time :add Distribution :eval "pu
 ifeq ($(CURRYCOMPILER),kics2)
 export REPL_OPTS = --noreadline :set -time :set rts -T
 else
-export REPL_OPTS = --noreadline :set -time
+export REPL_OPTS = --nocypm --noreadline :set -time
 endif
 
 # Source modules of CPM:
@@ -43,7 +43,7 @@ src/CPM/ConfigPackage.curry: Makefile
 	@echo "packagePath :: String" >> $@
 	@echo "packagePath = \"$(CURDIR)\"" >> $@
 	@echo "packageVersion :: String" >> $@
-	@echo "packageVersion = \"0.2.1\"" >> $@
+	@echo "packageVersion = \"1.0.0\"" >> $@
 	@echo "Curry configuration module '$@' written."
 
 .PHONY: buildperf

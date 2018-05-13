@@ -14,6 +14,7 @@ module CPM.Resolution
   , resolve
   , resolveDependenciesFromLookupSet
   , isCompatibleToCompiler
+  , isDisjunctionCompatible
   ) where
 
 import Either
@@ -23,7 +24,8 @@ import Sort
 import Maybe
 import Test.EasyCheck
 
-import CPM.Config (Config, defaultConfig, compilerVersion)
+import CPM.Config      ( Config, defaultConfig, compilerVersion
+                       , compilerBaseVersion )
 import CPM.ErrorLogger
 import CPM.LookupSet
 import CPM.Package
@@ -38,14 +40,18 @@ resolveDependenciesFromLookupSet cfg pkg lookupSet =
     else failIO $ showResult result
 
 --- Resolves the dependencies of a package using packages from a lookup set.
+--- The base package of the current compiler is removed from the result set.
 resolve :: Config -> Package -> LookupSet -> ResolutionResult
 resolve cfg pkg ls = case resolvedPkgs of
-  Just pkgs -> ResolutionSuccess pkg pkgs
+  Just pkgs -> ResolutionSuccess pkg (deleteBase pkgs)
   Nothing   -> ResolutionFailure labeledTree
  where
   labeledTree = labelConflicts cfg $ candidateTree pkg ls
   noConflicts = prune ((/= Nothing) . clConflict) labeledTree
-  resolvedPkgs = maybeHead . map stPackages . filter stComplete . leaves . mapTree clState $ noConflicts
+  resolvedPkgs = maybeHead . map stPackages . filter stComplete . leaves
+                           . mapTree clState $ noConflicts
+  deleteBase   = filter (\p -> name p /= "base" ||
+                           showVersion (version p) /= compilerBaseVersion cfg)
 
 --- Gives a list of all activated packages for a successful resolution.
 resolvedPackages :: ResolutionResult -> [Package]
@@ -65,7 +71,8 @@ resolutionSuccess (ResolutionFailure _) = False
 
 --- Renders a dependency tree from a successful resolution.
 showDependencies :: ResolutionResult -> String
-showDependencies (ResolutionSuccess pkg deps) = showTree . mapTree (text . packageId) $ dependencyTree deps pkg
+showDependencies (ResolutionSuccess pkg deps) =
+  showTree . mapTree (text . packageId) $ dependencyTree deps pkg
 showDependencies (ResolutionFailure _) = "Resolution failed."
 
 --- Renders a conflict resolution into a textual representation.
@@ -74,12 +81,16 @@ showConflict (ResolutionSuccess _ _) = "Resolution succeeded."
 showConflict (ResolutionFailure t) = case findRelevantConflict t of
   Just c  -> showConflictState c
   Nothing -> case missingPackages $ clState $ findDeepestNode t of
-    []    -> "It failed for an unknown reason :("
-    (d@(Dependency p _):_) -> "There seems to be no version of package " ++ p ++ " that can satisfy the constraint " ++ showDependency d
+    []    -> "Conflict resolution failed for an unknown reason :(\n" ++
+             "Please clean your package ('cypm clean') and try again..."
+    (d@(Dependency p _):_) ->
+      "There seems to be no version of package " ++ p ++
+      " that can satisfy the constraint " ++ showDependency d
 
 showConflictTree :: ResolutionResult -> String
 showConflictTree (ResolutionSuccess _ _) = "Resolution succeeded."
-showConflictTree (ResolutionFailure t) = showTree $ mapTree labeler $ cutBelowConflict t
+showConflictTree (ResolutionFailure t) =
+  showTree $ mapTree labeler $ cutBelowConflict t
  where
   pkgId = text . packageId . actPackage
   actChain a@(InitialA _) = pkgId a

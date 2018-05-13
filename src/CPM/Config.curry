@@ -6,15 +6,15 @@
 
 module CPM.Config 
   ( Config ( Config, packageInstallDir, binInstallDir, repositoryDir
-           , appPackageDir, packageIndexRepository, curryExec
-           , compilerVersion )
+           , appPackageDir, packageIndexRepository, homePackageDir, curryExec
+           , compilerVersion, compilerBaseVersion, baseVersion )
   , readConfigurationWith, defaultConfig
   , showConfiguration, showCompilerVersion ) where
 
 import Char         ( toUpper )
-import Directory    ( getHomeDirectory, createDirectoryIfMissing )
-import Distribution ( installDir, curryCompiler, curryCompilerMinorVersion
-                    , curryCompilerMajorVersion )
+import Directory    ( doesDirectoryExist, createDirectoryIfMissing
+                    , getHomeDirectory )
+import qualified Distribution as Dist
 import FilePath     ( (</>), isAbsolute )
 import Function     ( (***) )
 import IOExts       ( evalCmd )
@@ -46,11 +46,22 @@ data Config = Config {
   , appPackageDir :: String
     --- URL to the package index repository
   , packageIndexRepository :: String
+    --- The directory where the default home package is stored
+  , homePackageDir :: String
     --- The executable of the Curry system used to compile and check packages
   , curryExec :: String
     --- The compiler version (name,major,minor) used to compile packages
   , compilerVersion :: (String,Int,Int)
+    --- The version of the base libraries used by the compiler
+  , compilerBaseVersion :: String
+    --- The version of the base libraries to be used for package installations
+  , baseVersion :: String
   }
+
+--- Workaround since Distribution.baseVersion is not defined in Curry
+--- without typeclasses.
+distBaseVersion :: String
+distBaseVersion = "0.0.0"
 
 --- CPM's default configuration values. These are used if no .cpmrc file is found
 --- or a new value for the option is not specified in the .cpmrc file.
@@ -61,21 +72,27 @@ defaultConfig = Config
   , repositoryDir          = "$HOME/.cpm/index" 
   , appPackageDir          = "$HOME/.cpm/app_packages" 
   , packageIndexRepository = packageIndexURI
-  , curryExec              = installDir </> "bin" </> curryCompiler
-  , compilerVersion        = (curryCompiler, curryCompilerMajorVersion,
-                              curryCompilerMinorVersion)
+  , homePackageDir         = ""
+  , curryExec              = Dist.installDir </> "bin" </> Dist.curryCompiler
+  , compilerVersion        = ( Dist.curryCompiler
+                             , Dist.curryCompilerMajorVersion
+                             , Dist.curryCompilerMinorVersion )
+  , compilerBaseVersion    = distBaseVersion
+  , baseVersion            = ""
   }
 
 --- Shows the configuration.
 showConfiguration :: Config -> String
 showConfiguration cfg = unlines
-  [ "Current configuration:"
-  , "Compiler version  : " ++ showCompilerVersion cfg
-  , "CURRYBIN          : " ++ curryExec         cfg
-  , "REPOSITORYPATH    : " ++ repositoryDir     cfg
-  , "PACKAGEINSTALLPATH: " ++ packageInstallDir cfg
-  , "BININSTALLPATH    : " ++ binInstallDir     cfg
-  , "APPPACKAGEPATH    : " ++ appPackageDir     cfg
+  [ "Compiler version       : " ++ showCompilerVersion cfg
+  , "Compiler base version  : " ++ compilerBaseVersion cfg
+  , "BASE_VERSION           : " ++ baseVersion         cfg
+  , "CURRY_BIN              : " ++ curryExec           cfg
+  , "REPOSITORY_PATH        : " ++ repositoryDir       cfg
+  , "PACKAGE_INSTALL_PATH   : " ++ packageInstallDir   cfg
+  , "BIN_INSTALL_PATH       : " ++ binInstallDir       cfg
+  , "APP_PACKAGE_PATH       : " ++ appPackageDir       cfg
+  , "HOME_PACKAGE_PATH      : " ++ homePackageDir      cfg
   ]
   
 --- Shows the compiler version in the configuration.
@@ -100,25 +117,64 @@ setCompilerExecutable cfg = do
     maybe (error $ "Executable '" ++ exec ++ "' not found in path!")
           (\absexec -> return cfg { curryExec = absexec })
 
+--- Sets the `homePackageDir` depending on the compiler version.
+setHomePackageDir :: Config -> IO Config
+setHomePackageDir cfg
+  | null (homePackageDir cfg)
+  = do homedir <- getHomeDirectory
+       let cpmdir = homedir </> ".cpm"
+       excpmdir <- doesDirectoryExist cpmdir
+       if excpmdir
+         then let (cname,cmaj,cmin) = compilerVersion cfg
+                  cvname      = cname ++ "-" ++ show cmaj ++ "." ++ show cmin
+                  homepkgdir  = cpmdir </> cvname ++ "-homepackage"
+              in return cfg { homePackageDir = homepkgdir }
+         else return cfg
+  | otherwise = return cfg
+
 --- Sets the correct compiler version in the configuration.
 setCompilerVersion :: Config -> IO Config
 setCompilerVersion cfg0 = do
   cfg <- setCompilerExecutable cfg0
-  if curryExec cfg == installDir </> "bin" </> curryCompiler
-    then return cfg { compilerVersion = currVersion }
-    else do (c1,sname,e1) <- evalCmd (curryExec cfg) ["--compiler-name"] ""
-            (c2,svers,e2) <- evalCmd (curryExec cfg) ["--numeric-version"] ""
-            when (c1 > 0 || c2 > 0) $
-              error $ "Cannot determine compiler version:\n" ++
-                      unlines (filter (not . null) [e1,e2])
+  let initbase = baseVersion cfg
+  if curryExec cfg == Dist.installDir </> "bin" </> Dist.curryCompiler
+    then return cfg { compilerVersion = currVersion
+                    , compilerBaseVersion = distBaseVersion
+                    , baseVersion         = if null initbase
+                                              then distBaseVersion
+                                              else initbase }
+    else do (sname,svers,sbver) <- getCompilerVersion (curryExec cfg)
             let cname = strip sname
                 cvers = strip svers
+                bvers = strip sbver
                 (majs:mins:_) = split (=='.') cvers
             debugMessage $ "Compiler version: " ++ cname ++ " " ++ cvers
-            return cfg { compilerVersion = (cname, readInt majs, readInt mins) }
+            debugMessage $ "Base lib version: " ++ bvers
+            return cfg { compilerVersion = (cname, readInt majs, readInt mins)
+                       , compilerBaseVersion = bvers
+                       , baseVersion         = if null initbase
+                                                 then bvers
+                                                 else initbase }
  where
-  currVersion = (curryCompiler, curryCompilerMajorVersion,
-                                curryCompilerMinorVersion)
+  getCompilerVersion currybin = do
+    debugMessage $ "Getting version information from " ++ currybin
+    (r,s,e) <- evalCmd currybin
+                 ["--compiler-name","--numeric-version","--base-version"] ""
+    if r>0
+      then error $ "Cannot determine compiler version:\n" ++ e
+      else case lines s of
+        [sname,svers,sbver] -> return (sname,svers,sbver)
+        _ -> do debugMessage $ "Query version information again..."
+                (c1,sname,e1) <- evalCmd currybin ["--compiler-name"] ""
+                (c2,svers,e2) <- evalCmd currybin ["--numeric-version"] ""
+                (c3,sbver,e3) <- evalCmd currybin ["--base-version"] ""
+                when (c1 > 0 || c2 > 0 || c3 > 0) $
+                  error $ "Cannot determine compiler version:\n" ++
+                          unlines (filter (not . null) [e1,e2,e3])
+                return (sname,svers,sbver)
+
+  currVersion = (Dist.curryCompiler, Dist.curryCompilerMajorVersion,
+                                     Dist.curryCompilerMinorVersion)
 
 --- Reads the .cpmrc file from the user's home directory (if present) and
 --- merges its contents and some given default settings (first argument)
@@ -140,7 +196,8 @@ readConfigurationWith defsettings = do
     Right s0 -> do s1 <- replaceHome s0
                    createDirectories s1
                    s2 <- setCompilerVersion s1
-                   return $ Right s2
+                   s3 <- setHomePackageDir s2
+                   return $ Right s3
 
 replaceHome :: Config -> IO Config
 replaceHome cfg = do
@@ -191,7 +248,9 @@ keySetters =
   , ("PACKAGEINSTALLPATH" , \v c -> c { packageInstallDir = v })
   , ("BININSTALLPATH"     , \v c -> c { binInstallDir     = v })
   , ("APPPACKAGEPATH"     , \v c -> c { appPackageDir     = v })
+  , ("HOMEPACKAGEPATH"    , \v c -> c { homePackageDir    = v })
   , ("CURRYBIN"           , \v c -> c { curryExec         = v })
+  , ("BASEVERSION"        , \v c -> c { baseVersion       = v })
   ]
 
 --- Sequentially applies a list of functions that transform a value to a value

@@ -8,9 +8,9 @@ module CPM.PackageCache.Global
   , findAllVersions
   , findNewestVersion
   , findVersion
-  , isPackageInstalled
+  , packageInstalled
   , installedPackageDir
-  , readInstalledPackagesFromDir
+  , readGlobalCache, readInstalledPackagesFromDir
   , allPackages
   , copyPackage
   , installMissingDependencies
@@ -34,7 +34,7 @@ import CPM.Config   ( Config, packageInstallDir )
 import CPM.ErrorLogger
 import CPM.FileUtil ( copyDirectory, inTempDir, recreateDirectory, inDirectory
                     , removeDirectoryComplete, tempDir, whenFileExists
-                    , checkAndGetDirectoryContents, quote )
+                    , checkAndGetVisibleDirectoryContents, quote )
 import CPM.Package
 import CPM.Package.Helpers ( installPackageSourceTo )
 import CPM.Repository
@@ -92,10 +92,12 @@ isPackageInstalled db p = isJust $ findVersion db (name p) (version p)
 --- The directory of a package in the global package cache. Does not check 
 --- whether the package is actually installed!
 installedPackageDir :: Config -> Package -> String
-installedPackageDir cfg pkg =
-  base  </> (name pkg ++ "-" ++ (showVersion $ version pkg))
- where 
-  base = packageInstallDir cfg
+installedPackageDir cfg pkg = packageInstallDir cfg </> packageId pkg
+
+--- Checks whether a package is installed in the global cache.
+packageInstalled :: Config -> Package -> IO Bool
+packageInstalled cfg pkg =
+  doesDirectoryExist (installedPackageDir cfg pkg)
 
 --- Copy a package version to a directory.
 copyPackage :: Config -> Package -> String -> IO (ErrorLogger ())
@@ -110,7 +112,8 @@ copyPackage cfg pkg dir = do
 --- Acquires a package from the source specified in its specification and 
 --- installs it to the global package cache.
 acquireAndInstallPackage :: Config -> Package -> IO (ErrorLogger ())
-acquireAndInstallPackage cfg pkg =
+acquireAndInstallPackage cfg reppkg =
+  readPackageFromRepository cfg reppkg |>= \pkg ->
   case source pkg of
    Nothing -> failIO $ "No source specified for " ++ packageId pkg
    Just  s -> log Info ("Installing package '" ++ packageId pkg ++ "'...") |> 
@@ -163,9 +166,9 @@ missingPackages :: GlobalCache -> [Package] -> [Package]
 missingPackages gc = filter (not . isPackageInstalled gc)
 
 --- Checkout a package from the global package cache.
-checkoutPackage :: Config -> Repository -> GlobalCache -> Package
+checkoutPackage :: Config -> Package
                 -> IO (ErrorLogger ())
-checkoutPackage cfg _ _ pkg = do
+checkoutPackage cfg pkg = do
   sexists <- doesDirectoryExist pkgDir
   texists <- doesDirectoryExist codir
   if texists
@@ -175,22 +178,21 @@ checkoutPackage cfg _ _ pkg = do
            else log Error $ "Package '" ++ pkgId ++ "' is not installed."
  where
   pkgId  = packageId pkg
-  pkgDir = packageInstallDir cfg </> pkgId
+  pkgDir = installedPackageDir cfg pkg
   codir  = name pkg
   logMsg = "Package '" ++ pkgId ++ "' checked out into directory '" ++
            codir ++ "'."
 
 --- Removes a package from the global package cache.
-uninstallPackage :: Config -> Repository -> GlobalCache -> String -> Version 
-                 -> IO (ErrorLogger ())
-uninstallPackage cfg _ _ pkg ver = do
+uninstallPackage :: Config -> String -> Version -> IO (ErrorLogger ())
+uninstallPackage cfg pkg ver = do
   exists <- doesDirectoryExist pkgDir
   if exists
     then showExecCmd ("rm -Rf " ++ quote pkgDir) >> log Info logMsg
     else log Info $ "Package '" ++ pkgId ++ "' is not installed."
  where
-  pkgDir = (packageInstallDir cfg) </> pkgId
-  pkgId = pkg ++ "-" ++ showVersion ver
+  pkgDir = packageInstallDir cfg </> pkgId
+  pkgId  = pkg ++ "-" ++ showVersion ver
   logMsg = "Package '" ++ pkgId ++ "' uninstalled."
 
 --- Tries to find a package in the global package cache.
@@ -199,6 +201,14 @@ tryFindPackage gc name ver = case findVersion gc name ver of
   Just pkg -> succeedIO pkg
   Nothing -> failIO $ "Package " ++ name ++ "-" ++ showVersion ver ++
                       " could not be found."
+
+--- Reads the global package cache.
+readGlobalCache :: Config -> Repository -> IO (ErrorLogger GlobalCache)
+readGlobalCache config repo = do
+  maybeGC <- readInstalledPackagesFromDir repo $ packageInstallDir config
+  case maybeGC of
+    Left err -> failIO $ "Error reading global package cache: " ++ err
+    Right gc -> succeedIO gc
 
 --- Tries to read package specifications from a GC directory structure.
 --- If some GC package directory has the same name as a package from
@@ -210,8 +220,7 @@ readInstalledPackagesFromDir :: Repository -> String
                              -> IO (Either String GlobalCache)
 readInstalledPackagesFromDir repo path = do
   debugMessage $ "Reading global package cache from '" ++ path ++ "'..."
-  pkgDirs <- checkAndGetDirectoryContents path
-  pkgPaths <- return $ filter (not . isPrefixOf ".") pkgDirs
+  pkgPaths <- checkAndGetVisibleDirectoryContents path
   specs <- mapIO loadPackageSpecFromDir pkgPaths
   if null (lefts specs)
     then do debugMessage "Finished reading global package cache"
@@ -224,9 +233,7 @@ readInstalledPackagesFromDir repo path = do
     Nothing -> readPackageSpecFromFile pkgdir
     Just (pn,pv) -> case CPM.Repository.findVersion repo pn pv of
       Nothing -> readPackageSpecFromFile pkgdir
-      Just p  -> do debugMessage $ "Package spec '" ++ packageId p ++
-                                   "' loaded from repository"
-                    return (Right p)
+      Just p  -> return (Right p)
 
   readPackageSpecFromFile pkgdir = do
     let f = path </> pkgdir </> "package.json"
@@ -245,3 +252,5 @@ readInstalledPackagesFromDir repo path = do
          else case readVersion (last ps) of
                 Nothing -> Nothing
                 Just v  -> Just (intercalate "-" (take (l-1) ps), v)
+
+------------------------------------------------------------------------------

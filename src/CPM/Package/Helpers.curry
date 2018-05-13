@@ -8,7 +8,7 @@ module CPM.Package.Helpers
   ( installPackageSourceTo
   , renderPackageInfo
   , cleanPackage
-  , getLocalPackageSpec, searchLocalPackageSpec
+  , getLocalPackageSpec
   ) where
 
 import Directory
@@ -17,6 +17,7 @@ import FilePath
 import List         ( splitOn, nub )
 import Pretty hiding ((</>))
 
+import CPM.Config   ( Config, homePackageDir )
 import CPM.ErrorLogger
 import CPM.FileUtil ( inDirectory, inTempDir, quote
                     , removeDirectoryComplete, tempDir, whenFileExists )
@@ -112,10 +113,10 @@ checkoutGitRef dir ref = do
 ------------------------------------------------------------------------------
 --- Cleans auxiliary files in the local package, i.e., the package
 --- containing the current working directory.
-cleanPackage :: LogLevel -> IO (ErrorLogger ())
-cleanPackage ll =
-  getLocalPackageSpec "." |>= \specDir ->
-  loadPackageSpec specDir |>= \pkg ->
+cleanPackage :: Config -> LogLevel -> IO (ErrorLogger ())
+cleanPackage cfg ll =
+  getLocalPackageSpec cfg "." |>= \specDir ->
+  loadPackageSpec specDir     |>= \pkg ->
   let dotcpm   = specDir </> ".cpm"
       srcdirs  = map (specDir </>) (sourceDirsOf pkg)
       testdirs = map (specDir </>)
@@ -128,13 +129,13 @@ cleanPackage ll =
 
 ------------------------------------------------------------------------------
 --- Renders information about a package.
-renderPackageInfo :: Bool -> Bool -> Maybe Bool -> Package -> String
-renderPackageInfo allinfos plain mbinstalled pkg = pPrint doc
+renderPackageInfo :: Bool -> Bool -> Bool -> Package -> String
+renderPackageInfo allinfos plain installed pkg = pPrint doc
  where
   boldText s = (if plain then id else bold) $ text s
   maxLen = 12
   doc = vcat $ [ heading, rule
-               , maybe empty instTxt mbinstalled
+               , if allinfos then instTxt installed else empty
                , ver, auth, maintnr, synop
                , cats, deps, compilers, descr, execspec ] ++
                if allinfos
@@ -255,25 +256,47 @@ renderPackageInfo allinfos plain mbinstalled pkg = pPrint doc
                indent 4 (fillSep (map text (words s)))
 
 ------------------------------------------------------------------------------
---- Tries to find a package specification in the current directory or one of its
---- ancestors.
-getLocalPackageSpec :: String -> IO (ErrorLogger String)
-getLocalPackageSpec dir =
-  searchLocalPackageSpec dir |>=
-  maybe (failIO "No package.json found") succeedIO
+--- Tries to find a package specification in the given directory or one of its
+--- ancestors. If there is no package specifiction in these directories,
+--- the home package specification (i.e., `~/.cpm/home-package/package.json`
+--- is returned (and created if it does not exist).
+--- In order to avoid infinite loops due to cyclic file structures,
+--- the search is limited to the number of directories occurring in the
+--- current absolute path.
+getLocalPackageSpec :: Config -> String -> IO (ErrorLogger String)
+getLocalPackageSpec cfg dir = do
+  adir <- getAbsolutePath dir
+  searchLocalSpec (length (splitPath adir)) dir
+    >>= maybe returnHomePackage succeedIO
+ where
+  returnHomePackage = do
+    let homepkgdir  = homePackageDir cfg
+        homepkgspec = homepkgdir </> "package.json"
+    specexists <- doesFileExist homepkgspec
+    unless (specexists || null homepkgdir) $ do
+      createDirectoryIfMissing True homepkgdir
+      let newpkg  = emptyPackage
+                      { name            = snd (splitFileName homepkgdir)
+                      , version         = initialVersion
+                      , author          = "CPM"
+                      , synopsis        = "Default home package"
+                      , dependencies    = []
+                      }
+      writePackageSpec newpkg homepkgspec
+      infoMessage $ "New empty package specification '" ++ homepkgspec ++
+                    "' generated"
+    succeedIO homepkgdir
 
---- Tries to find a package specification in the current directory or one of its
---- ancestors. Returns `Nothing` if there is not package specifiction.
-searchLocalPackageSpec :: String -> IO (ErrorLogger (Maybe String))
-searchLocalPackageSpec dir = do
-  existsLocal <- doesFileExist $ dir </> "package.json"
-  if existsLocal
-    then succeedIO (Just dir)
-    else log Debug ("No package.json in " ++ show dir ++ ", trying " ++
-                    show (dir </> "..")) |> do
-      parentExists <- doesDirectoryExist $ dir </> ".."
-      if parentExists
-        then searchLocalPackageSpec $ dir </> ".."
-        else succeedIO Nothing
+  searchLocalSpec m sdir = do
+    existsLocal <- doesFileExist $ sdir </> "package.json"
+    if existsLocal
+      then return (Just sdir)
+      else do
+        debugMessage ("No package.json in " ++ show sdir ++ ", trying " ++
+                      show (sdir </> ".."))
+        parentExists <- doesDirectoryExist $ sdir </> ".."
+        if m>0 && parentExists
+          then searchLocalSpec (m-1) $ sdir </> ".."
+          else return Nothing
 
 ------------------------------------------------------------------------------

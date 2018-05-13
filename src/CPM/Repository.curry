@@ -9,41 +9,53 @@
 
 module CPM.Repository 
   ( Repository
-  , emptyRepository
-  , allPackages
-  , readRepository
+  , emptyRepository, allPackages, pkgsToRepository
+  , warnIfRepositoryOld, readRepositoryFrom
   , findAllVersions, findVersion, findLatestVersion
-  , searchPackages
-  , listPackages
-  , updateRepository
-  , updateRepositoryCache
+  , searchPackages, listPackages
+  , useUpdateHelp, cleanRepositoryCache
+  , readPackageFromRepository
+  , repositoryCacheFilePrefix
   ) where
 
-import Char         ( toLower, toUpper )
+import Char         ( toLower )
 import Directory
 import Either
 import FilePath
 import IO
 import IOExts       ( readCompleteFile )
 import List
-import ReadShowTerm ( showQTerm, readQTerm )
-import System       ( exitWith )
+import ReadShowTerm ( showQTerm, readQTerm, showTerm, readUnqualifiedTerm )
+import System       ( exitWith, system )
+import Time
 
 import CPM.Config        ( Config, repositoryDir, packageIndexRepository
                          , packageInstallDir )
 import CPM.ConfigPackage ( packageVersion )
 import CPM.ErrorLogger
 import CPM.Package
-import CPM.FileUtil      ( checkAndGetDirectoryContents, inDirectory
-                         , whenFileExists, removeDirectoryComplete )
+import CPM.FileUtil      ( checkAndGetVisibleDirectoryContents
+                         , copyDirectory, inDirectory
+                         , quote, whenFileExists, removeDirectoryComplete )
 import CPM.Resolution    ( isCompatibleToCompiler )
 
+------------------------------------------------------------------------------
+--- Abstract data type of a repository.
 data Repository = Repository [Package]
 
 --- Creates an empty repository.
 emptyRepository :: Repository
 emptyRepository = Repository []
 
+--- Get all packages in the central package index.
+allPackages :: Repository -> [Package]
+allPackages (Repository ps) = ps
+
+--- Construct a repository from a list of packages.
+pkgsToRepository :: [Package] -> Repository
+pkgsToRepository ps = Repository ps
+
+------------------------------------------------------------------------------
 --- Finds all versions of a package known to the repository. Returns the 
 --- packages sorted from newest to oldest.
 ---
@@ -114,139 +126,96 @@ findLatestVersion cfg repo pn pre =
 
 --- Finds a specific version of a package.
 findVersion :: Repository -> String -> Version -> Maybe Package
-findVersion repo p v =
-  maybeHead $ filter ((== v) . version) $ findAllVersions repo p True
+findVersion repo pn v =
+  maybeHead $ filter ((== v) . version) $ findAllVersions repo pn True
  where maybeHead []    = Nothing
        maybeHead (x:_) = Just x
 
---- Get all packages in the central package index.
-allPackages :: Repository -> [Package]
-allPackages (Repository ps) = ps
+--- Prints a warning if the repository index is older than 10 days.
+warnIfRepositoryOld :: Config -> IO ()
+warnIfRepositoryOld cfg = do
+  let updatefile = repositoryDir cfg </> "README.md"
+  updexists <- doesFileExist updatefile
+  if updexists
+    then do
+      utime <- getModificationTime updatefile
+      ctime <- getClockTime
+      let warntime = addDays 10 utime
+      when (compareClockTime ctime warntime == GT) $ do
+        -- we assume that clock time is measured in seconds
+        let timediff = clockTimeToInt ctime - clockTimeToInt utime
+            days = timediff `div` (60*60*24)
+        infoMessage $ "Warning: your repository index is older than " ++
+                      show days ++ " days.\n" ++ useUpdateHelp
+    else infoMessage $ "Warning: your repository index is not up-to-date.\n" ++
+                       useUpdateHelp
 
---- Reads all package specifications from the default repository.
---- Use the cache if is present or update the cache after reading.
---- If some errors occur, show them and terminate with exit status.
+useUpdateHelp :: String
+useUpdateHelp = "Use 'cypm update' to download the newest package index."
+
+--- Reads all package specifications from a repository.
+--- If some errors occur, show them and terminate with error exit status.
 ---
---- @param cfg the configuration to use
-readRepository :: Config -> IO Repository
-readRepository cfg = do
-  mbrepo <- readRepositoryCache cfg
-  case mbrepo of
-    Nothing -> do
-      infoMessage "Writing repository cache..."
-      (repo, repoErrors) <- readRepositoryFrom (repositoryDir cfg)
-      if null repoErrors
-        then writeRepositoryCache cfg repo >> return repo
-        else do putStrLn "Problems while reading the package index:"
-                mapIO putStrLn repoErrors
-                exitWith 1
-    Just repo -> return repo
+--- @param path the location of the repository
+--- @return repository
+readRepositoryFrom :: String -> IO Repository
+readRepositoryFrom path = do
+  (repo, repoErrors) <- tryReadRepositoryFrom path
+  if null repoErrors
+    then return repo
+    else do errorMessage "Problems while reading the package index:"
+            mapIO_ errorMessage repoErrors
+            exitWith 1
 
 --- Reads all package specifications from a repository.
 ---
 --- @param path the location of the repository
-readRepositoryFrom :: String -> IO (Repository, [String])
-readRepositoryFrom path = do
+--- @return repository and possible repository reading errors
+tryReadRepositoryFrom :: String -> IO (Repository, [String])
+tryReadRepositoryFrom path = do
   debugMessage $ "Reading repository index from '" ++ path ++ "'..."
-  pkgDirs <- checkAndGetDirectoryContents path
-  pkgPaths <- return $ map (path </>) $ filter dirOrSpec pkgDirs
-  verDirs <- mapIO checkAndGetDirectoryContents pkgPaths
-  verPaths <- return $ concatMap (\ (d, p) -> map (d </>) (filter dirOrSpec p))
+  repos     <- checkAndGetVisibleDirectoryContents path
+  pkgPaths  <- mapIO getDir (map (path </>) repos) >>= return . concat
+  verDirs   <- mapIO checkAndGetVisibleDirectoryContents pkgPaths
+  verPaths  <- return $ concatMap (\ (d, p) -> map (d </>) p)
                      $ zip pkgPaths verDirs
   specPaths <- return $ map (</> "package.json") verPaths
-  specs <- mapIO readPackageFile specPaths
+  putStr "Reading repository index"
+  specs     <- mapIO readPackageFile specPaths
+  putChar '\n'
   when (null (lefts specs)) $ debugMessage "Finished reading repository"
   return $ (Repository $ rights specs, lefts specs)
  where
-  readPackageSpecIO = liftIO readPackageSpec
-
   readPackageFile f = do
-    spec <- readPackageSpecIO $ readCompleteFile f
+    spec <- liftIO readPackageSpec $ readCompleteFile f
+    seq (id $!! spec) (putChar '.' >> hFlush stdout)
     return $ case spec of
       Left err -> Left $ "Problem reading '" ++ f ++ "': " ++ err
       Right  s -> Right s
 
-  dirOrSpec d = (not $ isPrefixOf "." d) && takeExtension d /= ".md" &&
-                (not $ isPrefixOf repositoryCacheFileName (map toUpper d))
-
---- Updates the package index from the central Git repository.
---- Cleans also the global package cache in order to support
---- downloading the newest versions.
-updateRepository :: Config -> IO (ErrorLogger ())
-updateRepository cfg = do
-  cleanRepositoryCache cfg
-  debugMessage $ "Deleting global package cache: '" ++
-                 packageInstallDir cfg ++ "'"
-  removeDirectoryComplete (packageInstallDir cfg)
-  gitExists <- doesDirectoryExist $ (repositoryDir cfg) </> ".git"
-  if gitExists 
-    then do
-      c <- inDirectory (repositoryDir cfg) $
-             execQuietCmd $ (\q -> "git pull " ++ q ++ " origin master")
-      if c == 0
-        then do updateRepositoryCache cfg
-                log Info "Successfully updated repository"
-        else failIO $ "Failed to update git repository, return code " ++ show c
-    else do
-      c <- inDirectory (repositoryDir cfg) $ execQuietCmd cloneCommand
-      if c == 0
-        then do updateRepositoryCache cfg
-                log Info "Successfully updated repository"
-        else failIO $ "Failed to update git repository, return code " ++ show c
- where
-  cloneCommand q = unwords ["git clone", q, packageIndexRepository cfg, "."]
+  getDir d = doesDirectoryExist d >>= \b -> return $ if b then [d] else []
 
 
 ------------------------------------------------------------------------------
--- Operations implementing the repository cache for faster reading.
-
---- The local file name containing the repository cache as a Curry term.
-repositoryCacheFileName :: String
-repositoryCacheFileName = "REPOSITORY_CACHE"
-
---- The file containing the repository cache as a Curry term.
-repositoryCache :: Config -> String
-repositoryCache cfg = repositoryDir cfg </> repositoryCacheFileName
-
---- Updates the repository cache with the current repository index.
-updateRepositoryCache :: Config -> IO ()
-updateRepositoryCache cfg = do
-  cleanRepositoryCache cfg
-  repo <- readRepository cfg
-  writeRepositoryCache cfg repo
-
---- Stores the given repository in the cache.
-writeRepositoryCache :: Config -> Repository -> IO ()
-writeRepositoryCache cfg repo =
-  writeFile (repositoryCache cfg)
-            (packageVersion ++ "\n" ++ showQTerm repo)
-
---- Reads the given repository from the cache.
-readRepositoryCache :: Config -> IO (Maybe Repository)
-readRepositoryCache cfg = do
-  let cf = repositoryCache cfg
-  excache <- doesFileExist cf
-  if excache
-    then debugMessage ("Reading repository cache from '" ++ cf ++ "'...") >>
-         catch (readTermInCacheFile cf)
-               (\_ -> do infoMessage "Cleaning broken repository cache..."
-                         cleanRepositoryCache cfg
-                         return Nothing )
-    else return Nothing
- where
-  readTermInCacheFile cf = do
-    h <- openFile cf ReadMode
-    pv <- hGetLine h
-    if pv == packageVersion
-      then hGetContents h >>= \t -> return $!! Just (readQTerm t)
-      else do infoMessage "Cleaning repository cache (wrong version)..."
-              cleanRepositoryCache cfg
-              return Nothing
+--- The prefix of all file names implementing the repository cache.
+repositoryCacheFilePrefix :: Config -> String
+repositoryCacheFilePrefix cfg = repositoryDir cfg </> "REPOSITORY_CACHE"
 
 --- Cleans the repository cache.
 cleanRepositoryCache :: Config -> IO ()
 cleanRepositoryCache cfg = do
-  let cachefile = repositoryCache cfg
-  whenFileExists cachefile $ removeFile cachefile
+  debugMessage $ "Cleaning repository cache '" ++
+                 repositoryCacheFilePrefix cfg ++ "*'"
+  system $ "/bin/rm -f " ++ quote (repositoryCacheFilePrefix cfg) ++ "*"
+  done
+
+------------------------------------------------------------------------------
+--- Reads a given package from the default repository directory.
+--- This is useful to obtain the complete package specification
+--- from a possibly incomplete package specification.
+readPackageFromRepository :: Config -> Package -> IO (ErrorLogger Package)
+readPackageFromRepository cfg pkg =
+  let pkgdir = repositoryDir cfg </> name pkg </> showVersion (version pkg)
+  in loadPackageSpec pkgdir
 
 ------------------------------------------------------------------------------

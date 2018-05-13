@@ -18,7 +18,7 @@ module CPM.FileUtil
   , inDirectory
   , recreateDirectory
   , removeDirectoryComplete
-  , safeReadFile, checkAndGetDirectoryContents
+  , safeReadFile, checkAndGetVisibleDirectoryContents
   , whenFileExists, ifFileExists
   ) where
 
@@ -29,7 +29,7 @@ import Directory ( doesFileExist, doesDirectoryExist, getCurrentDirectory
 import System    ( system, getEnviron, exitWith )
 import IOExts    ( evalCmd, readCompleteFile )
 import FilePath  ( FilePath, replaceFileName, (</>), searchPathSeparator )
-import List      ( intercalate, splitOn )
+import List      ( intercalate, isPrefixOf, splitOn )
 
 --- Joins a list of directories into a search path.
 joinSearchPath :: [FilePath] -> String
@@ -157,6 +157,13 @@ checkAndGetDirectoryContents dir = do
   if exdir then getDirectoryContents dir
            else do putStrLn $ "ERROR: Directory '" ++ dir ++ "' does not exist!"
                    exitWith 1
+
+--- Returns the list of all visible entries in a directory (i.e., not starting
+--- with '.') and terminates with an error message if the directory
+--- does not exist.
+checkAndGetVisibleDirectoryContents :: FilePath -> IO [FilePath]
+checkAndGetVisibleDirectoryContents dir =
+  checkAndGetDirectoryContents dir >>= return . filter (not . isPrefixOf ".")
 
 --- Performs an action when a file exists.
 whenFileExists :: FilePath -> IO () -> IO ()
