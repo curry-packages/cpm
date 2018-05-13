@@ -188,7 +188,7 @@ tryReadRepositoryFrom path = do
  where
   readPackageFile f = do
     spec <- liftM readPackageSpec $ readCompleteFile f
-    seq (id $!! spec) (putChar '.')
+    seq (id $!! spec) (putChar '.' >> hFlush stdout)
     return $ case spec of
       Left err -> Left $ "Problem reading '" ++ f ++ "': " ++ err
       Right  s -> Right s

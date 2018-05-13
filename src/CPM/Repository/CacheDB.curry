@@ -11,6 +11,7 @@ module CPM.Repository.CacheDB
 
 import Directory    ( removeFile )
 import FilePath     ( (</>) )
+import IO           ( hFlush, stdout )
 import ReadShowTerm
 
 import Database.CDBI.ER 
@@ -60,7 +61,7 @@ addPackagesToRepositoryDB cfg quiet pkgs =
     case result of
       Left (DBError kind str) -> log Critical $ "Repository DB failure: " ++
                                                 show kind ++ " " ++ str
-      Right _ -> (unless quiet $ putChar '.') >> succeedIO ()
+      Right _ -> (unless quiet $ putChar '.' >> hFlush stdout) >> succeedIO ()
   
   newEntry p = newIndexEntry
     (name p)
