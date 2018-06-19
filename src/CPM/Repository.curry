@@ -29,8 +29,7 @@ import ReadShowTerm ( showQTerm, readQTerm, showTerm, readUnqualifiedTerm )
 import System       ( exitWith, system )
 import Time
 
-import CPM.Config        ( Config, repositoryDir, packageIndexRepository
-                         , packageInstallDir )
+import CPM.Config        ( Config, repositoryDir )
 import CPM.ConfigPackage ( packageVersion )
 import CPM.ErrorLogger
 import CPM.Package

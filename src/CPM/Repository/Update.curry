@@ -11,14 +11,16 @@ module CPM.Repository.Update
 
 import Directory
 import FilePath
+import List              ( isSuffixOf )
 import System            ( system )
 
-import CPM.Config        ( Config, packageInstallDir, packageIndexRepository
+import CPM.Config        ( Config, packageInstallDir, packageIndexURL
                          , repositoryDir )
 import CPM.ErrorLogger
 import CPM.Package
-import CPM.Package.Helpers ( cleanPackage )
-import CPM.FileUtil      ( copyDirectory, inDirectory, removeDirectoryComplete )
+import CPM.Package.Helpers    ( cleanPackage )
+import CPM.FileUtil           ( copyDirectory, inDirectory, quote
+                              , recreateDirectory, removeDirectoryComplete )
 import CPM.Repository
 import CPM.Repository.CacheDB ( tryWriteRepositoryDB )
 import CPM.Repository.Select  ( addPackageToRepositoryCache
@@ -34,23 +36,32 @@ updateRepository cfg = do
   debugMessage $ "Deleting global package cache: '" ++
                  packageInstallDir cfg ++ "'"
   removeDirectoryComplete (packageInstallDir cfg)
-  gitExists <- doesDirectoryExist $ (repositoryDir cfg) </> ".git"
-  if gitExists 
-    then do
-      c <- inDirectory (repositoryDir cfg) $ execQuietCmd $ cleanPullCmd
-      if c == 0
-        then finishUpdate
-        else failIO $ "Failed to update git repository, return code " ++ show c
-    else do
-      c <- inDirectory (repositoryDir cfg) $ execQuietCmd cloneCommand
-      if c == 0
-        then finishUpdate
-        else failIO $ "Failed to update git repository, return code " ++ show c
+  debugMessage $ "Recreating package index: '" ++ repositoryDir cfg ++ "'"
+  recreateDirectory (repositoryDir cfg)
+  c <- inDirectory (repositoryDir cfg) downloadCommand
+  if c == 0
+    then finishUpdate
+    else failIO $ "Failed to update package index, return code " ++ show c
  where
-  cleanPullCmd q = "git clean -d -f && git reset " ++ q ++ " --hard && " ++
-                   "git pull " ++ q ++ " origin master"
-
-  cloneCommand q = unwords ["git clone", q, packageIndexRepository cfg, "."]
+  downloadCommand
+    | ".git" `isSuffixOf` piurl
+    = execQuietCmd $ \q -> unwords ["git clone", q, quote piurl, "."]
+    | ".tar" `isSuffixOf` piurl
+    = do let tarfile = "XXX.tar"
+         c1 <- showExecCmd $ unwords ["curl", "-s", "-o", tarfile, quote piurl]
+         c2 <- showExecCmd $ unwords ["tar", "-xf", tarfile]
+         removeFile tarfile
+         return (c1+c2)
+    | ".tar.gz" `isSuffixOf` piurl
+    = do let tarfile = "XXX.tar.gz"
+         c1 <- showExecCmd $ unwords ["curl", "-s", "-o", tarfile, quote piurl]
+         c2 <- showExecCmd $ unwords ["tar", "-xzf", tarfile]
+         removeFile tarfile
+         return (c1+c2)
+    | otherwise
+    = do errorMessage $ "Unknown kind of package index URL: " ++ piurl
+         return 1
+   where piurl = packageIndexURL cfg
 
   finishUpdate = do
     setLastUpdate cfg
