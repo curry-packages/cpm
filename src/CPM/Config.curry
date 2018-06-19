@@ -6,7 +6,7 @@
 
 module CPM.Config 
   ( Config ( Config, packageInstallDir, binInstallDir, repositoryDir
-           , appPackageDir, packageIndexRepository, homePackageDir, curryExec
+           , appPackageDir, packageIndexURL, homePackageDir, curryExec
            , compilerVersion, compilerBaseVersion, baseVersion )
   , readConfigurationWith, defaultConfig
   , showConfiguration, showCompilerVersion ) where
@@ -27,12 +27,12 @@ import CPM.ErrorLogger
 import CPM.FileUtil ( ifFileExists, getFileInPath )
 import CPM.Helpers  ( strip )
 
---- The location of the central package index.
-packageIndexURI :: String
-packageIndexURI =
+--- The default location of the central package index.
+packageIndexDefaultURL :: String
+packageIndexDefaultURL =
   "https://git.ps.informatik.uni-kiel.de/curry-packages/cpm-index.git"
-  -- if you have an ssh access to git.ps.informatik.uni-kiel.de:
-  -- "ssh://git@git.ps.informatik.uni-kiel.de:55055/curry-packages/cpm-index.git"
+-- If you have an ssh access to git.ps.informatik.uni-kiel.de:
+-- "ssh://git@git.ps.informatik.uni-kiel.de:55055/curry-packages/cpm-index.git"
 
 --- Data type containing the main configuration of CPM.
 data Config = Config {
@@ -42,10 +42,10 @@ data Config = Config {
   , binInstallDir :: String
     --- Directory where the package repository is stored
   , repositoryDir :: String
-    --- Directory where the application packages are stored (cmd 'installapp')
+    --- Directory where the application packages are stored (cmd 'install')
   , appPackageDir :: String
     --- URL to the package index repository
-  , packageIndexRepository :: String
+  , packageIndexURL :: String
     --- The directory where the default home package is stored
   , homePackageDir :: String
     --- The executable of the Curry system used to compile and check packages
@@ -71,7 +71,7 @@ defaultConfig = Config
   , binInstallDir          = "$HOME/.cpm/bin"
   , repositoryDir          = "$HOME/.cpm/index" 
   , appPackageDir          = "$HOME/.cpm/app_packages" 
-  , packageIndexRepository = packageIndexURI
+  , packageIndexURL        = packageIndexDefaultURL
   , homePackageDir         = ""
   , curryExec              = Dist.installDir </> "bin" </> Dist.curryCompiler
   , compilerVersion        = ( Dist.curryCompiler
@@ -93,6 +93,7 @@ showConfiguration cfg = unlines
   , "BIN_INSTALL_PATH       : " ++ binInstallDir       cfg
   , "APP_PACKAGE_PATH       : " ++ appPackageDir       cfg
   , "HOME_PACKAGE_PATH      : " ++ homePackageDir      cfg
+  , "PACKAGE_INDEX_URL      : " ++ packageIndexURL     cfg
   ]
   
 --- Shows the compiler version in the configuration.
@@ -244,13 +245,14 @@ stripProps = map ((map toUpper . filter (/='_') . strip) *** strip)
 --- record with a value for that option.
 keySetters :: [(String, String -> Config -> Config)]
 keySetters =
-  [ ("REPOSITORYPATH"     , \v c -> c { repositoryDir     = v })
-  , ("PACKAGEINSTALLPATH" , \v c -> c { packageInstallDir = v })
-  , ("BININSTALLPATH"     , \v c -> c { binInstallDir     = v })
-  , ("APPPACKAGEPATH"     , \v c -> c { appPackageDir     = v })
-  , ("HOMEPACKAGEPATH"    , \v c -> c { homePackageDir    = v })
-  , ("CURRYBIN"           , \v c -> c { curryExec         = v })
+  [ ("APPPACKAGEPATH"     , \v c -> c { appPackageDir     = v })
   , ("BASEVERSION"        , \v c -> c { baseVersion       = v })
+  , ("BININSTALLPATH"     , \v c -> c { binInstallDir     = v })
+  , ("CURRYBIN"           , \v c -> c { curryExec         = v })
+  , ("HOMEPACKAGEPATH"    , \v c -> c { homePackageDir    = v })
+  , ("PACKAGEINDEXURL"    , \v c -> c { packageIndexURL   = v })
+  , ("PACKAGEINSTALLPATH" , \v c -> c { packageInstallDir = v })
+  , ("REPOSITORYPATH"     , \v c -> c { repositoryDir     = v })
   ]
 
 --- Sequentially applies a list of functions that transform a value to a value

@@ -56,7 +56,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 13/05/2018)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 19/06/2018)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -89,7 +89,7 @@ runWithArgs opts = do
   (msgs, result) <- case optCommand opts of
     NoCommand   -> failIO "NoCommand"
     Config o    -> configCmd   o config
-    Update      -> updateCmd   config
+    Update o    -> updateCmd   o config
     Compiler o  -> compiler    o config
     Exec o      -> execCmd     o config
     Doc  o      -> docCmd      o config
@@ -129,7 +129,7 @@ data Command
   | Uninstall  UninstallOptions
   | PkgInfo    InfoOptions
   | Compiler   ExecOptions
-  | Update
+  | Update     UpdateOptions
   | List       ListOptions
   | Search     SearchOptions
   | Upgrade    UpgradeOptions
@@ -200,6 +200,10 @@ data AddOptions = AddOptions
 
 data NewOptions = NewOptions
   { projectName :: String }
+
+data UpdateOptions = UpdateOptions
+  { indexURLs :: [String]   -- the URLs of additional index repositories
+  }
 
 data ExecOptions = ExecOptions
   { exeCommand :: String   -- the command to be executed
@@ -285,6 +289,11 @@ newOpts :: Options -> NewOptions
 newOpts s = case optCommand s of
   New opts -> opts
   _        -> NewOptions ""
+
+updateOpts :: Options -> UpdateOptions
+updateOpts s = case optCommand s of
+  Update opts -> opts
+  _           -> UpdateOptions []
 
 execOpts :: Options -> ExecOptions
 execOpts s = case optCommand s of
@@ -383,8 +392,10 @@ optionParser allargs = optParser
         <|> command "clean" (help "Clean the current package")
                             (\a -> Right $ a { optCommand = Clean }) []
         <|> command "new" (help "Create a new package") Right newArgs
-        <|> command "update" (help "Update the package index")
-                             (\a -> Right $ a { optCommand = Update }) []
+        <|> command "update"
+                    (help "Update the package index")
+                    (\a -> Right $ a { optCommand = Update (updateOpts a) })
+                    updateArgs
         <|> command "curry"
            (help "Load package spec and start Curry with correct dependencies.")
                  (\a -> Right $ a { optCommand = Compiler (execOpts a) })
@@ -509,6 +520,15 @@ optionParser allargs = optParser
          <> optional )
     where
      remargs = tail (snd (break (=="curry") allargs))
+
+  updateArgs =
+    option (\s a -> let opts = updateOpts a
+                    in Right $ a { optCommand = Update opts
+                                          { indexURLs = s : indexURLs opts } })
+         (  short "u"
+         <> long "url"
+         <> metavar "URL"
+         <> help "URL of the central package index" )
 
   execArgs =
     rest (\_ a -> Right $ a { optCommand = Exec (execOpts a)
@@ -736,8 +756,13 @@ configCmd opts cfg = do
 
 ------------------------------------------------------------------------------
 -- `update` command:
-updateCmd :: Config -> IO (ErrorLogger ())
-updateCmd cfg = checkRequiredExecutables >> updateRepository cfg
+updateCmd :: UpdateOptions -> Config -> IO (ErrorLogger ())
+updateCmd opts cfg = do
+  let cfg' = if null (indexURLs opts)
+               then cfg
+               else cfg { packageIndexURL = head (indexURLs opts) }
+                    -- TODO: allow merging from several package indices
+  checkRequiredExecutables >> updateRepository cfg'
 
 ------------------------------------------------------------------------------
 -- `deps` command:
