@@ -633,7 +633,12 @@ CPM can be configured via the \code{\$HOME/.cpmrc} configuration file. The
 following list shows all configuration options and their default values.
 
 \begin{description}
-\item[\fbox{\code{REPOSITORY_PATH}}] The path to the index repository.
+\item[\fbox{\code{PACKAGE_INDEX_URL}}]
+The URL of the central package index
+which is used by the \code{update} command to download the
+index of all repositories.
+
+\item[\fbox{\code{REPOSITORY_PATH}}] The path to the index of all packages.
 Default value: \code{\$HOME/.cpm/index}.
 
 \item[\fbox{\code{PACKAGE_INSTALL_PATH}}] The path to the global package cache.
@@ -700,8 +705,11 @@ one can execute the command
 \section{Some CPM Internals}
 \label{sec:internals}
 
-CPM's central package index is a Git repository containing package
-specification files. A copy of this Git repository is stored on your
+CPM's central package index is contains all package specification files.
+It is stored at a central server where the actual location is defined
+by CPM's configuration variable \code{PACKAGE_INDEX_URL},
+see Section~\ref{sec:config}.
+A copy of this index is stored on your
 local system in the \code{\$HOME/.cpm/index} directory, unless you
 changed the location using the \code{REPOSITORY_PATH} setting. CPM
 uses the package index when searching for and installing packages and
@@ -818,6 +826,8 @@ This command also cleans the global package cache in order to support
 the download of fresh package versions.
 Note that this also removes local copies of packages
 installed by the command \ccode{add --package}.
+The option \code{--url} allows to specify a different URL
+for the central package index (might be useful for experimental purposes).
 
 \item[\fbox{\code{install}}]
 Installs all dependencies of the current package.
