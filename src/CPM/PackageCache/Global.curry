@@ -1,9 +1,9 @@
 --------------------------------------------------------------------------------
---- This module contains functions for accessing and modifying the global 
+--- This module contains functions for accessing and modifying the global
 --- package cache.
 --------------------------------------------------------------------------------
 
-module CPM.PackageCache.Global 
+module CPM.PackageCache.Global
   ( GlobalCache
   , findAllVersions
   , findNewestVersion
@@ -23,12 +23,12 @@ module CPM.PackageCache.Global
   , emptyCache
   ) where
 
-import Directory
-import Either
+import System.Directory
+import Data.Either
 import IOExts       ( readCompleteFile )
-import List
-import Maybe (isJust)
-import FilePath
+import Data.List
+import Data.Maybe   ( isJust )
+import System.FilePath
 
 import CPM.Config   ( Config, packageInstallDir )
 import CPM.ErrorLogger
@@ -58,10 +58,10 @@ allPackages (GlobalCache ps) = ps
 --- @param p - the name of the package
 --- @param pre - include pre-release versions
 findAllVersions :: GlobalCache -> String -> Bool -> [Package]
-findAllVersions (GlobalCache ps) p pre = sortBy pkgGt 
-  $ filter filterPre 
+findAllVersions (GlobalCache ps) p pre = sortBy pkgGt
+  $ filter filterPre
   $ filter ((== p) . name) ps
- where 
+ where
   filterPre p' = pre || (not . isPreRelease . version) p'
 
 --- Compares two packages by their versions.
@@ -73,7 +73,7 @@ findNewestVersion :: GlobalCache -> String -> Maybe Package
 findNewestVersion db p = if length pkgs > 0
   then Just $ head pkgs
   else Nothing
- where 
+ where
   pkgs = sortBy pkgGt $ findAllVersions db p False
 
 --- Finds a specific version of a package.
@@ -83,13 +83,13 @@ findVersion (GlobalCache ps) p v =
     then Nothing
     else Just $ head hits
  where
-  hits = filter ((== v) . version) $ filter ((== p) . name) ps 
+  hits = filter ((== v) . version) $ filter ((== p) . name) ps
 
 --- Checks whether a package is installed.
 isPackageInstalled :: GlobalCache -> Package -> Bool
 isPackageInstalled db p = isJust $ findVersion db (name p) (version p)
 
---- The directory of a package in the global package cache. Does not check 
+--- The directory of a package in the global package cache. Does not check
 --- whether the package is actually installed!
 installedPackageDir :: Config -> Package -> String
 installedPackageDir cfg pkg = packageInstallDir cfg </> packageId pkg
@@ -109,14 +109,14 @@ copyPackage cfg pkg dir = do
  where
   srcDir = installedPackageDir cfg pkg
 
---- Acquires a package from the source specified in its specification and 
+--- Acquires a package from the source specified in its specification and
 --- installs it to the global package cache.
 acquireAndInstallPackage :: Config -> Package -> IO (ErrorLogger ())
 acquireAndInstallPackage cfg reppkg =
   readPackageFromRepository cfg reppkg |>= \pkg ->
   case source pkg of
    Nothing -> failIO $ "No source specified for " ++ packageId pkg
-   Just  s -> log Info ("Installing package '" ++ packageId pkg ++ "'...") |> 
+   Just  s -> log Info ("Installing package '" ++ packageId pkg ++ "'...") |>
               installFromSource cfg pkg s
 
 ------------------------------------------------------------------------------
@@ -128,7 +128,7 @@ installFromSource cfg pkg pkgsource = do
   if pkgDirExists
     then
       log Info $ "Package '" ++ packageId pkg ++ "' already installed, skipping"
-    else log Info ("Installing package from " ++ showPackageSource pkg) |> 
+    else log Info ("Installing package from " ++ showPackageSource pkg) |>
          installPackageSourceTo pkg pkgsource (packageInstallDir cfg)
  where
   pkgDir = installedPackageDir cfg pkg
@@ -143,12 +143,12 @@ installFromZip cfg zip = do
   if c == 0
     then
       loadPackageSpec (t </> "installtmp") |>= \pkgSpec ->
-      log Debug ("ZIP contains " ++ packageId pkgSpec) |> 
+      log Debug ("ZIP contains " ++ packageId pkgSpec) |>
       installFromSource cfg pkgSpec (FileSource zip)
     else failIO "failed to extract ZIP file"
 
 --- Installs a package's missing dependencies.
-installMissingDependencies :: Config -> GlobalCache -> [Package] 
+installMissingDependencies :: Config -> GlobalCache -> [Package]
                            -> IO (ErrorLogger ())
 installMissingDependencies cfg gc deps = if length missing > 0
   then log Info logMsg |>

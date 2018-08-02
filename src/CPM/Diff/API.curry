@@ -3,7 +3,7 @@
 --- package to another.
 --------------------------------------------------------------------------------
 
-module CPM.Diff.API 
+module CPM.Diff.API
   ( compareModulesFromPackages
   , compareModulesFromPackageAndDir
   , compareModulesInDirs
@@ -14,32 +14,32 @@ module CPM.Diff.API
   , showDifferences
   ) where
 
-import AbstractCurry.Types (CurryProg (..), CFuncDecl (..), CTypeDecl (..)
-                           , COpDecl (..), QName, CFixity (..)
-                           , CVisibility (..))
+import AbstractCurry.Types  ( CurryProg (..), CFuncDecl (..), CTypeDecl (..)
+                            , COpDecl (..), QName, CFixity (..)
+                            , CVisibility (..))
 import AbstractCurry.Pretty
 import AbstractCurry.Select (functions, funcName, types, typeName)
-import Directory (getTemporaryDirectory)
-import FilePath ((</>))
-import Function (both)
-import List (nub)
-import Maybe (listToMaybe, catMaybes)
+import System.Directory     (getTemporaryDirectory)
+import System.FilePath      ((</>))
+import Data.Tuple.Extra     (both)
+import Data.List            (nub)
+import Data.Maybe           (listToMaybe, catMaybes)
 
-import Text.Pretty (pPrint, text, (<+>), vcat, empty, red, ($$))
+import Text.Pretty          (pPrint, text, (<+>), vcat, empty, red, ($$))
 
-import CPM.AbstractCurry (readAbstractCurryFromPackagePath)
-import CPM.Config (Config)
+import CPM.AbstractCurry    (readAbstractCurryFromPackagePath)
+import CPM.Config           (Config)
 import CPM.ErrorLogger
-import CPM.FileUtil (copyDirectory, recreateDirectory)
-import CPM.Package (Package, Version, packageId, loadPackageSpec
-                   , exportedModules)
+import CPM.FileUtil         (copyDirectory, recreateDirectory)
+import CPM.Package          (Package, Version, packageId, loadPackageSpec
+                            , exportedModules)
 import CPM.PackageCache.Global as GC
-import CPM.PackageCopy (resolveAndCopyDependencies)
-import CPM.Repository (Repository)
+import CPM.PackageCopy      (resolveAndCopyDependencies)
+import CPM.Repository       (Repository)
 
 getBaseTemp :: IO (ErrorLogger String)
-getBaseTemp = getTemporaryDirectory >>= 
-  \tmpDir -> let tmp = tmpDir </> "cpm" </> "diff" 
+getBaseTemp = getTemporaryDirectory >>=
+  \tmpDir -> let tmp = tmpDir </> "cpm" </> "diff"
               in recreateDirectory tmp >> succeedIO tmp
 
 --- Compares two versions of a package from the global package cache.
@@ -52,8 +52,8 @@ getBaseTemp = getTemporaryDirectory >>=
 --- @param nameB - the name of package version B
 --- @param verB - the version of package version B
 --- @param onlyMods - a list of modules to compare
-compareModulesFromPackages :: Config -> Repository -> GC.GlobalCache -> String 
-                           -> Version -> String -> Version -> Maybe [String] 
+compareModulesFromPackages :: Config -> Repository -> GC.GlobalCache -> String
+                           -> Version -> String -> Version -> Maybe [String]
                            -> IO (ErrorLogger [(String, Differences)])
 compareModulesFromPackages cfg repo gc nameA verA nameB verB onlyMods =
   getBaseTemp |>=
@@ -61,7 +61,7 @@ compareModulesFromPackages cfg repo gc nameA verA nameB verB onlyMods =
   \pkgA -> GC.tryFindPackage gc nameB verB |>=
   \pkgB -> GC.copyPackage cfg pkgA baseTmp |>
   GC.copyPackage cfg pkgB baseTmp |>
-  compareModulesInDirs cfg repo gc (baseTmp </> packageId pkgA) 
+  compareModulesInDirs cfg repo gc (baseTmp </> packageId pkgA)
     (baseTmp </> packageId pkgB) onlyMods
 
 --- Compares a package version from a directory to a package version from the
@@ -74,9 +74,9 @@ compareModulesFromPackages cfg repo gc nameA verA nameB verB onlyMods =
 --- @param nameB - the name of package version B
 --- @param verB - the version of package version B
 --- @param onlyMods - a list of modules to compare
-compareModulesFromPackageAndDir :: Config -> Repository -> GC.GlobalCache 
-                               -> String -> String -> Version -> Maybe [String] 
-                               -> IO (ErrorLogger [(String, Differences)]) 
+compareModulesFromPackageAndDir :: Config -> Repository -> GC.GlobalCache
+                               -> String -> String -> Version -> Maybe [String]
+                               -> IO (ErrorLogger [(String, Differences)])
 compareModulesFromPackageAndDir cfg repo gc dirA nameB verB onlyMods =
   getBaseTemp |>=
   \baseTmp -> GC.tryFindPackage gc nameB verB |>=
@@ -94,8 +94,8 @@ compareModulesFromPackageAndDir cfg repo gc dirA nameB verB onlyMods =
 --- @param dirA - the directory containing package version A
 --- @param dirB - the directory containing package version B
 --- @param onlyMods - a list of modules to compare
-compareModulesInDirs :: Config -> Repository -> GC.GlobalCache -> String 
-                     -> String -> Maybe [String] 
+compareModulesInDirs :: Config -> Repository -> GC.GlobalCache -> String
+                     -> String -> Maybe [String]
                      -> IO (ErrorLogger [(String, Differences)])
 compareModulesInDirs cfg repo gc dirA dirB onlyMods = loadPackageSpec dirA |>=
   \pkgA -> loadPackageSpec dirB |>=
@@ -119,7 +119,7 @@ compareModulesInDirs cfg repo gc dirA dirB onlyMods = loadPackageSpec dirA |>=
 --- @param dirB - the directory containing version B of the package
 --- @param depsB - the resolved dependencies of version B of the package
 --- @param mod - the name of the module
-compareApiModule :: Package -> String -> [Package] -> Package -> String 
+compareApiModule :: Package -> String -> [Package] -> Package -> String
                  -> [Package] -> String -> IO (ErrorLogger Differences)
 compareApiModule pkgA dirA depsA pkgB dirB depsB mod =
   if mod `elem` exportedModules pkgA
@@ -138,7 +138,7 @@ compareApiModule pkgA dirA depsA pkgB dirB depsB mod =
     else succeedIO $ (Just $ Removal mod, [], [], [])
 
 --- Differences between two versions of a package. First component is present
---- if the module is missing in one of the package versions. The other 
+--- if the module is missing in one of the package versions. The other
 --- components list the differences if the module is present in both versions.
 type Differences = ( Maybe (Difference String)
                    , [Difference CFuncDecl]
@@ -149,7 +149,7 @@ type Differences = ( Maybe (Difference String)
 --- A single difference between two versions of a module.
 data Difference a = Addition a
                   | Removal a
-                  | Change a a 
+                  | Change a a
 
 --- Prints a list of differences to the user.
 ---
@@ -157,13 +157,13 @@ data Difference a = Addition a
 --- @param verA - version A of the package
 --- @param verB - version B of the package
 showDifferences :: [Differences] -> Version -> Version -> String
-showDifferences diffs verA verB = pPrint $ 
+showDifferences diffs verA verB = pPrint $
   vcat (map showDifferences' diffs)
  where
   jump = versionJump verA verB
-  showDifferences' (modDiff, funcDiffs, typeDiffs, opDiffs) = 
+  showDifferences' (modDiff, funcDiffs, typeDiffs, opDiffs) =
     (modText modDiff)
-    $$ (vcat $ funcTexts funcDiffs) 
+    $$ (vcat $ funcTexts funcDiffs)
     $$ (vcat $ typeTexts typeDiffs)
     $$ (vcat $ opTexts opDiffs)
   showViolation (Addition _) = if jump == Patch
@@ -244,19 +244,19 @@ showOpDecl (COp (_, n) CInfixlOp a) = "infixl " ++ (show a) ++ " " ++ n
 showOpDecl (COp (_, n) CInfixrOp a) = "infixr " ++ (show a) ++ " " ++ n
 
 --- Compares all functions in two modules that match the given predicate.
-diffFuncsFiltered :: (CurryProg -> CFuncDecl -> Bool) -> CurryProg -> CurryProg 
+diffFuncsFiltered :: (CurryProg -> CFuncDecl -> Bool) -> CurryProg -> CurryProg
                   -> [Difference CFuncDecl]
 diffFuncsFiltered = mkDiff funcEq functions funcName
 
---- Compares all type declarations in two modules that match the given 
+--- Compares all type declarations in two modules that match the given
 --- predicate.
-diffTypesFiltered :: (CurryProg -> CTypeDecl -> Bool) -> CurryProg -> CurryProg 
+diffTypesFiltered :: (CurryProg -> CTypeDecl -> Bool) -> CurryProg -> CurryProg
                   -> [Difference CTypeDecl]
-diffTypesFiltered = mkDiff typeEq types typeName 
+diffTypesFiltered = mkDiff typeEq types typeName
 
 --- Compares all operator declarations in two modules that match the given
 --- predicate.
-diffOpsFiltered :: (CurryProg -> COpDecl -> Bool) -> CurryProg -> CurryProg 
+diffOpsFiltered :: (CurryProg -> COpDecl -> Bool) -> CurryProg -> CurryProg
                 -> [Difference COpDecl]
 diffOpsFiltered = mkDiff opEq ops opName
 
@@ -277,16 +277,16 @@ typeIsPublic _ (CNewType _ Public _ _ _) = True
 typeIsPublic _ (CNewType _ Private _ _ _) = False
 
 --- Creates a function that can compare elements in two versions of a module.
---- 
+---
 --- @param eq - a function that checks if two elements are equal
 --- @param selector - a function that selects the elements to be compared from
 ---                   a CurryProg
 --- @param name - a function that selects the name of an element
-mkDiff :: (a -> a -> Bool) 
-       -> (CurryProg -> [a]) 
-       -> (a -> QName) 
+mkDiff :: (a -> a -> Bool)
+       -> (CurryProg -> [a])
+       -> (a -> QName)
        -> ((CurryProg -> a -> Bool) -> CurryProg -> CurryProg -> [Difference a])
-mkDiff eq selector name = 
+mkDiff eq selector name =
   \p b a -> let
     as = filter (p a) $ selector a
     bs = filter (p b) $ selector b
@@ -297,7 +297,7 @@ mkDiff eq selector name =
         else Just $ Change f f'
     additions = filter (not . (flip elem) (map name as) . name) bs
   in
-    catMaybes (map findDifference as) ++ (map Addition additions) 
+    catMaybes (map findDifference as) ++ (map Addition additions)
 
 --- Are two functions equal?
 funcEq :: CFuncDecl -> CFuncDecl -> Bool
@@ -329,6 +329,6 @@ opEq (COp _ f1 a1) (COp _ f2 a2) = f1 == f2 && a1 == a2
 ops :: CurryProg -> [COpDecl]
 ops (CurryProg _ _ _ _ _ _ _ os) = os
 
---- Get the name of an operator declaration. 
+--- Get the name of an operator declaration.
 opName :: COpDecl -> QName
 opName (COp n _ _) = n

@@ -19,8 +19,8 @@ module CPM.Repository.CacheFile
   ( readRepository )
  where
 
-import Directory    ( doesFileExist )
-import IO
+import System.Directory    ( doesFileExist )
+import System.IO
 import ReadShowTerm ( showQTerm, readQTerm, showTerm, readUnqualifiedTerm )
 
 import CPM.Config        ( Config, repositoryDir )

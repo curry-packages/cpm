@@ -9,10 +9,10 @@ module CPM.Repository.Update
   )
  where
 
-import Directory
-import FilePath
-import List              ( isSuffixOf )
-import System            ( system )
+import System.Directory
+import System.FilePath
+import Data.List         ( isSuffixOf )
+import System.Process    ( system )
 
 import CPM.Config        ( Config, packageInstallDir, packageIndexURL
                          , repositoryDir )

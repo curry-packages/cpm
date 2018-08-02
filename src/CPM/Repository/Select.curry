@@ -4,7 +4,7 @@
 --- @author Michael Hanus
 --- @version April 2018
 ------------------------------------------------------------------------------
- 
+
 
 module CPM.Repository.Select
   ( searchNameSynopsisModules
@@ -20,12 +20,12 @@ module CPM.Repository.Select
   )
  where
 
-import Char         ( toLower )
-import Directory    ( doesFileExist )
-import List         ( isInfixOf )
+import Data.Char        ( toLower )
+import Data.List        ( isInfixOf )
+import System.Directory ( doesFileExist )
 import ReadShowTerm
 
-import Database.CDBI.ER 
+import Database.CDBI.ER
 import Database.CDBI.Connection
 
 import CPM.Config      ( Config )
@@ -86,7 +86,7 @@ searchExportedModules cfg pat =
   pattern = "%" ++ pat ++ "%"
 
   filterExpModules = filter (\p -> pat `elem` exportedModules p)
-  
+
   toPackage (nm,vs,syn,cmp,exps) =
     emptyPackage { name = nm
                  , version = pkgRead vs
@@ -113,7 +113,7 @@ searchExecutable cfg pat =
   s = map toLower pat
 
   filterExec = filter (\p -> s `isInfixOf` (map toLower $ execOfPackage p))
-  
+
   toPackage (nm,vs,syn,cmp,exec) =
     emptyPackage { name = nm
                  , version = pkgRead vs
@@ -277,7 +277,7 @@ updatePackageInRepositoryCache cfg pkg = do
 
 --- Removes a package from the repository cache DB.
 removePackageFromRepositoryDB :: Config -> Package -> IO ()
-removePackageFromRepositoryDB cfg pkg = runQuery cfg 
+removePackageFromRepositoryDB cfg pkg = runQuery cfg
   (Database.CDBI.ER.deleteEntries CPM.Repository.RepositoryDB.indexEntry_CDBI_Description (Just (Database.CDBI.ER.And [Database.CDBI.ER.equal (Database.CDBI.ER.colNum CPM.Repository.RepositoryDB.indexEntryColumnName 0) (Database.CDBI.ER.string (name pkg)) ,Database.CDBI.ER.equal (Database.CDBI.ER.colNum CPM.Repository.RepositoryDB.indexEntryColumnVersion 0) (Database.CDBI.ER.string (showTerm (version pkg)))])))
 
 

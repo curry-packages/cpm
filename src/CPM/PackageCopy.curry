@@ -13,9 +13,9 @@ module CPM.PackageCopy
   , installLocalDependencies
   ) where
 
-import Directory ( doesDirectoryExist )
-import List      ( intercalate )
-import Maybe     ( mapMaybe )
+import System.Directory ( doesDirectoryExist )
+import Data.List        ( intercalate )
+import Data.Maybe       ( mapMaybe )
 
 import CPM.Config     ( Config, baseVersion )
 import CPM.Repository ( Repository, allPackages )
@@ -29,16 +29,16 @@ import CPM.Package
 import CPM.Resolution
 
 --- Resolves dependencies for a package copy.
-resolveDependenciesForPackageCopy :: Config -> Package -> Repository 
-                                  -> GC.GlobalCache -> String 
+resolveDependenciesForPackageCopy :: Config -> Package -> Repository
+                                  -> GC.GlobalCache -> String
                                   -> IO (ErrorLogger ResolutionResult)
-resolveDependenciesForPackageCopy cfg pkg repo gc dir = 
+resolveDependenciesForPackageCopy cfg pkg repo gc dir =
   lookupSetForPackageCopy cfg pkg repo gc dir |>= \lookupSet ->
   resolveDependenciesFromLookupSet cfg (setBaseDependency cfg pkg) lookupSet
 
 --- Calculates the lookup set needed for dependency resolution on a package
 --- copy.
-lookupSetForPackageCopy :: Config -> Package -> Repository -> GC.GlobalCache 
+lookupSetForPackageCopy :: Config -> Package -> Repository -> GC.GlobalCache
                         -> String -> IO (ErrorLogger LS.LookupSet)
 lookupSetForPackageCopy cfg _ repo gc dir =
   LocalCache.allPackages dir |>= \localPkgs -> do
@@ -63,9 +63,9 @@ lookupSetForPackageCopy cfg _ repo gc dir =
 
 --- Resolves dependencies for a package.
 resolveDependenciesForPackage :: Config -> Package -> Repository
-                              -> GC.GlobalCache 
+                              -> GC.GlobalCache
                               -> IO (ErrorLogger ResolutionResult)
-resolveDependenciesForPackage cfg pkg repo gc = 
+resolveDependenciesForPackage cfg pkg repo gc =
   resolveDependenciesFromLookupSet cfg (setBaseDependency cfg pkg) lookupSet
  where
   lsRepo = addPackagesWOBase cfg LS.emptySet (allPackages repo)
@@ -79,7 +79,7 @@ resolveDependenciesForPackage cfg pkg repo gc =
 --- package cache.
 acquireAndInstallPackageWithDependencies :: Config -> Repository -> Package
                                          -> IO (ErrorLogger ())
-acquireAndInstallPackageWithDependencies cfg repo pkg = 
+acquireAndInstallPackageWithDependencies cfg repo pkg =
   GC.readGlobalCache cfg repo |>= \gc ->
   resolveDependenciesForPackage cfg pkg repo gc |>=
   \result -> GC.installMissingDependencies cfg gc (resolvedPackages result) |>
@@ -87,13 +87,13 @@ acquireAndInstallPackageWithDependencies cfg repo pkg =
 
 --- Links the dependencies of a package to its local cache and copies them to
 --- its runtime cache. Returns the package specifications of the dependencies.
-copyDependencies :: Config -> Package -> [Package] -> String 
+copyDependencies :: Config -> Package -> [Package] -> String
                  -> IO (ErrorLogger [Package])
-copyDependencies cfg pkg pkgs dir = 
+copyDependencies cfg pkg pkgs dir =
   LocalCache.linkPackages cfg dir pkgs |>
   RuntimeCache.copyPackages cfg pkgs' dir |>= \pkgspecs ->
   succeedIO (if pkg `elem` pkgs then pkg : pkgspecs else pkgspecs)
- where 
+ where
   pkgs' = filter (/= pkg) pkgs
 
 --- Upgrades all dependencies of a package copy.
@@ -133,7 +133,7 @@ installLocalDependenciesWithRepo cfg repo dir pkgSpec =
   GC.readGlobalCache cfg repo |>= \gc ->
   resolveDependenciesForPackageCopy cfg pkgSpec repo gc dir |>= \result ->
   GC.installMissingDependencies cfg gc (resolvedPackages result) |>
-  log Info (showDependencies result) |> 
+  log Info (showDependencies result) |>
   copyDependencies cfg pkgSpec (resolvedPackages result) dir |>= \cpkgs ->
   succeedIO (pkgSpec, cpkgs)
 
@@ -143,13 +143,13 @@ linkToLocalCache src pkgDir = do
   dirExists <- doesDirectoryExist src
   if dirExists
     then loadPackageSpec src |>= \pkgSpec ->
-         LocalCache.createLink pkgDir src (packageId pkgSpec) True |> 
+         LocalCache.createLink pkgDir src (packageId pkgSpec) True |>
          succeedIO ()
     else log Critical ("Directory '" ++ src ++ "' does not exist.") |>
          succeedIO ()
 
 --- Resolves the dependencies for a package copy and fills the package caches.
-resolveAndCopyDependencies :: Config -> Repository -> GC.GlobalCache -> String 
+resolveAndCopyDependencies :: Config -> Repository -> GC.GlobalCache -> String
                            -> IO (ErrorLogger [Package])
 resolveAndCopyDependencies cfg repo gc dir =
   loadPackageSpec dir |>= resolveAndCopyDependenciesForPackage' cfg repo gc dir
@@ -166,11 +166,11 @@ resolveAndCopyDependenciesForPackage' ::
      Config -> Repository -> GC.GlobalCache -> String -> Package
   -> IO (ErrorLogger [Package])
 resolveAndCopyDependenciesForPackage' cfg repo gc dir pkgSpec =
-  resolveDependenciesForPackageCopy cfg pkgSpec repo gc dir |>= \result -> 
+  resolveDependenciesForPackageCopy cfg pkgSpec repo gc dir |>= \result ->
     let deps = resolvedPackages result
-        missingDeps = GC.missingPackages gc deps 
-        failMsg = "Missing dependencies " 
-                  ++ (intercalate "," $ map packageId missingDeps) 
+        missingDeps = GC.missingPackages gc deps
+        failMsg = "Missing dependencies "
+                  ++ (intercalate "," $ map packageId missingDeps)
                   ++ "\nUse `cypm install` to install missing dependencies."
     in if null missingDeps
          then copyDependencies cfg pkgSpec deps dir
@@ -195,7 +195,7 @@ setBaseDependency cfg pkg =
   pkg { dependencies = map setBase (dependencies pkg) }
  where
   bv = maybe (0,0,0,Nothing) id (readVersion (baseVersion cfg))
-  
+
   setBase (Dependency n disj) =
     Dependency n $ if n == "base" && isDisjunctionCompatible bv disj
                      then [[VExact bv]]

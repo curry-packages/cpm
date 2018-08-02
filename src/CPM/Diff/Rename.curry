@@ -5,9 +5,9 @@
 
 module CPM.Diff.Rename (prefixPackageAndDeps) where
 
-import Directory (doesDirectoryExist, getDirectoryContents, createDirectory)
-import FilePath ((</>), joinPath, takeDirectory, takeBaseName, takeExtension)
-import List (splitOn)
+import System.Directory (doesDirectoryExist, getDirectoryContents, createDirectory)
+import System.FilePath ((</>), joinPath, takeDirectory, takeBaseName, takeExtension)
+import Data.List (splitOn)
 
 import CPM.AbstractCurry (transformAbstractCurryInDeps, applyModuleRenames)
 import CPM.Config (Config)
@@ -28,18 +28,18 @@ import CPM.Repository (Repository)
 --    the Curry module while copying it.
 
 --- Prefix all modules in a package and all modules in all of its transitive
---- dependencies with a string. 
---- 
+--- dependencies with a string.
+---
 --- @param cfg - the CPM configuration
 --- @param repo - the central package index
 --- @param gc - the global package cache
 --- @param dir - the directory of the package
 --- @param prefix - the prefix for all module names
 --- @param destDir - the destination directory for the modified modules
-prefixPackageAndDeps :: Config -> Repository -> GC.GlobalCache -> String 
+prefixPackageAndDeps :: Config -> Repository -> GC.GlobalCache -> String
                      -> String -> String -> IO (ErrorLogger [(String, String)])
-prefixPackageAndDeps cfg repo gc dir prefix destDir = 
-  resolveAndCopyDependencies cfg repo gc dir |>= 
+prefixPackageAndDeps cfg repo gc dir prefix destDir =
+  resolveAndCopyDependencies cfg repo gc dir |>=
   \deps -> (mapIO (findAllModulesInPackage . RuntimeCache.cacheDirectory dir) deps >>= succeedIO) |>=
   \depMods -> (findAllModulesInPackage dir >>= succeedIO) |>=
   \ownMods -> succeedIO (ownMods ++ concat depMods) |>=
@@ -64,7 +64,7 @@ findAllModulesInPackage dir = findMods "" (dir </> "src")
 
 --- Copies a module from one directory to another while renaming both the module
 --- itself as well as any references to other modules inside that module.
-copyMod :: String -> [Package] -> String -> [(String, String)] 
+copyMod :: String -> [Package] -> String -> [(String, String)]
         -> (String, String) -> IO ()
 copyMod origDir deps dest nameMap (name, _) = do
   dirExists <- doesDirectoryExist (takeDirectory destPath)
@@ -79,4 +79,3 @@ copyMod origDir deps dest nameMap (name, _) = do
     Just n' -> n'
   pathParts = splitOn "." newName
   destPath = (joinPath (dest:pathParts)) ++ ".curry"
-

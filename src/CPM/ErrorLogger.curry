@@ -2,7 +2,7 @@
 --- Contains combinators for chaining IO actions that can fail and log messages.
 --------------------------------------------------------------------------------
 
-module CPM.ErrorLogger 
+module CPM.ErrorLogger
   ( ErrorLogger
   , LogEntry
   , LogLevel (..)
@@ -21,10 +21,10 @@ module CPM.ErrorLogger
   , showExecCmd, execQuietCmd
   ) where
 
-import Global
-import IO      ( hPutStrLn, stderr )
-import Profile -- for show run-time
-import System  ( exitWith, system )
+import Data.Global
+import System.IO      ( hPutStrLn, stderr )
+import Debug.Profile -- for show run-time
+import System.Process ( exitWith, system )
 
 import Text.Pretty
 
@@ -45,7 +45,7 @@ data LogLevel = Quiet
               | Debug
               | Error
               | Critical
- deriving Eq
+ deriving (Eq, Show)
 
 --- The global value for the log level.
 logLevel :: Global LogLevel
@@ -77,11 +77,11 @@ setWithShowTime wst = writeGlobal withShowTime wst
 --- Chains two actions passing the result from the first to the second.
 (|>=) :: IO (ErrorLogger a) -> (a -> IO (ErrorLogger b)) -> IO (ErrorLogger b)
 a |>= f = do
-  (msgs, err) <- a 
+  (msgs, err) <- a
   mapIO showLogEntry msgs
   case err of
     Right v -> do
-      (msgs', err') <- f v 
+      (msgs', err') <- f v
       return $ (msgs', err')
     Left  m -> return $ ([], Left m)
 
@@ -226,7 +226,7 @@ errorMessage msg = (log Error msg |> succeedIO ()) >> done
 --- exits with a non-zero code.
 fromErrorLogger :: IO (ErrorLogger a) -> IO a
 fromErrorLogger a = do
-  (msgs, err) <- a 
+  (msgs, err) <- a
   mapIO showLogEntry msgs
   case err of
     Right v -> return v

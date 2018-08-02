@@ -1,13 +1,13 @@
 ------------------------------------------------------------------------------
 --- This module implements functionality surrounding the package *repository*.
 --- The repository is the index of all packages known to the package manager.
---- It contains metadata about the packages, such as their names, versions 
+--- It contains metadata about the packages, such as their names, versions
 --- dependencies and where they can be acquired. The repository does not contain
---- the actual packages. For a list of packages that are currently installed 
+--- the actual packages. For a list of packages that are currently installed
 --- locally, you can consult the *database*.
 ------------------------------------------------------------------------------
 
-module CPM.Repository 
+module CPM.Repository
   ( Repository
   , emptyRepository, allPackages, pkgsToRepository
   , warnIfRepositoryOld, readRepositoryFrom
@@ -18,16 +18,16 @@ module CPM.Repository
   , repositoryCacheFilePrefix
   ) where
 
-import Char         ( toLower )
-import Directory
-import Either
-import FilePath
-import IO
-import IOExts       ( readCompleteFile )
-import List
-import ReadShowTerm ( showQTerm, readQTerm, showTerm, readUnqualifiedTerm )
-import System       ( exitWith, system )
-import Time
+import Data.Char         ( toLower )
+import System.Directory
+import Data.Either
+import System.FilePath
+import System.IO
+import IOExts            ( readCompleteFile )
+import Data.List
+import ReadShowTerm      ( showQTerm, readQTerm, showTerm, readUnqualifiedTerm )
+import System.Process    ( exitWith, system )
+import Data.Time
 
 import CPM.Config        ( Config, repositoryDir )
 import CPM.ConfigPackage ( packageVersion )
@@ -55,7 +55,7 @@ pkgsToRepository :: [Package] -> Repository
 pkgsToRepository ps = Repository ps
 
 ------------------------------------------------------------------------------
---- Finds all versions of a package known to the repository. Returns the 
+--- Finds all versions of a package known to the repository. Returns the
 --- packages sorted from newest to oldest.
 ---
 --- @param r the repository
@@ -64,10 +64,10 @@ pkgsToRepository ps = Repository ps
 findAllVersions :: Repository -> String -> Bool -> [Package]
 findAllVersions (Repository ps) p pre =
   sortedByVersion $ preFiltered $ sameName ps
- where 
+ where
   sortedByVersion = sortBy (\a b -> (version a) `vgt` (version b))
   preFiltered = filter filterPre
-  sameName = filter ((== p) . name) 
+  sameName = filter ((== p) . name)
   filterPre p' = pre || (not . isPreRelease . version) p'
 
 --- Search the names and synopses of all compiler-compatbile packages

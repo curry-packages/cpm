@@ -1,6 +1,6 @@
 {
     "name": "cpm",
-    "version": "2.1.0",
+    "version": "3.0.0",
     "author": "Jonas Oberschweiber <jonas@oberschweiber.com>, Michael Hanus <mh@informatik.uni-kiel.de>",
     "maintainer": "Michael Hanus <mh@informatik.uni-kiel.de>",
     "synopsis": "Curry Package Manager: a tool to distribute and install Curry libraries and applications",
@@ -8,18 +8,17 @@
     "license": "BSD-3-Clause",
     "licenseFile": "LICENSE",
     "dependencies": {
-        "base"          : ">= 1.0.0, < 2.0.0",
-        "abstract-curry": ">= 2.0.0",
-        "cdbi"          : ">= 2.0.0",
-        "det-parse"     : ">= 0.0.1",
-        "opt-parse"     : ">= 0.0.3",
-        "boxes"         : ">= 2.0.0",
-        "json"          : ">= 2.0.0",
-        "cass-analysis" : ">= 2.0.0",
-        "cass"          : ">= 2.0.0",
-        "csv"           : ">= 1.0.0",
-        "flatcurry"     : ">= 2.0.0",
-        "wl-pprint"     : ">= 0.0.1"
+        "abstract-curry": ">= 3.0.0",
+        "cdbi"          : ">= 3.0.0",
+        "det-parse"     : ">= 2.0.0",
+        "opt-parse"     : ">= 2.0.0",
+        "boxes"         : ">= 3.0.0",
+        "json"          : ">= 3.0.0",
+        "cass-analysis" : ">= 3.0.0",
+        "cass"          : ">= 3.0.0",
+        "csv"           : ">= 2.0.0",
+        "flatcurry"     : ">= 3.0.0",
+        "wl-pprint"     : ">= 2.0.0"
     },
     "compilerCompatibility": {
         "pakcs": ">= 2.0.0",

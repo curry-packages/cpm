@@ -2,7 +2,7 @@
 --- Contains functions that access and modify the runtime package cache.
 --------------------------------------------------------------------------------
 
-module CPM.PackageCache.Runtime 
+module CPM.PackageCache.Runtime
   ( dependencyPathsSeparate
   , dependencyPaths
   , copyPackages
@@ -10,11 +10,10 @@ module CPM.PackageCache.Runtime
   , writePackageConfig
   ) where
 
-import FilePath    ( (</>), (<.>) )
-import FileGoodies ( baseName )
-import Directory   ( createDirectoryIfMissing, copyFile, getDirectoryContents
-                   , getAbsolutePath, doesDirectoryExist, doesFileExist )
-import List        ( intercalate, split )
+import System.FilePath    ( (</>), (<.>) )
+import System.Directory   ( createDirectoryIfMissing, copyFile, getDirectoryContents
+                          , getAbsolutePath, doesDirectoryExist, doesFileExist )
+import Data.List          ( intercalate, split )
 
 import CPM.Config    ( Config, binInstallDir )
 import CPM.ErrorLogger
@@ -27,10 +26,10 @@ import CPM.Repository ( readPackageFromRepository )
 
 -- Each package needs its own copy of all dependencies since KiCS2 and PACKS
 -- store their intermediate results for each source file in a hidden directory
--- alongside that particular source file. This module manages these local 
+-- alongside that particular source file. This module manages these local
 -- copies.
 
---- Returns a colon-separated list of the paths to a list of given packages 
+--- Returns a colon-separated list of the paths to a list of given packages
 --- inside a package's runtime package cache.
 dependencyPaths :: [Package] -> String -> String
 dependencyPaths pkgs dir = intercalate ":" $ dependencyPathsSeparate pkgs dir
@@ -45,7 +44,7 @@ dependencyPathsSeparate pkgs dir =
 cacheDirectory :: String -> Package -> String
 cacheDirectory dir pkg = dir </> ".cpm" </> "packages" </> packageId pkg
 
---- Copies a set of packages from the local package cache to the runtime 
+--- Copies a set of packages from the local package cache to the runtime
 --- package cache and returns the package specifications.
 copyPackages :: Config -> [Package] -> String -> IO (ErrorLogger [Package])
 copyPackages cfg pkgs dir = mapEL copyPackage pkgs
@@ -61,8 +60,8 @@ copyPackages cfg pkgs dir = mapEL copyPackage pkgs
              copyDirectoryFollowingSymlinks pkgDir cdir >>
              writePackageConfig cfg destDir reppkg "" >> succeedIO reppkg
         else error $ "Package " ++ packageId pkg ++
-                     " could not be found in package cache." 
-     where 
+                     " could not be found in package cache."
+     where
       pkgDir = LocalCache.packageDir dir pkg
 
 --- Ensures that the runtime package cache directory exists.

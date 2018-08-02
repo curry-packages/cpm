@@ -3,7 +3,7 @@
 --- for the Curry Package Manager.
 --------------------------------------------------------------------------------
 
-module CPM.FileUtil 
+module CPM.FileUtil
   ( joinSearchPath
   , copyDirectory
   , createSymlink
@@ -22,14 +22,17 @@ module CPM.FileUtil
   , whenFileExists, ifFileExists
   ) where
 
-import Directory ( doesFileExist, doesDirectoryExist, getCurrentDirectory
-                 , setCurrentDirectory, getDirectoryContents
-                 , getTemporaryDirectory, doesDirectoryExist, createDirectory
-                 , createDirectoryIfMissing, getAbsolutePath )
-import System    ( system, getEnviron, exitWith )
-import IOExts    ( evalCmd, readCompleteFile )
-import FilePath  ( FilePath, replaceFileName, (</>), searchPathSeparator )
-import List      ( intercalate, isPrefixOf, splitOn )
+import System.Directory   ( doesFileExist, doesDirectoryExist
+                          , setCurrentDirectory, getDirectoryContents
+                          , getTemporaryDirectory, doesDirectoryExist
+                          , createDirectory, getCurrentDirectory
+                          , createDirectoryIfMissing, getAbsolutePath )
+import System.Process     ( system, exitWith )
+import System.Environment ( getEnv )
+import IOExts             ( evalCmd, readCompleteFile )
+import System.FilePath    ( FilePath, replaceFileName, (</>)
+                          , searchPathSeparator )
+import Data.List          ( intercalate, isPrefixOf, splitOn )
 
 --- Joins a list of directories into a search path.
 joinSearchPath :: [FilePath] -> String
@@ -84,7 +87,7 @@ quote s = "\"" ++ s ++ "\""
 --- Checks whether a file exists in one of the directories on the PATH.
 fileInPath :: String -> IO Bool
 fileInPath file = do
-  path <- getEnviron "PATH"
+  path <- getEnv "PATH"
   let dirs = splitOn ":" path
   (liftIO (any id)) $ mapIO (doesFileExist . (</> file)) dirs
 
@@ -92,7 +95,7 @@ fileInPath file = do
 --- and returns absolute path, otherwise returns `Nothing`.
 getFileInPath :: String -> IO (Maybe String)
 getFileInPath file = do
-  path <- getEnviron "PATH"
+  path <- getEnv "PATH"
   checkPath (splitOn ":" path)
  where
   checkPath [] = return Nothing
@@ -108,7 +111,7 @@ tempDir = do
   t <- getTemporaryDirectory
   return (t </> "cpm")
 
---- Executes an IO action with the current directory set to  CPM's temporary 
+--- Executes an IO action with the current directory set to  CPM's temporary
 --- directory.
 inTempDir :: IO b -> IO b
 inTempDir b = do
@@ -119,7 +122,7 @@ inTempDir b = do
     else createDirectory t
   inDirectory t b
 
---- Executes an IO action with the current directory set to a specific 
+--- Executes an IO action with the current directory set to a specific
 --- directory.
 inDirectory :: String -> IO b -> IO b
 inDirectory dir b = do

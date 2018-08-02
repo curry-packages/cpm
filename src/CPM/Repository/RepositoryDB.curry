@@ -1,13 +1,13 @@
 --- This file has been generated from
---- 
+---
 ---     cpm/src/CPM/Repository/RepositoryDB.erdterm
---- 
+---
 --- and contains definitions for all entities and relations
 --- specified in this model.
 
 module CPM.Repository.RepositoryDB where
 
-import qualified Time
+import qualified Data.Time
 import qualified Database.CDBI.ER
 import qualified Database.CDBI.Criteria
 import qualified Database.CDBI.Connection
