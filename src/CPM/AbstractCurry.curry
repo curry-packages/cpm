@@ -67,7 +67,18 @@ readAbstractCurryFromPackagePath pkg pkgDir deps modname = do
   acyName <- return $ case src of
     Nothing -> error $ "Module not found: " ++ modname
     Just (_, file) -> replaceExtension (inCurrySubdirModule modname file) ".acy"
-  readAbstractCurryFile acyName
+  readAbstractCurryFile acyName >>= return . addPrimTypes
+ where
+  -- work-around for missing Prelude.Char|Int|Float declarations:
+  addPrimTypes p@(CurryProg mname imports dfltdecl clsdecls instdecls
+                            typedecls funcdecls opdecls)
+   | mname == pre && primType "Int" `notElem` typedecls
+   = CurryProg mname imports dfltdecl clsdecls instdecls
+               (map primType ["Int","Float","Char"] ++ typedecls)
+               funcdecls opdecls
+   | otherwise = p
+   where pre = "Prelude"
+         primType n = CType ("Prelude",n) Public [] [] []
 
 --- Reads an AbstractCurry module from a package or one of its dependencies.
 ---

@@ -963,9 +963,10 @@ If the version option is missing, the latest version of the current package
 found in the repository is used for comparison.
 If the options \code{--api-only} or \code{--behavior-only} are added,
 then only the API or the behavior are compared, respectively.
-Using the option \code{--modules}, one can also specify a comma-separated
-list of module names to be compared. Without this option,
-all exported modules are compared.
+In the default case, all modules commonly exported by both
+versions of the package are compared.
+Using the option \code{--modules}, one can restrict this comparison
+to a list of modules specified by a comma-separated list of module names.
 
 As described in Section~\ref{sec:semantic-versioning},
 CPM uses property tests to compare the behavior

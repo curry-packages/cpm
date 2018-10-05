@@ -81,8 +81,8 @@ acquireAndInstallPackageWithDependencies :: Config -> Repository -> Package
                                          -> IO (ErrorLogger ())
 acquireAndInstallPackageWithDependencies cfg repo pkg = 
   GC.readGlobalCache cfg repo |>= \gc ->
-  resolveDependenciesForPackage cfg pkg repo gc |>=
-  \result -> GC.installMissingDependencies cfg gc (resolvedPackages result) |>
+  resolveDependenciesForPackage cfg pkg repo gc |>= \result ->
+  GC.installMissingDependencies cfg gc (resolvedPackages result) |>
   GC.acquireAndInstallPackage cfg pkg
 
 --- Links the dependencies of a package to its local cache and copies them to

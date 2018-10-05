@@ -56,7 +56,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 19/06/2018)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 05/10/2018)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -224,11 +224,13 @@ data TestOptions = TestOptions
   { testModules :: Maybe [String] }
 
 data DiffOptions = DiffOptions
-  { diffVersion  :: Maybe Version
-  , diffModules  :: Maybe [String]
-  , diffAPI      :: Bool
-  , diffBehavior :: Bool
-  , diffUseAna   :: Bool }
+  { diffVersion   :: Maybe Version   -- version to be compared
+  , diffModules   :: Maybe [String]  -- modules to be compared
+  , diffAPI       :: Bool            -- check API equivalence
+  , diffBehavior  :: Bool            -- test behavior equivalence
+  , diffGroundEqu :: Bool            -- test ground equivalence only
+  , diffUseAna    :: Bool            -- use termination analysis for safe tests
+  }
 
 configOpts :: Options -> ConfigOptions
 configOpts s = case optCommand s of
@@ -319,7 +321,7 @@ testOpts s = case optCommand s of
 diffOpts :: Options -> DiffOptions
 diffOpts s = case optCommand s of
   Diff opts -> opts
-  _         -> DiffOptions Nothing Nothing True True True
+  _         -> DiffOptions Nothing Nothing True True False True
 
 readLogLevel :: String -> Either String LogLevel
 readLogLevel s = case map toLower s of
@@ -638,7 +640,12 @@ optionParser allargs = optParser
          <> short "b"
          <> help "Diff only the behavior")
    <.> flag (\a -> Right $ a { optCommand = Diff (diffOpts a)
-                                            { diffUseAna = False } })
+                                                   { diffGroundEqu = True } })
+         (  long "ground"
+         <> short "g"
+         <> help "Check ground equivalence only when comparing behavior")
+   <.> flag (\a -> Right $ a { optCommand = Diff (diffOpts a)
+                                                   { diffUseAna = False } })
          (  long "unsafe"
          <> short "u"
          <> help
@@ -1317,12 +1324,13 @@ diffCmd opts cfg =
       showlocalv = showVersion localv
   in
   getRepoForPackageSpec cfg localSpec >>= \repo ->
-  readGlobalCache cfg repo |>= \gc ->
   getDiffVersion repo localname |>= \diffv ->
   if diffv == localv
     then failIO $ "Cannot diff identical package versions " ++ showlocalv
     else putStrLn ("Comparing local version " ++ showlocalv ++
                    " and repository version " ++ showVersion diffv ++ ":\n") >>
+         installIfNecessary repo localname diffv |> putStrLn "" >>
+         readGlobalCache cfg repo |>= \gc ->
          diffAPIIfEnabled      repo gc specDir localSpec diffv |> 
          diffBehaviorIfEnabled repo gc specDir localSpec diffv
  where
@@ -1334,7 +1342,12 @@ diffCmd opts cfg =
         "' found in package repository."
       Just p  -> succeedIO (version p)
     Just v  -> succeedIO v
- 
+
+  installIfNecessary repo pkgname ver =
+    case findVersion repo pkgname ver of
+      Nothing -> packageNotFoundFailure $ pkgname ++ "-" ++ showVersion ver
+      Just  p -> acquireAndInstallPackageWithDependencies cfg repo p
+
   diffAPIIfEnabled repo gc specDir localSpec diffversion =
     if diffAPI opts
     then (putStrLn "Running API diff...\n" >> succeedIO ()) |>
@@ -1352,8 +1365,8 @@ diffCmd opts cfg =
       then (putStrLn "Preparing behavior diff...\n" >> succeedIO ()) |>
            BDiff.preparePackageAndDir cfg repo gc specDir (name localSpec)
                                                           diffversion |>=
-           \i -> BDiff.diffBehavior cfg repo gc i (diffUseAna opts)
-                                    (diffModules opts)
+           \i -> BDiff.diffBehavior cfg repo gc i (diffGroundEqu opts)
+                                    (diffUseAna opts) (diffModules opts)
       else succeedIO ()
 
 -- Implementation of the "curry" command.

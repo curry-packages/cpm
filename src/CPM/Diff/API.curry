@@ -97,18 +97,20 @@ compareModulesFromPackageAndDir cfg repo gc dirA nameB verB onlyMods =
 compareModulesInDirs :: Config -> Repository -> GC.GlobalCache -> String 
                      -> String -> Maybe [String] 
                      -> IO (ErrorLogger [(String, Differences)])
-compareModulesInDirs cfg repo gc dirA dirB onlyMods = loadPackageSpec dirA |>=
-  \pkgA -> loadPackageSpec dirB |>=
-  \pkgB -> resolveAndCopyDependencies cfg repo gc dirA |>=
-  \depsA -> resolveAndCopyDependencies cfg repo gc dirB |>=
-  \depsB -> mapEL (compareApiModule pkgA dirA depsA pkgB dirB depsB)
-                  (allMods pkgA pkgB) |>=
-  \diffs -> let modsWithDiffs = zip (allMods pkgA pkgB) diffs in
-    succeedIO $ case onlyMods of
-      Nothing -> modsWithDiffs
-      Just ms -> filter ((`elem` ms) . fst) modsWithDiffs
- where
-  allMods a b = nub $ (exportedModules a) ++ (exportedModules b)
+compareModulesInDirs cfg repo gc dirA dirB onlyMods =
+  loadPackageSpec dirA |>= \pkgA ->
+  loadPackageSpec dirB |>= \pkgB ->
+  resolveAndCopyDependencies cfg repo gc dirA |>= \depsA ->
+  resolveAndCopyDependencies cfg repo gc dirB |>= \depsB ->
+  let cmpmods = nub (exportedModules pkgA ++ exportedModules pkgB) in
+  if null cmpmods
+    then log Info "No exported modules to compare" |> succeedIO []
+    else
+      mapEL (compareApiModule pkgA dirA depsA pkgB dirB depsB) cmpmods |>=
+      \diffs -> let modsWithDiffs = zip cmpmods diffs in
+                succeedIO $ case onlyMods of
+                  Nothing -> modsWithDiffs
+                  Just ms -> filter ((`elem` ms) . fst) modsWithDiffs
 
 --- Compares a single module from two package versions.
 ---

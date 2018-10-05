@@ -150,11 +150,12 @@ installFromZip cfg zip = do
 --- Installs a package's missing dependencies.
 installMissingDependencies :: Config -> GlobalCache -> [Package] 
                            -> IO (ErrorLogger ())
-installMissingDependencies cfg gc deps = if length missing > 0
-  then log Info logMsg |>
-    mapEL (acquireAndInstallPackage cfg) missing |>
-    succeedIO ()
-  else succeedIO ()
+installMissingDependencies cfg gc deps =
+  if length missing > 0
+    then log Info logMsg |>
+         mapEL (acquireAndInstallPackage cfg) missing |>
+         succeedIO ()
+    else succeedIO ()
  where
    missing = filter (not . isPackageInstalled gc) deps
    logMsg = "Installing missing dependencies " ++

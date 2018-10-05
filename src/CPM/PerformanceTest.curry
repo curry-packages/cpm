@@ -139,7 +139,7 @@ genTestProgram = preparePackageDirs defaultConfig emptyRepository GC.emptyCache 
     \info -> findFunctionsToCompare defaultConfig emptyRepository GC.emptyCache (infSourceDirA info) (infSourceDirB info) False Nothing |>=
     \(acyCache, loadpath, funcs, _) ->
     genCurryCheckProgram defaultConfig emptyRepository GC.emptyCache funcs
-                         info acyCache loadpath |>
+                         info True acyCache loadpath |>
     succeedIO ()
 
 apiDiffPerformance :: Options -> IO ()
