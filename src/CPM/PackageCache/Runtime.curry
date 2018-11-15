@@ -10,7 +10,7 @@ module CPM.PackageCache.Runtime
   , writePackageConfig
   ) where
 
-import FilePath    ( (</>), (<.>) )
+import FilePath    ( (</>), (<.>), takeDirectory )
 import FileGoodies ( baseName )
 import Directory   ( createDirectoryIfMissing, copyFile, getDirectoryContents
                    , getAbsolutePath, doesDirectoryExist, doesFileExist )
@@ -70,7 +70,7 @@ ensureCacheDirectory :: String -> IO String
 ensureCacheDirectory dir = do
   createDirectoryIfMissing True packagesDir
   return packagesDir
-    where packagesDir = dir </> ".cpm" </> "packages"
+ where packagesDir = dir </> ".cpm" </> "packages"
 
 
 --- Writes the package configuration module (if specified) into the
@@ -91,6 +91,7 @@ writePackageConfig cfg pkgdir pkg loadpath =
   writeConfigFile configmod binname = do
     let configfile = pkgdir </> "src" </> foldr1 (</>) (split (=='.') configmod)
                             <.> ".curry"
+    createDirectoryIfMissing True (takeDirectory configfile)
     abspkgdir <- getAbsolutePath pkgdir
     writeFile configfile $ unlines $
       [ "module " ++ configmod ++ " where"

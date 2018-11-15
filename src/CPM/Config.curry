@@ -70,7 +70,7 @@ defaultConfig = Config
   { packageInstallDir      = "$HOME/.cpm/packages"
   , binInstallDir          = "$HOME/.cpm/bin"
   , repositoryDir          = "$HOME/.cpm/index" 
-  , appPackageDir          = "$HOME/.cpm/app_packages" 
+  , appPackageDir          = ""
   , packageIndexURL        = packageIndexDefaultURL
   , homePackageDir         = ""
   , curryExec              = Dist.installDir </> "bin" </> Dist.curryCompiler
@@ -117,6 +117,17 @@ setCompilerExecutable cfg = do
     getFileInPath exec >>=
     maybe (error $ "Executable '" ++ exec ++ "' not found in path!")
           (\absexec -> return cfg { curryExec = absexec })
+
+--- Sets the `appPackageDir` depending on the compiler version.
+setAppPackageDir :: Config -> IO Config
+setAppPackageDir cfg
+  | null (appPackageDir cfg)
+  = do homedir <- getHomeDirectory
+       let cpmdir = homedir </> ".cpm"
+           (cname,cmaj,cmin) = compilerVersion cfg
+           cmpname = cname ++ "_" ++ show cmaj ++ "." ++ show cmin
+       return cfg { appPackageDir = cpmdir </> "apps_" ++ cmpname }
+  | otherwise = return cfg
 
 --- Sets the `homePackageDir` depending on the compiler version.
 setHomePackageDir :: Config -> IO Config
@@ -195,10 +206,11 @@ readConfigurationWith defsettings = do
   case mergedSettings of
     Left e   -> return $ Left e
     Right s0 -> do s1 <- replaceHome s0
-                   createDirectories s1
                    s2 <- setCompilerVersion s1
-                   s3 <- setHomePackageDir s2
-                   return $ Right s3
+                   s3 <- setAppPackageDir   s2
+                   s4 <- setHomePackageDir  s3
+                   createDirectories s4
+                   return $ Right s4
 
 replaceHome :: Config -> IO Config
 replaceHome cfg = do
