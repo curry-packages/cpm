@@ -407,10 +407,6 @@ optionParser allargs = optParser
                            depsArgs
         <|> command "clean" (help "Clean the current package")
                             (\a -> Right $ a { optCommand = Clean }) []
-        <|> command "upload"
-                    (help "Upload current package to package server")
-                    (\a -> Right $ a { optCommand = Upload (uploadOpts a) })
-                    uploadArgs
         <|> command "new" (help "Create a new package") Right newArgs
         <|> command "update"
                     (help "Update the package index")
@@ -451,7 +447,12 @@ optionParser allargs = optParser
         <|> command "add"
               (help "Add a package (as dependency or to the local repository)")
               Right
-              addArgs ) )
+              addArgs
+        <|> command "upload"
+                    (help "Upload current package to package server")
+                    (\a -> Right $ a { optCommand = Upload (uploadOpts a) })
+                    uploadArgs
+        ) )
  where
   configArgs =
     flag (\a -> Right $ a { optCommand = Config (configOpts a)
@@ -560,7 +561,7 @@ optionParser allargs = optParser
                                  Upload (uploadOpts a) { setTag = False } })
             (  short "t"
             <> long "notagging"
-            <> help "Do not tag the repository with the current version" )
+            <> help "Do not tag git repository with current version" )
    <.> flag (\a -> Right $ a { optCommand =
                                  Upload (uploadOpts a) { forceUpdate = True } })
             (  short "f"
@@ -1501,7 +1502,6 @@ newPackage (NewOptions pname) = do
 
 ------------------------------------------------------------------------------
 --- Uploads a package to package server.
---- TODO: add option to tag git repo with current package version
 uploadCmd :: UploadOptions -> Config -> IO (ErrorLogger ())
 uploadCmd opts cfg =
   getLocalPackageSpec cfg "." |>= \specDir ->
@@ -1589,8 +1589,7 @@ setTagInGit pkg = do
 uploadPackageSpec :: String -> IO (ErrorLogger ())
 uploadPackageSpec pkgspecfname = do
   pkgspec <- readFile pkgspecfname
-  (rc,out,err) <- evalCmd "curl" ["--data-binary", "@-", uploadURL ]
-                          pkgspec
+  (rc,out,err) <- evalCmd "curl" ["--data-binary", "@-", uploadURL ] pkgspec
   unless (null out) $ infoMessage out
   if rc == 0
     then succeedIO ()
