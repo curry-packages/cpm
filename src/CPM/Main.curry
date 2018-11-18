@@ -15,6 +15,7 @@ import Either
 import FilePath     ( (</>), splitSearchPath, replaceExtension, takeExtension
                     , pathSeparator, isPathSeparator )
 import IO           ( hFlush, stdout )
+import IOExts       ( evalCmd )
 import List         ( groupBy, intercalate, isPrefixOf, isSuffixOf, nub, split
                     , splitOn )
 import Sort         ( sortBy )
@@ -27,8 +28,8 @@ import Text.CSV     ( showCSV )
 
 import CPM.ErrorLogger
 import CPM.FileUtil ( fileInPath, joinSearchPath, safeReadFile, whenFileExists
-                    , ifFileExists, inDirectory, removeDirectoryComplete
-                    , copyDirectory, quote )
+                    , ifFileExists, inDirectory, inTempDir, recreateDirectory
+                    , removeDirectoryComplete, copyDirectory, quote, tempDir )
 import CPM.Config   ( Config (..)
                     , readConfigurationWith, showCompilerVersion
                     , showConfiguration )
@@ -37,7 +38,7 @@ import CPM.PackageCache.Global ( GlobalCache, readGlobalCache, allPackages
                                , uninstallPackage, packageInstalled )
 import CPM.Package
 import CPM.Package.Helpers ( cleanPackage, getLocalPackageSpec
-                           , renderPackageInfo )
+                           , renderPackageInfo, installPackageSourceTo )
 import CPM.Resolution ( isCompatibleToCompiler, showResult )
 import CPM.Repository ( Repository, findVersion, listPackages
                       , findAllVersions, findLatestVersion
@@ -56,7 +57,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 15/11/2018)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 18/11/2018)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -106,6 +107,7 @@ runWithArgs opts = do
     Diff      o -> diffCmd     o config
     Checkout  o -> checkoutCmd o config
     Install   o -> installCmd  o config
+    Upload    o -> uploadCmd   o config
     Clean       -> cleanPackage config Info
   mapIO showLogEntry msgs
   let allOk =  all (levelGte Info) (map logLevelOf msgs) &&
@@ -141,6 +143,7 @@ data Command
   | Diff       DiffOptions
   | New        NewOptions
   | Clean
+  | Upload     UploadOptions
 
 data ConfigOptions = ConfigOptions
   { configAll :: Bool  -- show also installed packages?
@@ -203,6 +206,12 @@ data NewOptions = NewOptions
 
 data UpdateOptions = UpdateOptions
   { indexURLs :: [String]   -- the URLs of additional index repositories
+  , cleanCache :: Bool      -- clean also repository cache?
+  }
+
+data UploadOptions = UploadOptions
+  { setTag      :: Bool  -- set the tag in the current repository?
+  , forceUpdate :: Bool  -- force update if package with same version exists
   }
 
 data ExecOptions = ExecOptions
@@ -295,7 +304,12 @@ newOpts s = case optCommand s of
 updateOpts :: Options -> UpdateOptions
 updateOpts s = case optCommand s of
   Update opts -> opts
-  _           -> UpdateOptions []
+  _           -> UpdateOptions [] True
+
+uploadOpts :: Options -> UploadOptions
+uploadOpts s = case optCommand s of
+  Upload opts -> opts
+  _           -> UploadOptions True False
 
 execOpts :: Options -> ExecOptions
 execOpts s = case optCommand s of
@@ -393,6 +407,10 @@ optionParser allargs = optParser
                            depsArgs
         <|> command "clean" (help "Clean the current package")
                             (\a -> Right $ a { optCommand = Clean }) []
+        <|> command "upload"
+                    (help "Upload current package to package server")
+                    (\a -> Right $ a { optCommand = Upload (uploadOpts a) })
+                    uploadArgs
         <|> command "new" (help "Create a new package") Right newArgs
         <|> command "update"
                     (help "Update the package index")
@@ -531,6 +549,23 @@ optionParser allargs = optParser
          <> long "url"
          <> metavar "URL"
          <> help "URL of the central package index" )
+    <.> flag (\a -> Right $ a { optCommand = Update (updateOpts a)
+                                               { cleanCache = False } })
+             (  short "c"
+             <> long "cache"
+             <> help "Do not clean global package cache" )
+
+  uploadArgs =
+       flag (\a -> Right $ a { optCommand =
+                                 Upload (uploadOpts a) { setTag = False } })
+            (  short "t"
+            <> long "notagging"
+            <> help "Do not tag the repository with the current version" )
+   <.> flag (\a -> Right $ a { optCommand =
+                                 Upload (uploadOpts a) { forceUpdate = True } })
+            (  short "f"
+            <> long "force"
+            <> help "Force, i.e., overwrite existing package version" )
 
   execArgs =
     rest (\_ a -> Right $ a { optCommand = Exec (execOpts a)
@@ -769,7 +804,7 @@ updateCmd opts cfg = do
                then cfg
                else cfg { packageIndexURL = head (indexURLs opts) }
                     -- TODO: allow merging from several package indices
-  checkRequiredExecutables >> updateRepository cfg'
+  checkRequiredExecutables >> updateRepository cfg' (cleanCache opts)
 
 ------------------------------------------------------------------------------
 -- `deps` command:
@@ -1369,7 +1404,7 @@ diffCmd opts cfg =
                                     (diffUseAna opts) (diffModules opts)
       else succeedIO ()
 
--- Implementation of the "curry" command.
+-- Implementation of the `curry` command.
 compiler :: ExecOptions -> Config -> IO (ErrorLogger ())
 compiler o cfg =
   getLocalPackageSpec cfg "." |>= \pkgdir ->
@@ -1379,6 +1414,7 @@ compiler o cfg =
     (ExecOptions $ unwords [curryExec cfg, "--nocypm", exeCommand o])
     cfg pkgdir
 
+-- Implementation of the `exec` command.
 execCmd :: ExecOptions -> Config -> IO (ErrorLogger ())
 execCmd o cfg =
   getLocalPackageSpec cfg "." |>= execWithPkgDir o cfg
@@ -1463,7 +1499,109 @@ newPackage (NewOptions pname) = do
     , "> cypm curry :load Main :eval main :quit"
     ]
 
+------------------------------------------------------------------------------
+--- Uploads a package to package server.
+--- TODO: add option to tag git repo with current package version
+uploadCmd :: UploadOptions -> Config -> IO (ErrorLogger ())
+uploadCmd opts cfg =
+  getLocalPackageSpec cfg "." |>= \specDir ->
+  loadPackageSpec specDir |>= \lpkg ->
+  let pkgrepodir = repositoryDir cfg </>
+                   name lpkg </> showVersion (version lpkg) in
+  doesDirectoryExist pkgrepodir >>= \exrepodir ->
+  (if exrepodir && not (forceUpdate opts)
+    then failIO $ "Package version already exists in repository!"
+    else succeedIO () ) |>
+  inDirectory specDir (setTagInGitIfNecessary opts lpkg) |>
+  tempDir >>= \instdir ->
+  recreateDirectory instdir >>
+  installPkg lpkg instdir |>
+  let pkgid = packageId lpkg in
+  loadPackageSpec (instdir </> pkgid) |>= \pkg ->
+  testPackage pkgid instdir >>= \ecode ->
+  if ecode > 0
+    then removeDirectoryComplete instdir >>
+         log Critical "ERROR in package, package not uploaded!"
+    else log Info "Uploading package to global repository..." |>
+         removeInstalledPkg pkgid >>
+         uploadPackageSpec (instdir </> pkgid </> "package.json") |>
+         -- add package to local copy of repository:
+         addPackageToRepo pkgrepodir (instdir </> pkgid) pkg pkgid >>
+         removeDirectoryComplete instdir >>
+         log Info ("Package '" ++ pkgid ++ "' uploaded")
+ where
+  addPackageToRepo pkgrepodir pkgdir pkg pkgid = do
+    exrepodir <- doesDirectoryExist pkgrepodir
+    infoMessage $ "Create directory: " ++ pkgrepodir
+    createDirectoryIfMissing True pkgrepodir
+    copyFile (pkgdir </> "package.json") (pkgrepodir </> "package.json")
+    if exrepodir then updatePackageInRepositoryCache cfg pkg
+                 else addPackageToRepositoryCache    cfg pkg
 
+  -- TODO: check url
+  installPkg pkg instdir = case source pkg of
+    Nothing            -> failIO $ "No source specified for package"
+    Just (Git url rev) -> installPackageSourceTo pkg (Git url rev) instdir
+    _                  -> failIO $ "No git source with version tag"
+
+  removeInstalledPkg pkgid = do
+    let pkgInstallDir = packageInstallDir cfg </> pkgid
+    expkgdir <- doesDirectoryExist pkgInstallDir
+    when expkgdir $ removeDirectoryComplete pkgInstallDir
+
+  testPackage pkgid instdir = do
+    curdir <- inDirectory instdir getCurrentDirectory
+    let bindir = curdir </> "pkgbin"
+    recreateDirectory bindir
+    let cmd = unwords
+                [ -- install possible binaries in bindir:
+                  "cypm", "-d bin_install_path="++bindir, "install", "&&"
+                , "export PATH="++bindir++":$PATH", "&&"
+                , "cypm", "test", "&&"
+                , "cypm", "-d bin_install_path="++bindir, "uninstall"
+                ]
+    putStrLn $ "Testing package: '" ++ pkgid ++ "' with command:\n" ++ cmd
+    inDirectory (instdir </> pkgid) $ system cmd
+
+--- Set the package version as a tag in the local GIT repository and push it,
+--- if the package source is a GIT with tag `$version`.
+setTagInGitIfNecessary :: UploadOptions -> Package -> IO (ErrorLogger ())
+setTagInGitIfNecessary opts pkg
+  | not (setTag opts) = succeedIO ()
+  | otherwise = case source pkg of
+                  Just (Git _ (Just VersionAsTag)) -> setTagInGit pkg
+                  _ -> succeedIO ()
+
+setTagInGit :: Package -> IO (ErrorLogger ())
+setTagInGit pkg = do
+  let ts = 'v' : showVersion (version pkg)
+  infoMessage $ "Tagging current git repository with tag '" ++ ts++ "'"
+  (_,gittag,_) <- evalCmd "git" ["tag","-l",ts] ""
+  let deltag = if null gittag then [] else ["git tag -d",ts,"&&"]
+      cmd    = unwords $ deltag ++ ["git tag -a",ts,"-m",ts,"&&",
+                                    "git push --tags -f"]
+  infoMessage $ "Execute: " ++ cmd
+  ecode <- system cmd
+  if ecode == 0 then succeedIO ()
+                else failIO $ "ERROR in setting the git tag"
+
+-- Uploads a package specification stored in a file (first argument).
+uploadPackageSpec :: String -> IO (ErrorLogger ())
+uploadPackageSpec pkgspecfname = do
+  pkgspec <- readFile pkgspecfname
+  (rc,out,err) <- evalCmd "curl" ["--data-binary", "@-", uploadURL ]
+                          pkgspec
+  unless (null out) $ infoMessage out
+  if rc == 0
+    then succeedIO ()
+    else log Info err |> failIO "Adding to global repository failed!"
+
+-- URL of cpm-upload script.
+uploadURL :: String
+--uploadURL = "http://localhost/~mh/cpm-upload.cgi"
+uploadURL = "https://www-ps.informatik.uni-kiel.de/~mh/cpm-upload.cgi"
+
+------------------------------------------------------------------------------
 --- Fail with a "package not found" message.
 packageNotFoundFailure :: String -> IO (ErrorLogger _)
 packageNotFoundFailure pkgname =

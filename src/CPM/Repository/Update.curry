@@ -28,14 +28,15 @@ import CPM.Repository.Select  ( addPackageToRepositoryCache
 
 ------------------------------------------------------------------------------
 --- Updates the package index from the central Git repository.
---- Cleans also the global package cache in order to support
---- downloading the newest versions.
-updateRepository :: Config -> IO (ErrorLogger ())
-updateRepository cfg = do
+--- If the second argument is `True`, also the global package cache
+--- is cleaned in order to support downloading the newest versions.
+updateRepository :: Config -> Bool -> IO (ErrorLogger ())
+updateRepository cfg cleancache = do
   cleanRepositoryCache cfg
-  debugMessage $ "Deleting global package cache: '" ++
-                 packageInstallDir cfg ++ "'"
-  removeDirectoryComplete (packageInstallDir cfg)
+  when cleancache $ do
+    debugMessage $ "Deleting global package cache: '" ++
+                   packageInstallDir cfg ++ "'"
+    removeDirectoryComplete (packageInstallDir cfg)
   debugMessage $ "Recreating package index: '" ++ repositoryDir cfg ++ "'"
   recreateDirectory (repositoryDir cfg)
   c <- inDirectory (repositoryDir cfg) downloadCommand
