@@ -176,6 +176,12 @@ data Package = Package {
   }
  deriving (Eq,Show)
 
+-- A simple Show instance for Package (maybe useful for debugging):
+--instance Show Package where
+--  show p = "(Package " ++
+--           unwords [name p, showVersion (version p)
+--                   , unwords (map showDependency (dependencies p))] ++ ")"
+
 --- An empty package specification.
 emptyPackage :: Package
 emptyPackage = Package {

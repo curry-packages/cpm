@@ -137,6 +137,7 @@ showResult r@(ResolutionFailure _)   = showConflict r
 --- contains the conflict tree.
 data ResolutionResult = ResolutionSuccess Package [Package] 
                       | ResolutionFailure (Tree ConflictState)
+ deriving (Eq,Show)
 
 --- Represents an activation of a package in the candidate tree. Activations 
 --- form a chain up to the initial activation, i.e. the initial package that 
@@ -145,7 +146,7 @@ data ResolutionResult = ResolutionSuccess Package [Package]
 --- dependency led to the current package version being chosen.
 data Activation = InitialA Package
                 | ChildA Package Dependency Activation
- deriving Eq
+ deriving (Eq,Show)
 
 --- Each tree node is labeled with the current activation and all former 
 --- activations.
@@ -162,7 +163,7 @@ type State = (Activation, [Activation])
 data Conflict = SecondaryConflict Activation Activation
               | PrimaryConflict Activation
               | CompilerConflict Activation
- deriving Eq
+ deriving (Eq,Show)
 
 --- A state and a potential conflict.
 type ConflictState = (State, Maybe Conflict)
@@ -218,6 +219,7 @@ clState = fst
 
 --- A tree with a label and child nodes.
 data Tree a = Node a [Tree a]
+ deriving (Eq,Show)
 
 --- Recursively applies a function to each node in a tree.
 mapTree :: (a -> b) -> Tree a -> Tree b
@@ -284,6 +286,7 @@ candidateTree pkg ls = let s = InitialA pkg in
       then tree' acts ds 
       else map (nodesForDep act d ds acts) $ findAllVersions ls p True
   tree' _ [] = []
+
   nodesForDep act d ds acts p' = 
     let 
       act' = ChildA p' d act 
