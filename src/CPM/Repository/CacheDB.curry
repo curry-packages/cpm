@@ -16,10 +16,11 @@ import ReadShowTerm
 
 import Database.CDBI.ER 
 import Database.CDBI.Connection
+import System.Path  ( fileInPath )
 
 import CPM.Config      ( Config, readConfigurationWith, repositoryDir )
 import CPM.ErrorLogger
-import CPM.FileUtil    ( fileInPath, whenFileExists )
+import CPM.FileUtil    ( whenFileExists )
 import CPM.Repository.RepositoryDB
 import CPM.Package
 import CPM.Repository

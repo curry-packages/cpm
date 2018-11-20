@@ -24,10 +24,11 @@ import System       ( getArgs, getEnviron, setEnviron, unsetEnviron, exitWith
 
 import Boxes        ( table, render )
 import OptParse
+import System.Path  ( fileInPath )
 import Text.CSV     ( showCSV )
 
 import CPM.ErrorLogger
-import CPM.FileUtil ( fileInPath, joinSearchPath, safeReadFile, whenFileExists
+import CPM.FileUtil ( joinSearchPath, safeReadFile, whenFileExists
                     , ifFileExists, inDirectory, inTempDir, recreateDirectory
                     , removeDirectoryComplete, copyDirectory, quote, tempDir )
 import CPM.Config   ( Config (..)
@@ -57,7 +58,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 18/11/2018)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 20/11/2018)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -1526,11 +1527,11 @@ uploadCmd opts cfg =
          removeInstalledPkg pkgid >>
          uploadPackageSpec (instdir </> pkgid </> "package.json") |>
          -- add package to local copy of repository:
-         addPackageToRepo pkgrepodir (instdir </> pkgid) pkg pkgid >>
+         addPackageToRepo pkgrepodir (instdir </> pkgid) pkg >>
          removeDirectoryComplete instdir >>
          log Info ("Package '" ++ pkgid ++ "' uploaded")
  where
-  addPackageToRepo pkgrepodir pkgdir pkg pkgid = do
+  addPackageToRepo pkgrepodir pkgdir pkg = do
     exrepodir <- doesDirectoryExist pkgrepodir
     infoMessage $ "Create directory: " ++ pkgrepodir
     createDirectoryIfMissing True pkgrepodir

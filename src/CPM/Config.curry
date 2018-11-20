@@ -23,8 +23,10 @@ import Maybe        ( mapMaybe )
 import PropertyFile ( readPropertyFile )
 import Read         ( readInt )
 
+import System.Path  ( getFileInPath )
+
 import CPM.ErrorLogger
-import CPM.FileUtil ( ifFileExists, getFileInPath )
+import CPM.FileUtil ( ifFileExists )
 import CPM.Helpers  ( strip )
 
 --- The default location of the central package index.

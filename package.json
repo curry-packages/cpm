@@ -12,6 +12,8 @@
         "abstract-curry": ">= 2.0.0",
         "cdbi"          : ">= 2.0.0",
         "det-parse"     : ">= 0.0.1",
+        "execpath"      : ">= 0.0.1",
+        "frontend-exec" : ">= 0.0.1",
         "opt-parse"     : ">= 0.0.3",
         "boxes"         : ">= 2.0.0",
         "json"          : ">= 2.0.0",

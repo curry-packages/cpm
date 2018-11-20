@@ -12,7 +12,6 @@ module CPM.FileUtil
   , linkTarget
   , copyDirectoryFollowingSymlinks
   , quote
-  , fileInPath, getFileInPath
   , tempDir
   , inTempDir
   , inDirectory
@@ -80,27 +79,6 @@ linkTarget link = do
 --- blanks.
 quote :: String -> String
 quote s = "\"" ++ s ++ "\""
-
---- Checks whether a file exists in one of the directories on the PATH.
-fileInPath :: String -> IO Bool
-fileInPath file = do
-  path <- getEnviron "PATH"
-  let dirs = splitOn ":" path
-  (liftIO (any id)) $ mapIO (doesFileExist . (</> file)) dirs
-
---- Checks whether a file exists in one of the directories on the PATH
---- and returns absolute path, otherwise returns `Nothing`.
-getFileInPath :: String -> IO (Maybe String)
-getFileInPath file = do
-  path <- getEnviron "PATH"
-  checkPath (splitOn ":" path)
- where
-  checkPath [] = return Nothing
-  checkPath (dir:dirs) = do
-    let dirfile = dir </> file
-    ifFileExists dirfile
-                 (getAbsolutePath dirfile >>= return . Just)
-                 (checkPath dirs)
 
 --- Gets CPM's temporary directory.
 tempDir :: IO String

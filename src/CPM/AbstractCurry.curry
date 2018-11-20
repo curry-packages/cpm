@@ -12,18 +12,20 @@ module CPM.AbstractCurry
   , applyModuleRenames
   ) where
 
-import Distribution ( FrontendTarget (..), FrontendParams (..), defaultParams
-                    , callFrontendWithParams, setQuiet, setFullPath
-                    , sysLibPath, inCurrySubdir, modNameToPath
+import Distribution ( sysLibPath, inCurrySubdir, modNameToPath
                     , inCurrySubdirModule, lookupModuleSource )
-import List                 ( intercalate, nub )
-import FilePath             ( (</>), (<.>), takeFileName, replaceExtension )
+import List         ( intercalate, nub )
+import FilePath     ( (</>), (<.>), takeFileName, replaceExtension )
+import System
+
 import AbstractCurry.Files  ( readAbstractCurryFile, writeAbstractCurryFile )
 import AbstractCurry.Pretty ( showCProg )
 import AbstractCurry.Select ( imports )
 import AbstractCurry.Transform
 import AbstractCurry.Types
-import System
+import System.FrontendExec  ( FrontendTarget (..), FrontendParams (..)
+                            , defaultParams, callFrontendWithParams
+                            , setQuiet, setFullPath )
 
 import CPM.ErrorLogger
 import qualified CPM.PackageCache.Runtime as RuntimeCache
