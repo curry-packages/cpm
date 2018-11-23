@@ -58,7 +58,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 20/11/2018)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 23/11/2018)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -940,7 +940,7 @@ installExecutable cfg pkg =
            getLogLevel >>= \lvl ->
            getEnviron "PATH" >>= \path ->
            log Info ("Compiling main module: " ++ mainmod) |>
-           let (cmpname,_,_) = compilerVersion cfg
+           let (cmpname,_,_,_) = compilerVersion cfg
                cmd = unwords $
                        [":set", if levelGte Debug lvl then "v1" else "v0"
                        , maybe "" id (lookup cmpname eopts)

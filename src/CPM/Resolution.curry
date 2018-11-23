@@ -502,9 +502,9 @@ isCompatibleToCompiler cfg p = case compats of
     Nothing -> False -- No constraints for current compiler
                      -- => compiler is incompatible
     Just (CompilerCompatibility _ c) ->
-               isDisjunctionCompatible (maj, min, 0, Nothing) c
+               isDisjunctionCompatible (maj, min, revi, Nothing) c
  where
-  (name, maj, min) = compilerVersion cfg
+  (name, maj, min, revi) = compilerVersion cfg
   compats = compilerCompatibility p
   constraintForCompiler = find (\(CompilerCompatibility c _) -> c == name)
                                compats
