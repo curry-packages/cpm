@@ -11,5 +11,6 @@ frontend-exec https://git.ps.informatik.uni-kiel.de/curry-packages/frontend-exec
 json https://git.ps.informatik.uni-kiel.de/curry-packages/json.git v2.0.0
 opt-parse https://git.ps.informatik.uni-kiel.de/curry-packages/opt-parse.git v0.0.3
 propertyfile https://git.ps.informatik.uni-kiel.de/curry-packages/propertyfile.git v0.0.1
+scc https://git.ps.informatik.uni-kiel.de/curry-packages/scc.git v0.0.1
 wl-pprint https://git.ps.informatik.uni-kiel.de/curry-packages/wl-pprint.git v0.0.1
 xml https://git.ps.informatik.uni-kiel.de/curry-packages/xml.git v2.0.0
