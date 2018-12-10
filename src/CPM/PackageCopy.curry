@@ -138,15 +138,19 @@ installLocalDependenciesWithRepo cfg repo dir pkgSpec =
   succeedIO (pkgSpec, cpkgs)
 
 --- Links a directory into the local package cache. Used for `cypm link`.
-linkToLocalCache :: String -> String -> IO (ErrorLogger ())
-linkToLocalCache src pkgDir = do
+linkToLocalCache :: Config -> String -> String -> IO (ErrorLogger ())
+linkToLocalCache cfg src pkgDir = do
   dirExists <- doesDirectoryExist src
   if dirExists
     then loadPackageSpec src |>= \pkgSpec ->
-         LocalCache.createLink pkgDir src (packageId pkgSpec) True |> 
-         succeedIO ()
-    else log Critical ("Directory '" ++ src ++ "' does not exist.") |>
-         succeedIO ()
+         getPackageVersion cfg (name pkgSpec) (version pkgSpec) >>=
+         maybe
+           (log Critical
+                ("Package '" ++ packageId pkgSpec ++ "' not in repository!\n" ++
+                 "Note: you can only link copies of existing packages."))
+           (\_ -> LocalCache.createLink pkgDir src (packageId pkgSpec) True |> 
+                  succeedIO ())
+    else log Critical ("Directory '" ++ src ++ "' does not exist.")
 
 --- Resolves the dependencies for a package copy and fills the package caches.
 resolveAndCopyDependencies :: Config -> Repository -> GC.GlobalCache -> String 
