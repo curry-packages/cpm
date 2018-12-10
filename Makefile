@@ -1,5 +1,5 @@
 # Root location of the Curry System specified by variable CURRYROOT
-CURRYROOT := $(shell curry :set v0 :set -time :add Distribution :eval "putStrLn installDir" :quit)
+CURRYROOT := $(shell curry --nocypm :set v0 :set -time :add Distribution :eval "putStrLn installDir" :quit)
 
 # Curry system binary:
 export CURRY = $(CURRYROOT)/bin/curry
