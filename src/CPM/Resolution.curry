@@ -81,8 +81,9 @@ showConflict (ResolutionSuccess _ _) = "Resolution succeeded."
 showConflict (ResolutionFailure t) = case findRelevantConflict t of
   Just c  -> showConflictState c
   Nothing -> case missingPackages $ clState $ findDeepestNode t of
-    []    -> "Conflict resolution failed for an unknown reason :(\n" ++
-             "Please clean your package ('cypm clean') and try again..."
+    []    -> "Conflict resolution failed for an unknown reason... Hint:(\n" ++
+             "Please clean your package ('cypm clean') and/or\n" ++
+             "your package index ('cypm update') and try again..."
     (d@(Dependency p _):_) ->
       "There seems to be no version of package " ++ p ++
       " that can satisfy the constraint " ++ showDependency d
