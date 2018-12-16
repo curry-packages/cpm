@@ -10,7 +10,7 @@ import Directory    ( doesFileExist, getAbsolutePath, doesDirectoryExist
                     , getCurrentDirectory, getDirectoryContents
                     , getModificationTime
                     , renameFile, removeFile, setCurrentDirectory )
-import Distribution ( installDir, stripCurrySuffix, addCurrySubdir )
+import Distribution ( installDir )
 import Either
 import FilePath     ( (</>), splitSearchPath, replaceExtension, takeExtension
                     , pathSeparator, isPathSeparator )
@@ -22,10 +22,11 @@ import Sort         ( sortBy )
 import System       ( getArgs, getEnviron, setEnviron, unsetEnviron, exitWith
                     , system )
 
-import Boxes        ( table, render )
+import Boxes            ( table, render )
 import OptParse
-import System.Path  ( fileInPath )
-import Text.CSV     ( showCSV )
+import System.CurryPath ( addCurrySubdir, stripCurrySuffix )
+import System.Path      ( fileInPath )
+import Text.CSV         ( showCSV )
 
 import CPM.ErrorLogger
 import CPM.FileUtil ( joinSearchPath, safeReadFile, whenFileExists

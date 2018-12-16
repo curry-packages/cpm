@@ -12,8 +12,6 @@ module CPM.AbstractCurry
   , applyModuleRenames
   ) where
 
-import Distribution ( sysLibPath, inCurrySubdir, modNameToPath
-                    , inCurrySubdirModule, lookupModuleSource )
 import List         ( intercalate, nub )
 import FilePath     ( (</>), (<.>), takeFileName, replaceExtension )
 import System
@@ -23,6 +21,8 @@ import AbstractCurry.Pretty ( showCProg )
 import AbstractCurry.Select ( imports )
 import AbstractCurry.Transform
 import AbstractCurry.Types
+import System.CurryPath     ( sysLibPath, inCurrySubdir, modNameToPath
+                            , inCurrySubdirModule, lookupModuleSource )
 import System.FrontendExec  ( FrontendTarget (..), FrontendParams (..)
                             , defaultParams, callFrontendWithParams
                             , setQuiet, setFullPath )

@@ -12,10 +12,10 @@ module CPM.Package.Helpers
   ) where
 
 import Directory
-import Distribution ( addCurrySubdir )
 import FilePath
 import List         ( splitOn, nub )
 
+import System.CurryPath ( addCurrySubdir )
 import Text.Pretty hiding ( (</>) )
 
 import CPM.Config   ( Config, homePackageDir )

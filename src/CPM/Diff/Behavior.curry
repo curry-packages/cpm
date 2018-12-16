@@ -19,33 +19,33 @@ module CPM.Diff.Behavior
   , findFunctionsToCompare
   ) where
 
+import Char      ( isAlphaNum )
+import Directory ( createDirectory, doesDirectoryExist, getTemporaryDirectory )
+import FilePath  ( (</>), joinPath )
+import Function  ( both )
+import List      ( intercalate, intersect, nub, splitOn, isPrefixOf, isInfixOf
+                 , find, delete, (\\), nubBy )
+import Maybe     ( isJust, fromJust, fromMaybe, listToMaybe )
+import System    ( getEnviron, setEnviron, unsetEnviron )
+
 import AbstractCurry.Build
 import AbstractCurry.Pretty ( defaultOptions, ppCTypeExpr, showCProg )
 import AbstractCurry.Select ( publicFuncNames, funcName, functions, funcArity
                             , funcType, argTypes, typeName, types, tconsOfType
-                            , resultType, isIOType, typeOfQualType )
+                            , tconsArgsOfType, resultType, isIOType
+                            , typeOfQualType )
 import AbstractCurry.Transform (updCFuncDecl)
 import AbstractCurry.Types ( CurryProg (..), CFuncDecl (..), CVisibility (..)
                            , CTypeExpr (..), CPattern (..), CExpr (..)
                            , CTypeDecl (..), CConsDecl (..), CFieldDecl (..)
                            , CVarIName, QName)
-import Char      (isAlphaNum)
-import Directory (createDirectory, doesDirectoryExist, getTemporaryDirectory)
-import Distribution (lookupModuleSource)
-import FilePath ((</>), joinPath)
-import Function (both)
-import List   ( intercalate, intersect, nub, splitOn, isPrefixOf, isInfixOf
-              , find, delete, (\\), nubBy )
-import Maybe  ( isJust, fromJust, fromMaybe, listToMaybe )
-import System ( getEnviron, setEnviron, unsetEnviron )
-
-import AbstractCurry.Select ( tconsArgsOfType )
 import Analysis.Types       ( Analysis )
 import Analysis.ProgInfo    ( ProgInfo, emptyProgInfo, combineProgInfo
                             , lookupProgInfo)
 import Analysis.Termination ( productivityAnalysis, Productivity(..) )
 import Analysis.TypeUsage   ( typesInValuesAnalysis )
 import CASS.Server          ( analyzeGeneric )
+import System.CurryPath     ( lookupModuleSource )
 import Text.Pretty          ( pPrint, text, indent, vcat, (<+>), (<$$>) )
 
 import CPM.AbstractCurry ( readAbstractCurryFromDeps, loadPathForPackage )
