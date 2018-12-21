@@ -20,10 +20,10 @@ import Function     ( (***) )
 import IOExts       ( evalCmd )
 import List         ( split, splitOn, intersperse )
 import Maybe        ( mapMaybe )
-import PropertyFile ( readPropertyFile )
 import Read         ( readInt )
 
-import System.Path  ( getFileInPath )
+import Data.PropertyFile ( readPropertyFile )
+import System.Path       ( getFileInPath )
 
 import CPM.ErrorLogger
 import CPM.FileUtil ( ifFileExists )
