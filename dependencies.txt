@@ -4,6 +4,7 @@ cass-analysis https://git.ps.informatik.uni-kiel.de/curry-packages/cass-analysis
 cass https://git.ps.informatik.uni-kiel.de/curry-packages/cass.git v2.0.0
 cdbi https://git.ps.informatik.uni-kiel.de/curry-packages/cdbi.git v2.0.0
 csv https://git.ps.informatik.uni-kiel.de/curry-packages/csv.git v1.0.0
+currypath https://git.ps.informatik.uni-kiel.de/curry-packages/currypath.git v0.0.1
 det-parse https://git.ps.informatik.uni-kiel.de/curry-packages/det-parse.git v0.0.1
 execpath https://git.ps.informatik.uni-kiel.de/curry-packages/execpath.git v0.0.1
 flatcurry https://git.ps.informatik.uni-kiel.de/curry-packages/flatcurry.git v2.0.0
