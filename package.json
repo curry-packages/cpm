@@ -23,6 +23,7 @@
         "json"          : ">= 2.0.0",
         "opt-parse"     : ">= 0.0.3",
         "propertyfile"  : ">= 0.0.1",
+        "redblacktree"  : ">= 0.0.1",
         "wl-pprint"     : ">= 0.0.1"
     },
     "compilerCompatibility": {
