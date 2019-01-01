@@ -20,7 +20,7 @@ module CPM.LookupSet
   ) where
 
 import List (sortBy, delete, deleteBy)
-import Test.EasyCheck
+import Test.Prop
 
 import Data.Table.RBTree as Table ( TableRBT, empty, lookup, toList,update )
 
@@ -113,13 +113,13 @@ findAllVersions (LookupSet ls o) p pre = localSorted' ++ nonLocalSorted
     isLocal (FromRepository, _) = False
     ps = map snd 
 
-test_findAllVersions_localBeforeNonLocal :: Test.EasyCheck.Prop
+test_findAllVersions_localBeforeNonLocal :: Prop
 test_findAllVersions_localBeforeNonLocal = findAllVersions ls "A" False -=- [aLocal, aNonLocal]
   where aLocal = cPackage "A" (1, 0, 0, Nothing) []
         aNonLocal = cPackage "A" (1, 1, 0, Nothing) []
         ls = addPackage (addPackage emptySet aLocal FromLocalCache) aNonLocal FromRepository
 
-test_findAllVersions_nonLocalIfIgnored :: Test.EasyCheck.Prop
+test_findAllVersions_nonLocalIfIgnored :: Prop
 test_findAllVersions_nonLocalIfIgnored = findAllVersions ls "A" False -=- [aNonLocal]
   where aLocal = cPackage "A" (1, 0, 0, Nothing) []
         aNonLocal = cPackage "A" (1, 1, 0, Nothing) []

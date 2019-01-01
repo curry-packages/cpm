@@ -99,7 +99,7 @@ import CPM.Repository (Repository)
 -- its dependencies:
 --
 -- ```
--- test_sayHello :: SayHello.MyType -> Test.EasyCheck.Prop
+-- test_sayHello :: SayHello.MyType -> Test.Prop.Prop
 -- test_sayHello x0 = V_1_0_0_SayHello.sayHello x0 <~> V_1_1_0_SayHello.sayHello x0
 -- ```
 --
@@ -289,7 +289,7 @@ genCurryCheckProgram cfg repo gc prodfuncs info groundequiv acyCache loadpath =
   mods = map (fst . funcName . snd) prodfuncs
   modsA = map (\mod -> (infPrefixA info) ++ "_" ++ mod) mods
   modsB = map (\mod -> (infPrefixB info) ++ "_" ++ mod) mods
-  imports = modsA ++ modsB ++ ["Test.EasyCheck"]
+  imports = modsA ++ modsB ++ ["Test.Prop"]
 
 --- Generates functions to limit the result depth of values of
 --- the given data type.
@@ -764,12 +764,12 @@ transCTCon2Limit (_,tcn) = ("Compare", "limit" ++ trans tcn)
           | "(," `isPrefixOf` n = "Tuple" ++ show (length n - 1)
           | otherwise           = n
 
---- Qualify a name by `Test.EasyCheck` module:
+--- Qualify a name by `Test.Prop` module:
 easyCheckMod :: String -> QName
-easyCheckMod n = ("Test.EasyCheck", n)
+easyCheckMod n = ("Test.Prop", n)
 
 --- Generates a function type for the test function by replacing the result 
---- type with `Test.EasyCheck.Prop`. Also instantiates polymorphic types to
+--- type with `Test.Prop.Prop`. Also instantiates polymorphic types to
 --- Bool.
 genTestFuncType :: CFuncDecl -> CTypeExpr
 genTestFuncType f = replaceResultType t (baseType (easyCheckMod "Prop"))

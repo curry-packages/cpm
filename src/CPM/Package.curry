@@ -49,16 +49,16 @@ import JSON.Parser
 import JSON.Pretty ( ppJSON )
 import List        ( intercalate, intersperse, isInfixOf, splitOn )
 import Read        ( readInt )
-import SetFunctions
-import Test.EasyCheck
+import Test.Prop
 
 import DetParse
 
 import CPM.ErrorLogger
 import CPM.FileUtil (ifFileExists)
 
---- A Version. Tuple components are major, minor, patch, prerelease, e.g.
---- 3.1.1-rc5
+--- Data type representin a version number.
+--- It is a tuple where the components are major, minor, patch, prerelease,
+--- e.g., 3.1.1-rc5
 type Version = (Int, Int, Int, Maybe String)
 
 --- The initial version of a new package.
@@ -382,19 +382,19 @@ isNumeric = all isDigit
 ltShortlex :: String -> String -> Bool
 ltShortlex a b = (length a == length b && a < b) || length a < length b
 
-test_shorterPrereleaseIsSmaller :: Test.EasyCheck.Prop
+test_shorterPrereleaseIsSmaller :: Prop
 test_shorterPrereleaseIsSmaller =
   always $ (0, 0, 0, Just "rc") `vlt` (0, 0, 0, Just "beta")
 
-test_numericIsSmallerLeft :: Test.EasyCheck.Prop
+test_numericIsSmallerLeft :: Prop
 test_numericIsSmallerLeft =
   always $ (0, 0, 0, Just "1234") `vlt` (0, 0, 0, Just "rc")
 
-test_numericIsSmallerRight :: Test.EasyCheck.Prop
+test_numericIsSmallerRight :: Prop
 test_numericIsSmallerRight =
   always $ not $ (0, 0, 0, Just "rc") `vlt` (0, 0, 0, Just "1234")
 
-test_numbersAreComparedNumerically :: Test.EasyCheck.Prop
+test_numbersAreComparedNumerically :: Prop
 test_numbersAreComparedNumerically =
   always $ (0, 0, 0, Just "0003") `vlt` (0, 0, 0, Just "123")
 
@@ -657,20 +657,20 @@ optionalString k kv f = case lookup k kv of
   Just JNull       -> Left $ "Expected a string, got 'null'" ++ forKey
  where forKey = " for key '" ++ k ++ "'"
 
-test_specFromJObject_mandatoryFields :: Test.EasyCheck.Prop
+test_specFromJObject_mandatoryFields :: Prop
 test_specFromJObject_mandatoryFields =
   is (packageSpecFromJObject obj)
      (\x -> isLeft x && isInfixOf "name" ((head . lefts) [x]))
   where obj = [("hello", JString "world")]
 
-test_specFromJObject_invalidVersion :: Test.EasyCheck.Prop
+test_specFromJObject_invalidVersion :: Prop
 test_specFromJObject_invalidVersion =
   is (packageSpecFromJObject obj)
      (\x -> isLeft x && isInfixOf "version" ((head . lefts) [x]))
  where obj = [ ("name", JString "mypackage"), ("author", JString "test")
              , ("synopsis", JString "great!"), ("version", JString "1.2.b")]
 
-test_specFromJObject_minimalSpec :: Test.EasyCheck.Prop
+test_specFromJObject_minimalSpec :: Prop
 test_specFromJObject_minimalSpec =
   is (packageSpecFromJObject obj) (\x -> isRight x && test x)
  where obj = [ ("name", JString "mypackage"), ("author", JString "me")
@@ -842,13 +842,13 @@ docuSpecFromJObject kv =
 readVersionConstraints :: String -> Maybe [[VersionConstraint]]
 readVersionConstraints s = parse pVersionConstraints (dropWhile isSpace s)
 
-test_readVersionConstraints_single :: Test.EasyCheck.Prop
+test_readVersionConstraints_single :: Prop
 test_readVersionConstraints_single = readVersionConstraints "=1.2.3" -=- Just [[VExact (1, 2, 3, Nothing)]]
 
-test_readVersionConstraints_multi :: Test.EasyCheck.Prop
+test_readVersionConstraints_multi :: Prop
 test_readVersionConstraints_multi = readVersionConstraints "> 1.0.0, < 2.3.0" -=- Just [[VGt (1, 0, 0, Nothing), VLt (2, 3, 0, Nothing)]]
 
-test_readVersionConstraints_disjunction :: Test.EasyCheck.Prop
+test_readVersionConstraints_disjunction :: Prop
 test_readVersionConstraints_disjunction = readVersionConstraints ">= 4.0.0 || < 3.0.0, > 2.0.0" -=- Just [[VGte (4, 0, 0, Nothing)], [VLt (3, 0, 0, Nothing), VGt (2, 0, 0, Nothing)]]
 
 pVersionConstraints :: Parser [[VersionConstraint]]
@@ -861,31 +861,31 @@ pConjunction = (:) <$> pVersionConstraint <*> (pWhitespace *> char ',' *> pWhite
 readVersionConstraint :: String -> Maybe VersionConstraint
 readVersionConstraint s = parse pVersionConstraint s
 
-test_readVersionConstraint_exact :: Test.EasyCheck.Prop
+test_readVersionConstraint_exact :: Prop
 test_readVersionConstraint_exact = readVersionConstraint "=1.2.3" -=- (Just $ VExact (1, 2, 3, Nothing))
 
-test_readVersionConstraint_without :: Test.EasyCheck.Prop
+test_readVersionConstraint_without :: Prop
 test_readVersionConstraint_without = readVersionConstraint "1.2.3" -=- (Just $ VExact (1, 2, 3, Nothing))
 
-test_readVersionConstraint_invalidVersion :: Test.EasyCheck.Prop
+test_readVersionConstraint_invalidVersion :: Prop
 test_readVersionConstraint_invalidVersion = readVersionConstraint "=4.a.3" -=- Nothing
 
-test_readVersionConstraint_invalidConstraint :: Test.EasyCheck.Prop
+test_readVersionConstraint_invalidConstraint :: Prop
 test_readVersionConstraint_invalidConstraint = readVersionConstraint "x1.2.3" -=- Nothing
 
-test_readVersionConstraint_greaterThan :: Test.EasyCheck.Prop
+test_readVersionConstraint_greaterThan :: Prop
 test_readVersionConstraint_greaterThan = readVersionConstraint "> 1.2.3" -=- (Just $ VGt (1, 2, 3, Nothing))
 
-test_readVersionConstraint_greaterThanEqual :: Test.EasyCheck.Prop
+test_readVersionConstraint_greaterThanEqual :: Prop
 test_readVersionConstraint_greaterThanEqual = readVersionConstraint ">= 1.2.3" -=- (Just $ VGte (1, 2, 3, Nothing))
 
-test_readVersionConstraint_lessThan :: Test.EasyCheck.Prop
+test_readVersionConstraint_lessThan :: Prop
 test_readVersionConstraint_lessThan = readVersionConstraint "<1.2.3" -=- (Just $ VLt (1, 2, 3, Nothing))
 
-test_readVersionConstraint_lessThanEqual :: Test.EasyCheck.Prop
+test_readVersionConstraint_lessThanEqual :: Prop
 test_readVersionConstraint_lessThanEqual = readVersionConstraint "<= 1.2.3" -=- (Just $ VLte (1, 2, 3, Nothing))
 
-test_readVersionConstraint_compatible :: Test.EasyCheck.Prop
+test_readVersionConstraint_compatible :: Prop
 test_readVersionConstraint_compatible = readVersionConstraint "~>1.2.3" -=- (Just $ VCompatible (1, 2, 3, Nothing))
 
 pVersionConstraint :: Parser VersionConstraint
