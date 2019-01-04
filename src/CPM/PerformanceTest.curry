@@ -5,8 +5,6 @@
 
 module CPM.PerformanceTest where
 
-import Profile
-
 import ReadShowTerm
 import IO
 import IOExts
@@ -17,10 +15,15 @@ import List
 import Maybe
 import Function
 import Either
-import JSON.Pretty
+import Read (readInt)
+import System
+
 import AbstractCurry.Build
 import AbstractCurry.Types hiding (version)
 import AbstractCurry.Pretty
+import Debug.Profile
+import JSON.Pretty
+
 import CPM.LookupSet
 import CPM.ErrorLogger
 import CPM.FileUtil (recreateDirectory)
@@ -32,8 +35,6 @@ import CPM.Config
 import CPM.Repository (Repository, emptyRepository)
 import qualified CPM.PackageCache.Global as GC
 import OptParse
-import Read (readInt)
-import System
 
 --- Possible performance tests.
 data Command = BehaviorDiff | APIDiff | Resolution | CountDeps

@@ -22,6 +22,7 @@
         "frontend-exec" : ">= 0.0.1",
         "json"          : ">= 2.0.0",
         "opt-parse"     : ">= 0.0.3",
+        "profiling"     : ">= 1.0.0",
         "propertyfile"  : ">= 0.0.1",
         "redblacktree"  : ">= 0.0.1",
         "wl-pprint"     : ">= 0.0.1"

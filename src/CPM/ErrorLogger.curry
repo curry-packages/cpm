@@ -23,9 +23,9 @@ module CPM.ErrorLogger
 
 import Global
 import IO      ( hPutStrLn, stderr )
-import Profile -- for show run-time
 import System  ( exitWith, system )
 
+import Debug.Profile -- for show run-time
 import Text.Pretty
 
 infixl 0 |>=, |>, |>>, |->
