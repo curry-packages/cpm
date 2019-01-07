@@ -84,8 +84,10 @@ searchExportedModules cfg pat =
   ) >>= return . filterExpModules . allPackages
  where
   pattern = "%" ++ pat ++ "%"
+  lpat    = map toLower pat
 
-  filterExpModules = filter (\p -> pat `elem` exportedModules p)
+  filterExpModules = filter (\p -> any (\m -> lpat `isInfixOf` (map toLower m))
+                                       (exportedModules p))
   
   toPackage (nm,vs,syn,cmp,exps) =
     emptyPackage { name = nm
@@ -110,9 +112,9 @@ searchExecutable cfg pat =
   ) >>= return . filterExec . allPackages
  where
   pattern = "%" ++ pat ++ "%"
-  s = map toLower pat
+  lpat    = map toLower pat
 
-  filterExec = filter (\p -> s `isInfixOf` (map toLower $ execOfPackage p))
+  filterExec = filter (\p -> lpat `isInfixOf` (map toLower $ execOfPackage p))
   
   toPackage (nm,vs,syn,cmp,exec) =
     emptyPackage { name = nm

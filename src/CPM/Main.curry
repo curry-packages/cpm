@@ -59,7 +59,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 10/12/2018)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 07/01/2019)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -891,7 +891,7 @@ installCmd (InstallOptions (Just pkg) vers pre _ _) cfg = do
   fileExists <- doesFileExist pkg
   if fileExists
     then installFromZip cfg pkg
-    else installapp (CheckoutOptions pkg vers pre) cfg
+    else installApp (CheckoutOptions pkg vers pre) cfg
 installCmd (InstallOptions Nothing (Just _) _ _ _) _ =
   failIO "Must specify package name"
 
@@ -903,9 +903,10 @@ installCmd (InstallOptions Nothing (Just _) _ _ _) _ =
 --- Internal note: the installed package should not be cleaned or removed
 --- after the installation since its execution might refer (via the
 --- config module) to some data stored in the package.
-installapp :: CheckoutOptions -> Config -> IO (ErrorLogger ())
-installapp opts cfg = do
+installApp :: CheckoutOptions -> Config -> IO (ErrorLogger ())
+installApp opts cfg = do
   let apppkgdir = appPackageDir cfg
+      copname   = coPackage opts
       copkgdir  = apppkgdir </> coPackage opts
   curdir <- getCurrentDirectory
   removeDirectoryComplete copkgdir
@@ -915,13 +916,15 @@ installapp opts cfg = do
       log Debug ("Change into directory " ++ copkgdir) |>
       (setCurrentDirectory copkgdir >> succeedIO ()) |>
       loadPackageSpec "." |>= \pkg ->
-      maybe (setCurrentDirectory curdir >>
-             removeDirectoryComplete copkgdir >>
-             failIO ("Package '" ++ name pkg ++
-                     "' does not contain an executable, nothing installed."))
-            (\_ -> installCmd (InstallOptions Nothing Nothing False True False)
-                              cfg)
-            (executableSpec pkg)
+      maybe
+       (setCurrentDirectory curdir >>
+        removeDirectoryComplete copkgdir >>
+        failIO ("Package '" ++ name pkg ++
+                "' has no executable, nothing installed.\n" ++
+                "Hint: use 'cypm add -d " ++ copname ++
+                "' to add new dependency."))
+       (\_ -> installCmd (InstallOptions Nothing Nothing False True False) cfg)
+       (executableSpec pkg)
     )
 
 --- Checks the compiler compatibility.
@@ -951,19 +954,11 @@ installExecutable cfg pkg =
            in compiler (ExecOptions cmd) cfg |>
               log Info ("Installing executable '" ++ name ++ "' into '" ++
                         bindir ++ "'") |>
-              (whenFileExists binexec (backupExistingBin binexec) >>
-               -- renaming might not work across file systems, hence we move:
+              (-- renaming might not work across file systems, hence we move:
                showExecCmd (unwords ["mv", mainmod, binexec]) >>
                checkPath path bindir))
         (executableSpec pkg)
  where
-  backupExistingBin binexec = do
-    let binexecbak = binexec ++ ".bak"
-    showExecCmd $ "rm -f " ++ binexecbak
-    renameFile binexec binexecbak
-    infoMessage $ "Existing executable '" ++ binexec ++ "' saved to '" ++
-                  binexecbak ++ "'."
-
   checkPath path bindir =
     if bindir `elem` splitSearchPath path
       then succeedIO ()
