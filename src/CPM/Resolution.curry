@@ -249,7 +249,7 @@ prune p = filterTree (not . p)
 
 --- Shows a textual representation of a tree.
 showTree :: Tree Doc -> String
-showTree = pPrint . ppTree 
+showTree t = "Package dependencies:\n" ++ pPrint (ppTree t)
 
 --- Pretty prints a tree of Docs into a single Doc.
 ppTree :: Tree Doc -> Doc

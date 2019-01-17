@@ -59,7 +59,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 07/01/2019)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 17/01/2019)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -123,6 +123,10 @@ data Options = Options
   , optDefConfig :: [(String,String)]
   , optWithTime  :: Bool
   , optCommand   :: Command }
+
+-- The default options: no command, no timing, info log level
+defaultOptions :: Options
+defaultOptions = Options Info [] False NoCommand
 
 data Command 
   = NoCommand
@@ -365,9 +369,7 @@ applyEither (f:fs) z = case f z of
   Right z' -> applyEither fs z'
 
 applyParse :: [Options -> Either String Options] -> Either String Options
-applyParse fs = applyEither fs defaultOpts
- where
-  defaultOpts = Options Info [] False NoCommand
+applyParse fs = applyEither fs defaultOptions
 
 (>.>) :: Either String a -> (a -> b) -> Either String b
 a >.> f = case a of 
@@ -744,7 +746,7 @@ optionParser allargs = optParser
                                  Add (addOpts a) { addDependency = True } })
             (  short "d"
             <> long "dependency"
-            <> help "Add a dependency to the current package" )
+            <> help "Add only dependency to the current package" )
    <.> flag (\a -> Right $ a { optCommand =
                                  Add (addOpts a) { forceAdd = True } })
             (  short "f"
@@ -752,8 +754,8 @@ optionParser allargs = optParser
             <> help "Force, i.e., overwrite existing package" )
    <.> arg (\s a -> Right $ a { optCommand =
                                   Add (addOpts a) { addSource = s } })
-           (  metavar "PACKAGE"
-           <> help "The package directory or name to be added" )
+         (  metavar "PACKAGE"
+         <> help "The package name (or directory for option '-p') to be added" )
 
 -- Check if operating system executables we depend on are present on the
 -- current system. Since this takes some time, it is only checked with
@@ -921,8 +923,8 @@ installApp opts cfg = do
         removeDirectoryComplete copkgdir >>
         failIO ("Package '" ++ name pkg ++
                 "' has no executable, nothing installed.\n" ++
-                "Hint: use 'cypm add -d " ++ copname ++
-                "' to add new dependency."))
+                "Hint: use 'cypm add " ++ copname ++
+                "' to add new dependency and install it."))
        (\_ -> installCmd (InstallOptions Nothing Nothing False True False) cfg)
        (executableSpec pkg)
     )
@@ -1120,11 +1122,14 @@ linkCmd (LinkOptions src) cfg =
 --- any other package.
 --- Option `--dependency`: add the package name as a dependency to the
 --- current package
+--- No option: like `--package` followed by `install` command
 addCmd :: AddOptions -> Config -> IO (ErrorLogger ())
 addCmd (AddOptions addpkg adddep pkg force) config
   | addpkg    = addPackageToRepository config pkg force True
   | adddep    = addDependencyCmd pkg force config
-  | otherwise = log Critical "Option --package or --dependency missing!"
+  | otherwise = addDependencyCmd pkg force config |>
+                installCmd (installOpts defaultOptions) config
+
 
 useForce :: String
 useForce = "Use option '-f' or '--force' to overwrite it."
