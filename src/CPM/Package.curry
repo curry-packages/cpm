@@ -5,7 +5,7 @@
 ------------------------------------------------------------------------------
 
 module CPM.Package
-  ( Version, initialVersion
+  ( Version, initialVersion, nextMajor, nextMinor
   , VersionConstraint (..)
   , CompilerCompatibility (..)
   , Package (..), emptyPackage
@@ -64,6 +64,14 @@ type Version = (Int, Int, Int, Maybe String)
 --- The initial version of a new package.
 initialVersion :: Version
 initialVersion = (0,0,1,Nothing)
+
+--- The next major version of a given version.
+nextMajor :: Version -> Version
+nextMajor (maj,_,_,_) = (maj + 1, 0, 0, Nothing)
+
+--- The next minor version of a given version.
+nextMinor :: Version -> Version
+nextMinor (maj,min,_,_) = (maj, min + 1, 0, Nothing)
 
 type Conjunction = [VersionConstraint]
 type Disjunction = [Conjunction]

@@ -1149,7 +1149,8 @@ addDependencyCmd pkgname force config =
   addDepToLocalPackage vers pkgdir =
     loadPackageSpec pkgdir |>= \pkgSpec ->
     let depexists = pkgname `elem` dependencyNames pkgSpec
-        newdeps   = addDep [[VGte vers]] (dependencies pkgSpec)
+        newdeps   = addDep [[VGte vers, VLt (nextMajor vers)]]
+                           (dependencies pkgSpec)
         newpkg    = pkgSpec { dependencies = newdeps }
     in if force || not depexists
          then writePackageSpec newpkg (pkgdir </> "package.json") |>>

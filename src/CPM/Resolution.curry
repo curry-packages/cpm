@@ -523,7 +523,6 @@ isDisjunctionCompatible ver cs = any id (map (all id) rs)
   isCompatible (VGte v) = ver `vgte` v && preReleaseCompatible ver v
   isCompatible (VCompatible v) = ver `vgte` v && ver `vlt` (nextMinor v) &&
     preReleaseCompatible ver v
-  nextMinor (maj, min, _, _) = (maj, min + 1, 0, Nothing)
 
 test_onlyConjunctionCompatible :: Prop
 test_onlyConjunctionCompatible = isDisjunctionCompatible ver dis -=- True
