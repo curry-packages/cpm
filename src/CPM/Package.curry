@@ -161,8 +161,8 @@ data GitRevision = Tag String
 data Package = Package {
     name                  :: String
   , version               :: Version
-  , author                :: String
-  , maintainer            :: Maybe String
+  , author                :: [String]
+  , maintainer            :: [String]
   , synopsis              :: String
   , description           :: Maybe String
   , category              :: [String]
@@ -195,8 +195,8 @@ emptyPackage :: Package
 emptyPackage = Package {
     name                  = ""
   , version               = initialVersion
-  , author                = ""
-  , maintainer            = Nothing
+  , author                = []
+  , maintainer            = []
   , synopsis              = ""
   , description           = Nothing
   , category              = []
@@ -228,9 +228,13 @@ execOfPackage p =
 packageSpecToJSON :: Package -> JValue
 packageSpecToJSON pkg = JObject $
   [ ("name", JString $ name pkg)
-  , ("version", JString $ showVersion $ version pkg)
-  , ("author", JString $ author pkg) ] ++
-  maybeStringToJSON "maintainer" (maintainer pkg) ++
+  , ("version", JString $ showVersion $ version pkg) ] ++
+  (case author pkg of []  -> [("author", JString "")]
+                      [s] -> [("author", JString s)]
+                      xs  -> stringListToJSON "author" xs) ++
+  (case maintainer pkg of []  -> []
+                          [s] -> [ ("maintainer", JString s) ]
+                          xs  -> stringListToJSON "maintainer" xs) ++
   [ ("synopsis", JString $ synopsis pkg) ] ++
   maybeStringToJSON "description" (description pkg) ++
   stringListToJSON  "category"    (category pkg) ++
@@ -486,8 +490,8 @@ packageSpecFromJObject :: [(String, JValue)] -> Either String Package
 packageSpecFromJObject kv =
   mandatoryString "name" kv $ \name ->
   mandatoryString "version" kv $ \versionS ->
-  mandatoryString "author" kv $ \author ->
-  optionalString "maintainer" kv $ \maintainer ->
+  getStringOrStringList True  "An author"    "author" $ \author ->
+  getStringOrStringList False "A maintainer" "maintainer" $ \maintainer ->
   mandatoryString "synopsis" kv $ \synopsis ->
   optionalString "description" kv $ \description ->
   getStringList "A category" "category" $ \categories ->
@@ -580,20 +584,42 @@ packageSpecFromJObject kv =
       Just JNull       -> Left $ "Expected an object, got 'null'"   ++ forKey
      where forKey = " for key 'source'"
 
+    getStringOrStringList :: Bool -> String -> String
+                          -> ([String] -> Either String a)
+                          -> Either String a
+    getStringOrStringList mandatory keystr key f = case lookup key kv of
+      Nothing -> if mandatory
+                   then Left $ "Mandatory field missing: '" ++ key ++ "'"
+                   else f []
+      Just (JArray a)  -> case stringsFromJArray keystr a of
+        Left  e -> Left e
+        Right e -> f e
+      Just (JString s) -> f [s]
+      Just (JObject _) -> Left $ expectedText ++ "an object" ++ forKey
+      Just (JNumber _) -> Left $ expectedText ++ "a number"  ++ forKey
+      Just JTrue       -> Left $ expectedText ++ "'true'"    ++ forKey
+      Just JFalse      -> Left $ expectedText ++ "'false'"   ++ forKey
+      Just JNull       -> Left $ expectedText ++ "'null'"    ++ forKey
+     where
+      forKey       = " for key '" ++ key ++ "'"
+      expectedText = "Expected an array, got "
+
     getStringList :: String -> String -> ([String] -> Either String a)
                   -> Either String a
     getStringList keystr key f = case lookup key kv of
       Nothing -> f []
       Just (JArray a)  -> case stringsFromJArray keystr a of
-        Left e -> Left e
+        Left  e -> Left e
         Right e -> f e
-      Just (JObject _) -> Left $ "Expected an array, got an object" ++ forKey
-      Just (JString _) -> Left $ "Expected an array, got a string"  ++ forKey
-      Just (JNumber _) -> Left $ "Expected an array, got a number"  ++ forKey
-      Just JTrue       -> Left $ "Expected an array, got 'true'"    ++ forKey
-      Just JFalse      -> Left $ "Expected an array, got 'false'"   ++ forKey
-      Just JNull       -> Left $ "Expected an array, got 'null'"    ++ forKey
-     where forKey = " for key '" ++ key ++ "'"
+      Just (JObject _) -> Left $ expectedText ++ "an object" ++ forKey
+      Just (JString _) -> Left $ expectedText ++ "a string"  ++ forKey
+      Just (JNumber _) -> Left $ expectedText ++ "a number"  ++ forKey
+      Just JTrue       -> Left $ expectedText ++ "'true'"    ++ forKey
+      Just JFalse      -> Left $ expectedText ++ "'false'"   ++ forKey
+      Just JNull       -> Left $ expectedText ++ "'null'"    ++ forKey
+     where
+      forKey       = " for key '" ++ key ++ "'"
+      expectedText = "Expected an array, got "
 
     getExecutableSpec :: (Maybe PackageExecutable -> Either String a)
                       -> Either String a
@@ -683,7 +709,7 @@ test_specFromJObject_minimalSpec =
   is (packageSpecFromJObject obj) (\x -> isRight x && test x)
  where obj = [ ("name", JString "mypackage"), ("author", JString "me")
              , ("synopsis", JString "great!"), ("version", JString "1.2.3")]
-       test x = author p == "me" && name p == "mypackage"
+       test x = author p == ["me"] && name p == "mypackage"
           where p = (head . rights) [x]
 
 --- Reads a list of strings from a list of JValues.
@@ -826,14 +852,15 @@ getOptStringList optional key kv = case lookup (key++"s") kv of
                then Right []
                else Left $ "'"++key++"s' is not provided in 'testsuite'"
   Just (JArray a)  -> stringsFromJArray ("A "++key) a
-  Just (JObject _) -> Left $ "Expected an array, got an object" ++ forKey
-  Just (JString _) -> Left $ "Expected an array, got a string" ++ forKey
-  Just (JNumber _) -> Left $ "Expected an array, got a number" ++ forKey
-  Just JTrue       -> Left $ "Expected an array, got 'true'" ++ forKey
-  Just JFalse      -> Left $ "Expected an array, got 'false'" ++ forKey
-  Just JNull       -> Left $ "Expected an array, got 'null'" ++ forKey
+  Just (JObject _) -> Left $ expectedText ++ "an object" ++ forKey
+  Just (JString _) -> Left $ expectedText ++ "a string" ++ forKey
+  Just (JNumber _) -> Left $ expectedText ++ "a number" ++ forKey
+  Just JTrue       -> Left $ expectedText ++ "'true'" ++ forKey
+  Just JFalse      -> Left $ expectedText ++ "'false'" ++ forKey
+  Just JNull       -> Left $ expectedText ++ "'null'" ++ forKey
  where
   forKey = " for key '" ++ key ++ "s'"
+  expectedText = "Expected an array, got "
 
 --- Reads documentation specification from the key-value-pairs of a JObject.
 docuSpecFromJObject :: [(String, JValue)] -> Either String PackageDocumentation

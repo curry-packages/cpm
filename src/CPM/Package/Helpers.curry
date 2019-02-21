@@ -154,16 +154,17 @@ renderPackageInfo allinfos plain installed pkg = pPrint doc
   ver       = fill maxLen (boldText "Version") <+>
               (text $ showVersion $ version pkg)
   auth      = fill maxLen (boldText "Author") <+>
-              indent 0 (fillSep (map (text . strip) (splitOn "," $ author pkg)))
+              indent 0 (fillSep (map (text . strip)
+                                     (concatMap (splitOn ",") $ author pkg)))
   synop     = fill maxLen (boldText "Synopsis") <+>
               indent 0 (fillSep (map text (words (synopsis pkg))))
   deps      = boldText "Dependencies" <$$>
               (vcat $ map (indent 4 . text . showDependency) $ dependencies pkg)
 
   maintnr = case maintainer pkg of
-    Nothing -> empty
-    Just  s -> fill maxLen (boldText "Maintainer") <+>
-               indent 0 (fillSep (map (text . strip) (splitOn "," s)))
+    [] -> empty
+    xs -> fill maxLen (boldText "Maintainer") <+>
+          indent 0 (fillSep (map (text . strip) (concatMap (splitOn ",") xs)))
 
   cats =
     if null (category pkg)
@@ -279,7 +280,7 @@ getLocalPackageSpec cfg dir = do
       let newpkg  = emptyPackage
                       { name            = snd (splitFileName homepkgdir)
                       , version         = initialVersion
-                      , author          = "CPM"
+                      , author          = ["CPM"]
                       , synopsis        = "Default home package"
                       , dependencies    = []
                       }

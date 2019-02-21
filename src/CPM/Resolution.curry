@@ -695,10 +695,10 @@ cPackage :: String -> Version -> [Dependency] -> Package
 cPackage p v ds = emptyPackage {
     name = p
   , version = v
-  , author = "author"
+  , author = ["author"]
   , synopsis = "JSON library for Curry"
   , dependencies = ds
-  , maintainer = Nothing
+  , maintainer = []
   , description = Nothing
   , license = Nothing
   , licenseFile = Nothing
@@ -715,10 +715,10 @@ cPackageCC :: String -> Version -> [CompilerCompatibility] -> Package
 cPackageCC p v cs = emptyPackage {
     name = p
   , version = v
-  , author = "author"
+  , author = ["author"]
   , synopsis = "JSON library for Curry"
   , dependencies = []
-  , maintainer = Nothing
+  , maintainer = []
   , description = Nothing
   , license = Nothing
   , licenseFile = Nothing

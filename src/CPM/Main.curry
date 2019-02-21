@@ -59,7 +59,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 17/01/2019)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 21/02/2019)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -1467,7 +1467,7 @@ newPackage (NewOptions pname) = do
   createDirectory pname
   let pkgSpec = emptyPackage { name            = pname
                              , version         = initialVersion
-                             , author          = emptyAuthor
+                             , author          = [emptyAuthor]
                              , synopsis        = emptySynopsis
                              , category        = ["Programming"]
                              , dependencies    = [] 
