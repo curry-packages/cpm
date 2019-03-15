@@ -179,9 +179,8 @@ tryReadRepositoryFrom path = do
   verPaths  <- return $ concatMap (\ (d, p) -> map (d </>) p)
                      $ zip pkgPaths verDirs
   specPaths <- return $ map (</> "package.json") verPaths
-  putStr "Reading repository index"
+  infoMessage "Reading repository index..."
   specs     <- mapIO readPackageFile specPaths
-  putChar '\n'
   when (null (lefts specs)) $ debugMessage "Finished reading repository"
   return $ (Repository $ rights specs, lefts specs)
  where

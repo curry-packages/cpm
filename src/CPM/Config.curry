@@ -138,13 +138,10 @@ setHomePackageDir cfg
   | null (homePackageDir cfg)
   = do homedir <- getHomeDirectory
        let cpmdir = homedir </> ".cpm"
-       excpmdir <- doesDirectoryExist cpmdir
-       if excpmdir
-         then let (cname,cmaj,cmin,crev) = compilerVersion cfg
-                  cvname     = cname ++ "-" ++ showVersionNumer (cmaj,cmin,crev)
-                  homepkgdir = cpmdir </> cvname ++ "-homepackage"
-              in return cfg { homePackageDir = homepkgdir }
-         else return cfg
+           (cname,cmaj,cmin,crev) = compilerVersion cfg
+           cvname     = cname ++ "-" ++ showVersionNumer (cmaj,cmin,crev)
+           homepkgdir = cpmdir </> cvname ++ "-homepackage"
+       return cfg { homePackageDir = homepkgdir }
   | otherwise = return cfg
 
 --- Sets the correct compiler version in the configuration.
