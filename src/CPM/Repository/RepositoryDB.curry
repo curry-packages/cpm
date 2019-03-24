@@ -7,7 +7,7 @@
 
 module CPM.Repository.RepositoryDB where
 
-import qualified Data.Time
+import qualified Data.Time                  as Time
 import qualified Database.CDBI.ER
 import qualified Database.CDBI.Criteria
 import qualified Database.CDBI.Connection

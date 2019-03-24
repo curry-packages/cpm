@@ -4,31 +4,35 @@
 
 module CPM.Main where
 
+import Data.Char           ( toLower )
+import Data.List           ( groupBy, intercalate, isPrefixOf, isSuffixOf
+                           , nub, split, sortBy, splitOn )
 import Data.Either
-import Data.Char          ( toLower )
-import Data.List          ( groupBy, intercalate, isPrefixOf, isSuffixOf
-                          , nub, split, splitOn )
-import System.Directory   ( doesFileExist, getAbsolutePath, doesDirectoryExist
-                          , copyFile, createDirectory, createDirectoryIfMissing
-                          , getCurrentDirectory, getDirectoryContents
-                          , getModificationTime
-                          , renameFile, removeFile, setCurrentDirectory )
-import Distribution       ( installDir, stripCurrySuffix, addCurrySubdir )
-import System.FilePath    ( (</>), splitSearchPath, replaceExtension
-                          , takeExtension, pathSeparator, isPathSeparator )
-import System.IO          ( hFlush, stdout )
-import System.Process     ( exitWith, system )
-import System.Environment ( getEnv, setEnv, unsetEnv, getArgs )
-import Sort               ( sortBy )
+import System.Directory    ( doesFileExist, getAbsolutePath, doesDirectoryExist
+                           , copyFile, createDirectory, createDirectoryIfMissing
+                           , getCurrentDirectory, getDirectoryContents
+                           , getModificationTime
+                           , renameFile, removeFile, setCurrentDirectory )
+import System.Distribution ( installDir )
+import System.FilePath     ( (</>), splitSearchPath, replaceExtension
+                           , takeExtension, pathSeparator, isPathSeparator )
+import System.IO           ( hFlush, stdout )
+import System.Environment  ( getArgs, getEnv, setEnv, unsetEnv )
+import System.Process      ( exitWith, system )
+import Control.Monad       ( when, unless )
+import IOExts              ( evalCmd )
+import Prelude hiding (log, (<|>))
 
-import Boxes    ( table, render )
+import Boxes            ( table, render )
 import OptParse
-import Text.CSV ( showCSV )
+import System.CurryPath ( addCurrySubdir, stripCurrySuffix )
+import System.Path      ( fileInPath )
+import Text.CSV         ( showCSV )
 
 import CPM.ErrorLogger
-import CPM.FileUtil ( fileInPath, joinSearchPath, safeReadFile, whenFileExists
-                    , ifFileExists, inDirectory, removeDirectoryComplete
-                    , copyDirectory, quote )
+import CPM.FileUtil ( joinSearchPath, safeReadFile, whenFileExists
+                    , ifFileExists, inDirectory, inTempDir, recreateDirectory
+                    , removeDirectoryComplete, copyDirectory, quote, tempDir )
 import CPM.Config   ( Config (..)
                     , readConfigurationWith, showCompilerVersion
                     , showConfiguration )
@@ -37,7 +41,7 @@ import CPM.PackageCache.Global ( GlobalCache, readGlobalCache, allPackages
                                , uninstallPackage, packageInstalled )
 import CPM.Package
 import CPM.Package.Helpers ( cleanPackage, getLocalPackageSpec
-                           , renderPackageInfo )
+                           , renderPackageInfo, installPackageSourceTo )
 import CPM.Resolution ( isCompatibleToCompiler, showResult )
 import CPM.Repository ( Repository, findVersion, listPackages
                       , findAllVersions, findLatestVersion
@@ -56,7 +60,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 19/06/2018)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 15/03/2019)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -88,26 +92,27 @@ runWithArgs opts = do
   debugMessage ("Current configuration:\n" ++ showConfiguration config)
   (msgs, result) <- case optCommand opts of
     NoCommand   -> failIO "NoCommand"
-    Config    o -> configCmd   o config
-    Update    o -> updateCmd   o config
-    Compiler  o -> compiler    o config
-    Exec      o -> execCmd     o config
-    Doc       o -> docCmd      o config
-    Test      o -> testCmd     o config
+    Config o    -> configCmd   o config
+    Update o    -> updateCmd   o config
+    Compiler o  -> compiler    o config
+    Exec o      -> execCmd     o config
+    Doc  o      -> docCmd      o config
+    Test o      -> testCmd     o config
     Uninstall o -> uninstall   o config
-    Deps      o -> depsCmd     o config
+    Deps o      -> depsCmd     o config
     PkgInfo   o -> infoCmd     o config
-    Link      o -> linkCmd     o config
-    Add       o -> addCmd      o config
-    New       o -> newPackage  o
+    Link o      -> linkCmd     o config
+    Add  o      -> addCmd      o config
+    New o       -> newPackage  o
     List      o -> listCmd     o config
     Search    o -> searchCmd   o config
     Upgrade   o -> upgradeCmd  o config
     Diff      o -> diffCmd     o config
     Checkout  o -> checkoutCmd o config
     Install   o -> installCmd  o config
+    Upload    o -> uploadCmd   o config
     Clean       -> cleanPackage config Info
-  mapIO showLogEntry msgs
+  mapM showLogEntry msgs
   let allOk =  all (levelGte Info) (map logLevelOf msgs) &&
                either (\le -> levelGte Info (logLevelOf le))
                       (const True)
@@ -119,6 +124,10 @@ data Options = Options
   , optDefConfig :: [(String,String)]
   , optWithTime  :: Bool
   , optCommand   :: Command }
+
+-- The default options: no command, no timing, info log level
+defaultOptions :: Options
+defaultOptions = Options Info [] False NoCommand
 
 data Command
   = NoCommand
@@ -141,6 +150,7 @@ data Command
   | Diff       DiffOptions
   | New        NewOptions
   | Clean
+  | Upload     UploadOptions
 
 data ConfigOptions = ConfigOptions
   { configAll :: Bool  -- show also installed packages?
@@ -203,6 +213,12 @@ data NewOptions = NewOptions
 
 data UpdateOptions = UpdateOptions
   { indexURLs :: [String]   -- the URLs of additional index repositories
+  , cleanCache :: Bool      -- clean also repository cache?
+  }
+
+data UploadOptions = UploadOptions
+  { setTag      :: Bool  -- set the tag in the current repository?
+  , forceUpdate :: Bool  -- force update if package with same version exists
   }
 
 data ExecOptions = ExecOptions
@@ -224,11 +240,13 @@ data TestOptions = TestOptions
   { testModules :: Maybe [String] }
 
 data DiffOptions = DiffOptions
-  { diffVersion  :: Maybe Version
-  , diffModules  :: Maybe [String]
-  , diffAPI      :: Bool
-  , diffBehavior :: Bool
-  , diffUseAna   :: Bool }
+  { diffVersion   :: Maybe Version   -- version to be compared
+  , diffModules   :: Maybe [String]  -- modules to be compared
+  , diffAPI       :: Bool            -- check API equivalence
+  , diffBehavior  :: Bool            -- test behavior equivalence
+  , diffGroundEqu :: Bool            -- test ground equivalence only
+  , diffUseAna    :: Bool            -- use termination analysis for safe tests
+  }
 
 configOpts :: Options -> ConfigOptions
 configOpts s = case optCommand s of
@@ -293,7 +311,12 @@ newOpts s = case optCommand s of
 updateOpts :: Options -> UpdateOptions
 updateOpts s = case optCommand s of
   Update opts -> opts
-  _           -> UpdateOptions []
+  _           -> UpdateOptions [] True
+
+uploadOpts :: Options -> UploadOptions
+uploadOpts s = case optCommand s of
+  Upload opts -> opts
+  _           -> UploadOptions True False
 
 execOpts :: Options -> ExecOptions
 execOpts s = case optCommand s of
@@ -319,7 +342,7 @@ testOpts s = case optCommand s of
 diffOpts :: Options -> DiffOptions
 diffOpts s = case optCommand s of
   Diff opts -> opts
-  _         -> DiffOptions Nothing Nothing True True True
+  _         -> DiffOptions Nothing Nothing True True False True
 
 readLogLevel :: String -> Either String LogLevel
 readLogLevel s = case map toLower s of
@@ -347,9 +370,7 @@ applyEither (f:fs) z = case f z of
   Right z' -> applyEither fs z'
 
 applyParse :: [Options -> Either String Options] -> Either String Options
-applyParse fs = applyEither fs defaultOpts
- where
-  defaultOpts = Options Info [] False NoCommand
+applyParse fs = applyEither fs defaultOptions
 
 (>.>) :: Either String a -> (a -> b) -> Either String b
 a >.> f = case a of
@@ -431,7 +452,12 @@ optionParser allargs = optParser
         <|> command "add"
               (help "Add a package (as dependency or to the local repository)")
               Right
-              addArgs ) )
+              addArgs
+        <|> command "upload"
+                    (help "Upload current package to package server")
+                    (\a -> Right $ a { optCommand = Upload (uploadOpts a) })
+                    uploadArgs
+        ) )
  where
   configArgs =
     flag (\a -> Right $ a { optCommand = Config (configOpts a)
@@ -529,6 +555,23 @@ optionParser allargs = optParser
          <> long "url"
          <> metavar "URL"
          <> help "URL of the central package index" )
+    <.> flag (\a -> Right $ a { optCommand = Update (updateOpts a)
+                                               { cleanCache = False } })
+             (  short "c"
+             <> long "cache"
+             <> help "Do not clean global package cache" )
+
+  uploadArgs =
+       flag (\a -> Right $ a { optCommand =
+                                 Upload (uploadOpts a) { setTag = False } })
+            (  short "t"
+            <> long "notagging"
+            <> help "Do not tag git repository with current version" )
+   <.> flag (\a -> Right $ a { optCommand =
+                                 Upload (uploadOpts a) { forceUpdate = True } })
+            (  short "f"
+            <> long "force"
+            <> help "Force, i.e., overwrite existing package version" )
 
   execArgs =
     rest (\_ a -> Right $ a { optCommand = Exec (execOpts a)
@@ -638,7 +681,12 @@ optionParser allargs = optParser
          <> short "b"
          <> help "Diff only the behavior")
    <.> flag (\a -> Right $ a { optCommand = Diff (diffOpts a)
-                                            { diffUseAna = False } })
+                                                   { diffGroundEqu = True } })
+         (  long "ground"
+         <> short "g"
+         <> help "Check ground equivalence only when comparing behavior")
+   <.> flag (\a -> Right $ a { optCommand = Diff (diffOpts a)
+                                                   { diffUseAna = False } })
          (  long "unsafe"
          <> short "u"
          <> help
@@ -699,7 +747,7 @@ optionParser allargs = optParser
                                  Add (addOpts a) { addDependency = True } })
             (  short "d"
             <> long "dependency"
-            <> help "Add a dependency to the current package" )
+            <> help "Add only dependency to the current package" )
    <.> flag (\a -> Right $ a { optCommand =
                                  Add (addOpts a) { forceAdd = True } })
             (  short "f"
@@ -707,8 +755,8 @@ optionParser allargs = optParser
             <> help "Force, i.e., overwrite existing package" )
    <.> arg (\s a -> Right $ a { optCommand =
                                   Add (addOpts a) { addSource = s } })
-           (  metavar "PACKAGE"
-           <> help "The package directory or name to be added" )
+         (  metavar "PACKAGE"
+         <> help "The package name (or directory for option '-p') to be added" )
 
 -- Check if operating system executables we depend on are present on the
 -- current system. Since this takes some time, it is only checked with
@@ -736,7 +784,7 @@ checkRequiredExecutables = do
 
 checkExecutables :: [String] -> IO [String]
 checkExecutables executables = do
-  present <- mapIO fileInPath executables
+  present <- mapM fileInPath executables
   return $ map fst $ filter (not . snd) (zip executables present)
 
 ------------------------------------------------------------------------------
@@ -762,7 +810,7 @@ updateCmd opts cfg = do
                then cfg
                else cfg { packageIndexURL = head (indexURLs opts) }
                     -- TODO: allow merging from several package indices
-  checkRequiredExecutables >> updateRepository cfg'
+  checkRequiredExecutables >> updateRepository cfg' (cleanCache opts)
 
 ------------------------------------------------------------------------------
 -- `deps` command:
@@ -846,7 +894,7 @@ installCmd (InstallOptions (Just pkg) vers pre _ _) cfg = do
   fileExists <- doesFileExist pkg
   if fileExists
     then installFromZip cfg pkg
-    else installapp (CheckoutOptions pkg vers pre) cfg
+    else installApp (CheckoutOptions pkg vers pre) cfg
 installCmd (InstallOptions Nothing (Just _) _ _ _) _ =
   failIO "Must specify package name"
 
@@ -858,9 +906,10 @@ installCmd (InstallOptions Nothing (Just _) _ _ _) _ =
 --- Internal note: the installed package should not be cleaned or removed
 --- after the installation since its execution might refer (via the
 --- config module) to some data stored in the package.
-installapp :: CheckoutOptions -> Config -> IO (ErrorLogger ())
-installapp opts cfg = do
+installApp :: CheckoutOptions -> Config -> IO (ErrorLogger ())
+installApp opts cfg = do
   let apppkgdir = appPackageDir cfg
+      copname   = coPackage opts
       copkgdir  = apppkgdir </> coPackage opts
   curdir <- getCurrentDirectory
   removeDirectoryComplete copkgdir
@@ -870,13 +919,15 @@ installapp opts cfg = do
       log Debug ("Change into directory " ++ copkgdir) |>
       (setCurrentDirectory copkgdir >> succeedIO ()) |>
       loadPackageSpec "." |>= \pkg ->
-      maybe (setCurrentDirectory curdir >>
-             removeDirectoryComplete copkgdir >>
-             failIO ("Package '" ++ name pkg ++
-                     "' does not contain an executable, nothing installed."))
-            (\_ -> installCmd (InstallOptions Nothing Nothing False True False)
-                              cfg)
-            (executableSpec pkg)
+      maybe
+       (setCurrentDirectory curdir >>
+        removeDirectoryComplete copkgdir >>
+        failIO ("Package '" ++ name pkg ++
+                "' has no executable, nothing installed.\n" ++
+                "Hint: use 'cypm add " ++ copname ++
+                "' to add new dependency and install it."))
+       (\_ -> installCmd (InstallOptions Nothing Nothing False True False) cfg)
+       (executableSpec pkg)
     )
 
 --- Checks the compiler compatibility.
@@ -896,7 +947,7 @@ installExecutable cfg pkg =
            getLogLevel >>= \lvl ->
            getEnv "PATH" >>= \path ->
            log Info ("Compiling main module: " ++ mainmod) |>
-           let (cmpname,_,_) = compilerVersion cfg
+           let (cmpname,_,_,_) = compilerVersion cfg
                cmd = unwords $
                        [":set", if levelGte Debug lvl then "v1" else "v0"
                        , maybe "" id (lookup cmpname eopts)
@@ -906,19 +957,11 @@ installExecutable cfg pkg =
            in compiler (ExecOptions cmd) cfg |>
               log Info ("Installing executable '" ++ name ++ "' into '" ++
                         bindir ++ "'") |>
-              (whenFileExists binexec (backupExistingBin binexec) >>
-               -- renaming might not work across file systems, hence we move:
+              (-- renaming might not work across file systems, hence we move:
                showExecCmd (unwords ["mv", mainmod, binexec]) >>
                checkPath path bindir))
         (executableSpec pkg)
  where
-  backupExistingBin binexec = do
-    let binexecbak = binexec ++ ".bak"
-    showExecCmd $ "rm -f " ++ binexecbak
-    renameFile binexec binexecbak
-    infoMessage $ "Existing executable '" ++ binexec ++ "' saved to '" ++
-                  binexecbak ++ "'."
-
   checkPath path bindir =
     if bindir `elem` splitSearchPath path
       then succeedIO ()
@@ -1072,7 +1115,7 @@ linkCmd (LinkOptions src) cfg =
   getLocalPackageSpec cfg "." |>= \specDir ->
   cleanCurryPathCache specDir |>
   log Info ("Linking '" ++ src ++ "' into local package cache...") |>
-  linkToLocalCache src specDir
+  linkToLocalCache cfg src specDir
 
 --- `add` command:
 --- Option `--package`: copy the given package to the repository index
@@ -1080,11 +1123,14 @@ linkCmd (LinkOptions src) cfg =
 --- any other package.
 --- Option `--dependency`: add the package name as a dependency to the
 --- current package
+--- No option: like `--package` followed by `install` command
 addCmd :: AddOptions -> Config -> IO (ErrorLogger ())
 addCmd (AddOptions addpkg adddep pkg force) config
   | addpkg    = addPackageToRepository config pkg force True
   | adddep    = addDependencyCmd pkg force config
-  | otherwise = log Critical "Option --package or --dependency missing!"
+  | otherwise = addDependencyCmd pkg force config |>
+                installCmd (installOpts defaultOptions) config
+
 
 useForce :: String
 useForce = "Use option '-f' or '--force' to overwrite it."
@@ -1104,7 +1150,8 @@ addDependencyCmd pkgname force config =
   addDepToLocalPackage vers pkgdir =
     loadPackageSpec pkgdir |>= \pkgSpec ->
     let depexists = pkgname `elem` dependencyNames pkgSpec
-        newdeps   = addDep [[VGte vers]] (dependencies pkgSpec)
+        newdeps   = addDep [[VGte vers, VLt (nextMajor vers)]]
+                           (dependencies pkgSpec)
         newpkg    = pkgSpec { dependencies = newdeps }
     in if force || not depexists
          then writePackageSpec newpkg (pkgdir </> "package.json") |>>
@@ -1300,10 +1347,10 @@ curryModulesInDir dir = getModules "" dir
     entries <- getDirectoryContents d
     let realentries = filter (\f -> length f >= 1 && head f /= '.') entries
         newprogs    = filter (\f -> takeExtension f == ".curry") realentries
-    subdirs <- mapIO (\e -> doesDirectoryExist (d </> e) >>=
+    subdirs <- mapM (\e -> doesDirectoryExist (d </> e) >>=
                             \b -> return $ if b then [e] else []) realentries
                >>= return . concat
-    subdirentries <- mapIO (\s -> getModules (p ++ s ++ ".") (d </> s)) subdirs
+    subdirentries <- mapM (\s -> getModules (p ++ s ++ ".") (d </> s)) subdirs
     return $ map ((p ++) . stripCurrySuffix) newprogs ++ concat subdirentries
 
 
@@ -1317,12 +1364,13 @@ diffCmd opts cfg =
       showlocalv = showVersion localv
   in
   getRepoForPackageSpec cfg localSpec >>= \repo ->
-  readGlobalCache cfg repo |>= \gc ->
   getDiffVersion repo localname |>= \diffv ->
   if diffv == localv
     then failIO $ "Cannot diff identical package versions " ++ showlocalv
     else putStrLn ("Comparing local version " ++ showlocalv ++
                    " and repository version " ++ showVersion diffv ++ ":\n") >>
+         installIfNecessary repo localname diffv |> putStrLn "" >>
+         readGlobalCache cfg repo |>= \gc ->
          diffAPIIfEnabled      repo gc specDir localSpec diffv |>
          diffBehaviorIfEnabled repo gc specDir localSpec diffv
  where
@@ -1334,6 +1382,11 @@ diffCmd opts cfg =
         "' found in package repository."
       Just p  -> succeedIO (version p)
     Just v  -> succeedIO v
+
+  installIfNecessary repo pkgname ver =
+    case findVersion repo pkgname ver of
+      Nothing -> packageNotFoundFailure $ pkgname ++ "-" ++ showVersion ver
+      Just  p -> acquireAndInstallPackageWithDependencies cfg repo p
 
   diffAPIIfEnabled repo gc specDir localSpec diffversion =
     if diffAPI opts
@@ -1352,11 +1405,11 @@ diffCmd opts cfg =
       then (putStrLn "Preparing behavior diff...\n" >> succeedIO ()) |>
            BDiff.preparePackageAndDir cfg repo gc specDir (name localSpec)
                                                           diffversion |>=
-           \i -> BDiff.diffBehavior cfg repo gc i (diffUseAna opts)
-                                    (diffModules opts)
+           \i -> BDiff.diffBehavior cfg repo gc i (diffGroundEqu opts)
+                                    (diffUseAna opts) (diffModules opts)
       else succeedIO ()
 
--- Implementation of the "curry" command.
+-- Implementation of the `curry` command.
 compiler :: ExecOptions -> Config -> IO (ErrorLogger ())
 compiler o cfg =
   getLocalPackageSpec cfg "." |>= \pkgdir ->
@@ -1366,6 +1419,7 @@ compiler o cfg =
     (ExecOptions $ unwords [curryExec cfg, "--nocypm", exeCommand o])
     cfg pkgdir
 
+-- Implementation of the `exec` command.
 execCmd :: ExecOptions -> Config -> IO (ErrorLogger ())
 execCmd o cfg =
   getLocalPackageSpec cfg "." |>= execWithPkgDir o cfg
@@ -1414,7 +1468,7 @@ newPackage (NewOptions pname) = do
   createDirectory pname
   let pkgSpec = emptyPackage { name            = pname
                              , version         = initialVersion
-                             , author          = emptyAuthor
+                             , author          = [emptyAuthor]
                              , synopsis        = emptySynopsis
                              , category        = ["Programming"]
                              , dependencies    = []
@@ -1450,7 +1504,107 @@ newPackage (NewOptions pname) = do
     , "> cypm curry :load Main :eval main :quit"
     ]
 
+------------------------------------------------------------------------------
+--- Uploads a package to package server.
+uploadCmd :: UploadOptions -> Config -> IO (ErrorLogger ())
+uploadCmd opts cfg =
+  getLocalPackageSpec cfg "." |>= \specDir ->
+  loadPackageSpec specDir |>= \lpkg ->
+  let pkgrepodir = repositoryDir cfg </>
+                   name lpkg </> showVersion (version lpkg) in
+  doesDirectoryExist pkgrepodir >>= \exrepodir ->
+  (if exrepodir && not (forceUpdate opts)
+    then failIO $ "Package version already exists in repository!"
+    else succeedIO () ) |>
+  inDirectory specDir (setTagInGitIfNecessary opts lpkg) |>
+  tempDir >>= \instdir ->
+  recreateDirectory instdir >>
+  installPkg lpkg instdir |>
+  let pkgid = packageId lpkg in
+  loadPackageSpec (instdir </> pkgid) |>= \pkg ->
+  testPackage pkgid instdir >>= \ecode ->
+  if ecode > 0
+    then removeDirectoryComplete instdir >>
+         log Critical "ERROR in package, package not uploaded!"
+    else log Info "Uploading package to global repository..." |>
+         removeInstalledPkg pkgid >>
+         uploadPackageSpec (instdir </> pkgid </> "package.json") |>
+         -- add package to local copy of repository:
+         addPackageToRepo pkgrepodir (instdir </> pkgid) pkg >>
+         removeDirectoryComplete instdir >>
+         log Info ("Package '" ++ pkgid ++ "' uploaded")
+ where
+  addPackageToRepo pkgrepodir pkgdir pkg = do
+    exrepodir <- doesDirectoryExist pkgrepodir
+    infoMessage $ "Create directory: " ++ pkgrepodir
+    createDirectoryIfMissing True pkgrepodir
+    copyFile (pkgdir </> "package.json") (pkgrepodir </> "package.json")
+    if exrepodir then updatePackageInRepositoryCache cfg pkg
+                 else addPackageToRepositoryCache    cfg pkg
 
+  -- TODO: check url
+  installPkg pkg instdir = case source pkg of
+    Nothing            -> failIO $ "No source specified for package"
+    Just (Git url rev) -> installPackageSourceTo pkg (Git url rev) instdir
+    _                  -> failIO $ "No git source with version tag"
+
+  removeInstalledPkg pkgid = do
+    let pkgInstallDir = packageInstallDir cfg </> pkgid
+    expkgdir <- doesDirectoryExist pkgInstallDir
+    when expkgdir $ removeDirectoryComplete pkgInstallDir
+
+  testPackage pkgid instdir = do
+    curdir <- inDirectory instdir getCurrentDirectory
+    let bindir = curdir </> "pkgbin"
+    recreateDirectory bindir
+    let cmd = unwords
+                [ -- install possible binaries in bindir:
+                  "cypm", "-d bin_install_path="++bindir, "install", "&&"
+                , "export PATH="++bindir++":$PATH", "&&"
+                , "cypm", "test", "&&"
+                , "cypm", "-d bin_install_path="++bindir, "uninstall"
+                ]
+    putStrLn $ "Testing package: '" ++ pkgid ++ "' with command:\n" ++ cmd
+    inDirectory (instdir </> pkgid) $ system cmd
+
+--- Set the package version as a tag in the local GIT repository and push it,
+--- if the package source is a GIT with tag `$version`.
+setTagInGitIfNecessary :: UploadOptions -> Package -> IO (ErrorLogger ())
+setTagInGitIfNecessary opts pkg
+  | not (setTag opts) = succeedIO ()
+  | otherwise = case source pkg of
+                  Just (Git _ (Just VersionAsTag)) -> setTagInGit pkg
+                  _ -> succeedIO ()
+
+setTagInGit :: Package -> IO (ErrorLogger ())
+setTagInGit pkg = do
+  let ts = 'v' : showVersion (version pkg)
+  infoMessage $ "Tagging current git repository with tag '" ++ ts++ "'"
+  (_,gittag,_) <- evalCmd "git" ["tag","-l",ts] ""
+  let deltag = if null gittag then [] else ["git tag -d",ts,"&&"]
+      cmd    = unwords $ deltag ++ ["git tag -a",ts,"-m",ts,"&&",
+                                    "git push --tags -f"]
+  infoMessage $ "Execute: " ++ cmd
+  ecode <- system cmd
+  if ecode == 0 then succeedIO ()
+                else failIO $ "ERROR in setting the git tag"
+
+-- Uploads a package specification stored in a file (first argument).
+uploadPackageSpec :: String -> IO (ErrorLogger ())
+uploadPackageSpec pkgspecfname = do
+  pkgspec <- readFile pkgspecfname
+  (rc,out,err) <- evalCmd "curl" ["--data-binary", "@-", uploadURL ] pkgspec
+  unless (null out) $ infoMessage out
+  if rc == 0
+    then succeedIO ()
+    else log Info err |> failIO "Adding to global repository failed!"
+
+-- URL of cpm-upload script.
+uploadURL :: String
+--uploadURL = "http://localhost/~mh/cpm-upload.cgi"
+uploadURL = "https://www-ps.informatik.uni-kiel.de/~mh/cpm-upload.cgi"
+
+------------------------------------------------------------------------------
 --- Fail with a "package not found" message.
 packageNotFoundFailure :: String -> IO (ErrorLogger _)
 packageNotFoundFailure pkgname =

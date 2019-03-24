@@ -20,8 +20,10 @@ module CPM.LookupSet
   ) where
 
 import Data.List (sortBy, delete, deleteBy)
-import qualified Data.Table.RBTree as RB
-import Test.EasyCheck
+import Test.Prop
+import Prelude hiding (empty)
+
+import Data.Table.RBTree as Table ( TableRBT, empty, lookup, toList,update )
 
 import CPM.Package
 
@@ -30,9 +32,8 @@ import CPM.Package
 data LookupSource = FromRepository
                   | FromLocalCache
                   | FromGlobalCache
-  deriving (Eq, Ord)
 
-type PkgMap = RB.TableRBT String [(LookupSource, Package)]
+type PkgMap = TableRBT String [(LookupSource, Package)]
 
 data LookupSet = LookupSet PkgMap LookupOptions
 
@@ -41,7 +42,7 @@ data LookupOptions = LookupOptions
 
 --- The empty lookup set.
 emptySet :: LookupSet
-emptySet = LookupSet RB.empty defaultOptions
+emptySet = LookupSet (empty (<=)) defaultOptions
 
 defaultOptions :: LookupOptions
 defaultOptions = LookupOptions []
@@ -61,7 +62,7 @@ addPackages :: LookupSet -> [Package] -> LookupSource -> LookupSet
 addPackages ls pkgs src = foldl (\l p -> addPackage l p src) ls pkgs
 
 allPackages :: LookupSet -> [Package]
-allPackages (LookupSet ls _) = map snd $ concat $ map snd $ RB.toList ls
+allPackages (LookupSet ls _) = map snd $ concat $ map snd $ toList ls
 
 --- Adds a package to a lookup set.
 ---
@@ -69,10 +70,10 @@ allPackages (LookupSet ls _) = map snd $ concat $ map snd $ RB.toList ls
 --- @param p the package to add
 --- @param s where is the package spec from?
 addPackage :: LookupSet -> Package -> LookupSource -> LookupSet
-addPackage (LookupSet ls o) pkg src = case RB.lookup (name pkg) ls of
-  Nothing -> LookupSet (RB.update (name pkg) [(src, pkg)] ls) o
+addPackage (LookupSet ls o) pkg src = case Table.lookup (name pkg) ls of
+  Nothing -> LookupSet (update (name pkg) [(src, pkg)] ls) o
   Just ps -> let ps' = filter ((/= packageId pkg) . packageId . snd) ps
-              in LookupSet (RB.update (name pkg) ((src, pkg):ps') ls) o
+              in LookupSet (update (name pkg) ((src, pkg):ps') ls) o
 
 --- Finds a specific entry (including the source) in the lookup set.
 ---
@@ -81,7 +82,7 @@ addPackage (LookupSet ls o) pkg src = case RB.lookup (name pkg) ls of
 findEntry :: LookupSet -> Package -> Maybe (LookupSource, Package)
 findEntry (LookupSet ls _) p = maybeHead candidates
  where
-  allVersions = RB.lookup (name p) ls
+  allVersions = Table.lookup (name p) ls
   candidates = case allVersions of
     Nothing -> []
     Just ps -> filter ((packageIdEq p) . snd) ps
@@ -96,7 +97,7 @@ findEntry (LookupSet ls _) p = maybeHead candidates
 findAllVersions :: LookupSet -> String -> Bool -> [Package]
 findAllVersions (LookupSet ls o) p pre = localSorted' ++ nonLocalSorted
   where
-    packageVersions = case RB.lookup p ls of
+    packageVersions = case Table.lookup p ls of
       Nothing -> []
       Just vs -> vs
     onlyLocal = filter isLocal packageVersions
@@ -113,13 +114,13 @@ findAllVersions (LookupSet ls o) p pre = localSorted' ++ nonLocalSorted
     isLocal (FromRepository, _) = False
     ps = map snd
 
-test_findAllVersions_localBeforeNonLocal :: Test.EasyCheck.Prop
+test_findAllVersions_localBeforeNonLocal :: Prop
 test_findAllVersions_localBeforeNonLocal = findAllVersions ls "A" False -=- [aLocal, aNonLocal]
   where aLocal = cPackage "A" (1, 0, 0, Nothing) []
         aNonLocal = cPackage "A" (1, 1, 0, Nothing) []
         ls = addPackage (addPackage emptySet aLocal FromLocalCache) aNonLocal FromRepository
 
-test_findAllVersions_nonLocalIfIgnored :: Test.EasyCheck.Prop
+test_findAllVersions_nonLocalIfIgnored :: Prop
 test_findAllVersions_nonLocalIfIgnored = findAllVersions ls "A" False -=- [aNonLocal]
   where aLocal = cPackage "A" (1, 0, 0, Nothing) []
         aNonLocal = cPackage "A" (1, 1, 0, Nothing) []
@@ -129,10 +130,10 @@ cPackage :: String -> Version -> [Dependency] -> Package
 cPackage p v ds = emptyPackage {
     name = p
   , version = v
-  , author = "author"
+  , author = ["author"]
   , synopsis = "JSON library for Curry"
   , dependencies = ds
-  , maintainer = Nothing
+  , maintainer = []
   , description = Nothing
   , license = Nothing
   , licenseFile = Nothing

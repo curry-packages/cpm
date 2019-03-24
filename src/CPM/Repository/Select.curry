@@ -53,7 +53,7 @@ runQuery cfg dbact = do
 --- is set.
 searchNameSynopsisModules :: Config -> String -> IO [Package]
 searchNameSynopsisModules cfg pat =
-  runQuery cfg $ liftM (map toPackage)
+  runQuery cfg $ fmap (map toPackage)
     (Database.CDBI.ER.getColumnFourTuple [] [Database.CDBI.ER.FourCS Database.CDBI.ER.All (Database.CDBI.ER.fourCol (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryNameColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryVersionColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntrySynopsisColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryCompilerCompatibilityColDesc 0 Database.CDBI.ER.none)) (Database.CDBI.ER.TC CPM.Repository.RepositoryDB.indexEntryTable 0 Nothing) (Database.CDBI.ER.Criteria (Database.CDBI.ER.Or [Database.CDBI.ER.like (Database.CDBI.ER.colNum CPM.Repository.RepositoryDB.indexEntryColumnName 0) (Database.CDBI.ER.string (pattern)) ,Database.CDBI.ER.Or [Database.CDBI.ER.like (Database.CDBI.ER.colNum CPM.Repository.RepositoryDB.indexEntryColumnSynopsis 0) (Database.CDBI.ER.string (pattern)) ,Database.CDBI.ER.like (Database.CDBI.ER.colNum CPM.Repository.RepositoryDB.indexEntryColumnExportedModules 0) (Database.CDBI.ER.string (pattern))]]) Nothing)] [] Nothing)
 
 
@@ -76,7 +76,7 @@ searchNameSynopsisModules cfg pat =
 searchExportedModules :: Config -> String -> IO [Package]
 searchExportedModules cfg pat =
   (queryDBorCache cfg True $
-     liftM (pkgsToRepository . map toPackage)
+     fmap (pkgsToRepository . map toPackage)
        (Database.CDBI.ER.getColumnFiveTuple [] [Database.CDBI.ER.FiveCS Database.CDBI.ER.All (Database.CDBI.ER.fiveCol (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryNameColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryVersionColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntrySynopsisColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryCompilerCompatibilityColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryExportedModulesColDesc 0 Database.CDBI.ER.none)) (Database.CDBI.ER.TC CPM.Repository.RepositoryDB.indexEntryTable 0 Nothing) (Database.CDBI.ER.Criteria (Database.CDBI.ER.like (Database.CDBI.ER.colNum CPM.Repository.RepositoryDB.indexEntryColumnExportedModules 0) (Database.CDBI.ER.string (pattern))) Nothing)] [] Nothing)
 
 
@@ -84,8 +84,10 @@ searchExportedModules cfg pat =
   ) >>= return . filterExpModules . allPackages
  where
   pattern = "%" ++ pat ++ "%"
+  lpat    = map toLower pat
 
-  filterExpModules = filter (\p -> pat `elem` exportedModules p)
+  filterExpModules = filter (\p -> any (\m -> lpat `isInfixOf` (map toLower m))
+                                       (exportedModules p))
 
   toPackage (nm,vs,syn,cmp,exps) =
     emptyPackage { name = nm
@@ -102,7 +104,7 @@ searchExportedModules cfg pat =
 searchExecutable :: Config -> String -> IO [Package]
 searchExecutable cfg pat =
   (queryDBorCache cfg True $
-     liftM (pkgsToRepository . map toPackage)
+     fmap (pkgsToRepository . map toPackage)
        (Database.CDBI.ER.getColumnFiveTuple [] [Database.CDBI.ER.FiveCS Database.CDBI.ER.All (Database.CDBI.ER.fiveCol (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryNameColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryVersionColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntrySynopsisColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryCompilerCompatibilityColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryExecutableSpecColDesc 0 Database.CDBI.ER.none)) (Database.CDBI.ER.TC CPM.Repository.RepositoryDB.indexEntryTable 0 Nothing) (Database.CDBI.ER.Criteria (Database.CDBI.ER.like (Database.CDBI.ER.colNum CPM.Repository.RepositoryDB.indexEntryColumnExecutableSpec 0) (Database.CDBI.ER.string (pattern))) Nothing)] [] Nothing)
 
 
@@ -110,9 +112,9 @@ searchExecutable cfg pat =
   ) >>= return . filterExec . allPackages
  where
   pattern = "%" ++ pat ++ "%"
-  s = map toLower pat
+  lpat    = map toLower pat
 
-  filterExec = filter (\p -> s `isInfixOf` (map toLower $ execOfPackage p))
+  filterExec = filter (\p -> lpat `isInfixOf` (map toLower $ execOfPackage p))
 
   toPackage (nm,vs,syn,cmp,exec) =
     emptyPackage { name = nm
@@ -126,7 +128,7 @@ searchExecutable cfg pat =
 --- the name, version, synopsis, and compilerCompatibility is set.
 getRepositoryWithNameVersionSynopsis :: Config -> IO Repository
 getRepositoryWithNameVersionSynopsis cfg = queryDBorCache cfg True $
-  liftM (pkgsToRepository . map toPackage)
+  fmap (pkgsToRepository . map toPackage)
     (Database.CDBI.ER.getColumnFourTuple [] [Database.CDBI.ER.FourCS Database.CDBI.ER.All (Database.CDBI.ER.fourCol (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryNameColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryVersionColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntrySynopsisColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryCompilerCompatibilityColDesc 0 Database.CDBI.ER.none)) (Database.CDBI.ER.TC CPM.Repository.RepositoryDB.indexEntryTable 0 Nothing) (Database.CDBI.ER.Criteria Database.CDBI.ER.None Nothing)] [] Nothing)
 
  where
@@ -141,7 +143,7 @@ getRepositoryWithNameVersionSynopsis cfg = queryDBorCache cfg True $
 --- the name, version, category, and compilerCompatibility is set.
 getRepositoryWithNameVersionCategory :: Config -> IO Repository
 getRepositoryWithNameVersionCategory cfg = queryDBorCache cfg True $
-  liftM (pkgsToRepository . map toPackage)
+  fmap (pkgsToRepository . map toPackage)
     (Database.CDBI.ER.getColumnFourTuple [] [Database.CDBI.ER.FourCS Database.CDBI.ER.All (Database.CDBI.ER.fourCol (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryNameColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryVersionColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryCategoryColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryCompilerCompatibilityColDesc 0 Database.CDBI.ER.none)) (Database.CDBI.ER.TC CPM.Repository.RepositoryDB.indexEntryTable 0 Nothing) (Database.CDBI.ER.Criteria Database.CDBI.ER.None Nothing)] [] Nothing)
 
  where
@@ -157,7 +159,7 @@ getRepositoryWithNameVersionCategory cfg = queryDBorCache cfg True $
 --- The information is read either from the cache DB or from the cache file.
 getBaseRepository :: Config -> IO Repository
 getBaseRepository cfg = queryDBorCache cfg False $
-  liftM (pkgsToRepository . map toBasePackage)
+  fmap (pkgsToRepository . map toBasePackage)
     (Database.CDBI.ER.getColumnFourTuple [] [Database.CDBI.ER.FourCS Database.CDBI.ER.All (Database.CDBI.ER.fourCol (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryNameColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryVersionColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryDependenciesColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryCompilerCompatibilityColDesc 0 Database.CDBI.ER.none)) (Database.CDBI.ER.TC CPM.Repository.RepositoryDB.indexEntryTable 0 Nothing) (Database.CDBI.ER.Criteria Database.CDBI.ER.None Nothing)] [] Nothing)
 
 
@@ -178,7 +180,7 @@ toBasePackage (nm,vs,deps,cmp) =
 --- The information is read either from the cache DB or from the cache file.
 getRepoPackagesWithName :: Config -> String -> IO Repository
 getRepoPackagesWithName cfg pn = queryDBorCache cfg False $
-  liftM (pkgsToRepository . map toBasePackage)
+  fmap (pkgsToRepository . map toBasePackage)
     (Database.CDBI.ER.getColumnFourTuple [] [Database.CDBI.ER.FourCS Database.CDBI.ER.All (Database.CDBI.ER.fourCol (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryNameColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryVersionColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryDependenciesColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryCompilerCompatibilityColDesc 0 Database.CDBI.ER.none)) (Database.CDBI.ER.TC CPM.Repository.RepositoryDB.indexEntryTable 0 Nothing) (Database.CDBI.ER.Criteria (Database.CDBI.ER.equal (Database.CDBI.ER.colNum CPM.Repository.RepositoryDB.indexEntryColumnName 0) (Database.CDBI.ER.string (pn))) Nothing)] [] Nothing)
 
 
@@ -219,7 +221,7 @@ getRepoForPackages cfg pkgnames = do
      queryPackagesFromDB (newdeps++pns) (pn:lpns) (pnpkgs++pkgs)
 
   queryPackage pn = runQueryOnDB (repositoryCacheDB cfg) $
-    liftM (map toBasePackage)
+    fmap (map toBasePackage)
     (Database.CDBI.ER.getColumnFourTuple [] [Database.CDBI.ER.FourCS Database.CDBI.ER.All (Database.CDBI.ER.fourCol (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryNameColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryVersionColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryDependenciesColDesc 0 Database.CDBI.ER.none) (Database.CDBI.ER.singleCol CPM.Repository.RepositoryDB.indexEntryCompilerCompatibilityColDesc 0 Database.CDBI.ER.none)) (Database.CDBI.ER.TC CPM.Repository.RepositoryDB.indexEntryTable 0 Nothing) (Database.CDBI.ER.Criteria (Database.CDBI.ER.equal (Database.CDBI.ER.colNum CPM.Repository.RepositoryDB.indexEntryColumnName 0) (Database.CDBI.ER.string (pn))) Nothing)] [] Nothing)
 
 

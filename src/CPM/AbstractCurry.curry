@@ -12,18 +12,20 @@ module CPM.AbstractCurry
   , applyModuleRenames
   ) where
 
-import Distribution ( FrontendTarget (..), FrontendParams (..), defaultParams
-                    , callFrontendWithParams, setQuiet, setFullPath
-                    , sysLibPath, inCurrySubdir, modNameToPath
-                    , inCurrySubdirModule, lookupModuleSource )
-import Data.List            ( intercalate, nub )
-import System.FilePath      ( (</>), (<.>), takeFileName, replaceExtension )
+import Data.List           ( intercalate, nub )
+import System.FilePath     ( (</>), (<.>), takeFileName, replaceExtension )
+import System.Process
+
 import AbstractCurry.Files  ( readAbstractCurryFile, writeAbstractCurryFile )
 import AbstractCurry.Pretty ( showCProg )
 import AbstractCurry.Select ( imports )
 import AbstractCurry.Transform
 import AbstractCurry.Types
-import System.Process
+import System.CurryPath     ( sysLibPath, inCurrySubdir, modNameToPath
+                            , inCurrySubdirModule, lookupModuleSource )
+import System.FrontendExec  ( FrontendTarget (..), FrontendParams (..)
+                            , defaultParams, callFrontendWithParams
+                            , setQuiet, setFullPath )
 
 import CPM.ErrorLogger
 import qualified CPM.PackageCache.Runtime as RuntimeCache
@@ -67,7 +69,18 @@ readAbstractCurryFromPackagePath pkg pkgDir deps modname = do
   acyName <- return $ case src of
     Nothing -> error $ "Module not found: " ++ modname
     Just (_, file) -> replaceExtension (inCurrySubdirModule modname file) ".acy"
-  readAbstractCurryFile acyName
+  readAbstractCurryFile acyName >>= return . addPrimTypes
+ where
+  -- work-around for missing Prelude.Char|Int|Float declarations:
+  addPrimTypes p@(CurryProg mname imports dfltdecl clsdecls instdecls
+                            typedecls funcdecls opdecls)
+   | mname == pre && primType "Int" `notElem` typedecls
+   = CurryProg mname imports dfltdecl clsdecls instdecls
+               (map primType ["Int","Float","Char"] ++ typedecls)
+               funcdecls opdecls
+   | otherwise = p
+   where pre = "Prelude"
+         primType n = CType ("Prelude",n) Public [] [] []
 
 --- Reads an AbstractCurry module from a package or one of its dependencies.
 ---

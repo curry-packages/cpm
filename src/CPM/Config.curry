@@ -14,16 +14,18 @@ module CPM.Config
 import Data.Char         ( toUpper )
 import System.Directory  ( doesDirectoryExist, createDirectoryIfMissing
                          , getHomeDirectory )
-import qualified Distribution as Dist
+import qualified System.Distribution as Dist
 import System.FilePath   ( (</>), isAbsolute )
-import Data.Tuple.Extra  ( (***) )
-import IOExts            ( evalCmd )
-import Data.List         ( split, splitOn, intersperse )
 import Data.Maybe        ( mapMaybe )
-import PropertyFile      ( readPropertyFile )
+import Data.List         ( split, splitOn, intersperse )
+import Control.Monad     ( when )
+import IOExts            ( evalCmd )
+
+import Data.PropertyFile ( readPropertyFile )
+import System.Path       ( getFileInPath )
 
 import CPM.ErrorLogger
-import CPM.FileUtil ( ifFileExists, getFileInPath )
+import CPM.FileUtil ( ifFileExists )
 import CPM.Helpers  ( strip )
 
 --- The default location of the central package index.
@@ -49,8 +51,8 @@ data Config = Config {
   , homePackageDir :: String
     --- The executable of the Curry system used to compile and check packages
   , curryExec :: String
-    --- The compiler version (name,major,minor) used to compile packages
-  , compilerVersion :: (String,Int,Int)
+    --- The compiler version (name,major,minor,rev) used to compile packages
+  , compilerVersion :: (String,Int,Int,Int)
     --- The version of the base libraries used by the compiler
   , compilerBaseVersion :: String
     --- The version of the base libraries to be used for package installations
@@ -64,13 +66,14 @@ defaultConfig = Config
   { packageInstallDir      = "$HOME/.cpm/packages"
   , binInstallDir          = "$HOME/.cpm/bin"
   , repositoryDir          = "$HOME/.cpm/index"
-  , appPackageDir          = "$HOME/.cpm/app_packages"
+  , appPackageDir          = ""
   , packageIndexURL        = packageIndexDefaultURL
   , homePackageDir         = ""
   , curryExec              = Dist.installDir </> "bin" </> Dist.curryCompiler
   , compilerVersion        = ( Dist.curryCompiler
                              , Dist.curryCompilerMajorVersion
-                             , Dist.curryCompilerMinorVersion )
+                             , Dist.curryCompilerMinorVersion
+                             , Dist.curryCompilerRevisionVersion )
   , compilerBaseVersion    = Dist.baseVersion
   , baseVersion            = ""
   }
@@ -93,8 +96,13 @@ showConfiguration cfg = unlines
 --- Shows the compiler version in the configuration.
 showCompilerVersion :: Config -> String
 showCompilerVersion cfg =
-  let (cname,cmaj,cmin) = compilerVersion cfg
-  in cname ++ ' ' : show cmaj ++ "." ++ show cmin
+  let (cname,cmaj,cmin,crev) = compilerVersion cfg
+  in cname ++ ' ' : showVersionNumer (cmaj,cmin,crev)
+
+--- Shows a version consisting of major/minor,revision number.
+showVersionNumer :: (Int,Int,Int) -> String
+showVersionNumer (maj,min,rev) =
+  show maj ++ "." ++ show min ++ "." ++ show rev
 
 --- Sets an existing compiler executable in the configuration.
 --- Try to use the predefined CURRYBIN value.
@@ -112,19 +120,27 @@ setCompilerExecutable cfg = do
     maybe (error $ "Executable '" ++ exec ++ "' not found in path!")
           (\absexec -> return cfg { curryExec = absexec })
 
+--- Sets the `appPackageDir` depending on the compiler version.
+setAppPackageDir :: Config -> IO Config
+setAppPackageDir cfg
+  | null (appPackageDir cfg)
+  = do homedir <- getHomeDirectory
+       let cpmdir = homedir </> ".cpm"
+           (cname,cmaj,cmin,crev) = compilerVersion cfg
+           cmpname = cname ++ "_" ++ showVersionNumer (cmaj,cmin,crev)
+       return cfg { appPackageDir = cpmdir </> "apps_" ++ cmpname }
+  | otherwise = return cfg
+
 --- Sets the `homePackageDir` depending on the compiler version.
 setHomePackageDir :: Config -> IO Config
 setHomePackageDir cfg
   | null (homePackageDir cfg)
   = do homedir <- getHomeDirectory
        let cpmdir = homedir </> ".cpm"
-       excpmdir <- doesDirectoryExist cpmdir
-       if excpmdir
-         then let (cname,cmaj,cmin) = compilerVersion cfg
-                  cvname      = cname ++ "-" ++ show cmaj ++ "." ++ show cmin
-                  homepkgdir  = cpmdir </> cvname ++ "-homepackage"
-              in return cfg { homePackageDir = homepkgdir }
-         else return cfg
+           (cname,cmaj,cmin,crev) = compilerVersion cfg
+           cvname     = cname ++ "-" ++ showVersionNumer (cmaj,cmin,crev)
+           homepkgdir = cpmdir </> cvname ++ "-homepackage"
+       return cfg { homePackageDir = homepkgdir }
   | otherwise = return cfg
 
 --- Sets the correct compiler version in the configuration.
@@ -142,10 +158,11 @@ setCompilerVersion cfg0 = do
             let cname = strip sname
                 cvers = strip svers
                 bvers = strip sbver
-                (majs:mins:_) = split (=='.') cvers
-            debugMessage $ "Compiler version: " ++ cname ++ " " ++ cvers
+                (majs:mins:revs:_) = split (=='.') cvers
+            debugMessage $ unwords ["Compiler version:",cname,cvers]
             debugMessage $ "Base lib version: " ++ bvers
-            return cfg { compilerVersion = (cname, read majs, read mins)
+            return cfg { compilerVersion = (cname, read majs,
+                                            read mins, read revs)
                        , compilerBaseVersion = bvers
                        , baseVersion         = if null initbase
                                                  then bvers
@@ -169,7 +186,8 @@ setCompilerVersion cfg0 = do
                 return (sname,svers,sbver)
 
   currVersion = (Dist.curryCompiler, Dist.curryCompilerMajorVersion,
-                                     Dist.curryCompilerMinorVersion)
+                                     Dist.curryCompilerMinorVersion
+                                   , Dist.curryCompilerRevisionVersion)
 
 --- Reads the .cpmrc file from the user's home directory (if present) and
 --- merges its contents and some given default settings (first argument)
@@ -189,10 +207,11 @@ readConfigurationWith defsettings = do
   case mergedSettings of
     Left e   -> return $ Left e
     Right s0 -> do s1 <- replaceHome s0
-                   createDirectories s1
                    s2 <- setCompilerVersion s1
-                   s3 <- setHomePackageDir s2
-                   return $ Right s3
+                   s3 <- setAppPackageDir   s2
+                   s4 <- setHomePackageDir  s3
+                   createDirectories s4
+                   return $ Right s4
 
 replaceHome :: Config -> IO Config
 replaceHome cfg = do
@@ -233,7 +252,7 @@ mergeConfigSettings cfg props = applyEither setters cfg
 ---
 --- @param opts - the options
 stripProps :: [(String, String)] -> [(String, String)]
-stripProps = map ((map toUpper . filter (/='_') . strip) *** strip)
+stripProps = map (\(a,b) -> ((map toUpper $ filter (/='_') $ strip a), strip b))
 
 --- A map from option names to functions that will update a configuration
 --- record with a value for that option.

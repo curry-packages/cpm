@@ -5,23 +5,24 @@
 
 module CPM.PerformanceTest where
 
-import Profile
-
 import ReadShowTerm
 import System.IO
-import IOExts
 import System.Directory
-import Debug.Trace
 import System.FilePath ((</>))
+import System.Process
+import IOExts
+import Debug.Trace
 import Data.List
 import Data.Maybe
 import Data.Function
-import Data.Tuple.Extra
 import Data.Either
-import JSON.Pretty
+
 import AbstractCurry.Build
 import AbstractCurry.Types hiding (version)
 import AbstractCurry.Pretty
+import Debug.Profile
+import JSON.Pretty
+
 import CPM.LookupSet
 import CPM.ErrorLogger
 import CPM.FileUtil (recreateDirectory)
@@ -33,9 +34,6 @@ import CPM.Config
 import CPM.Repository (Repository, emptyRepository)
 import qualified CPM.PackageCache.Global as GC
 import OptParse
-import System.Process
-import System.Environment
-import System.CPUTime
 
 --- Possible performance tests.
 data Command = BehaviorDiff | APIDiff | Resolution | CountDeps
@@ -141,7 +139,7 @@ genTestProgram = preparePackageDirs defaultConfig emptyRepository GC.emptyCache 
     \info -> findFunctionsToCompare defaultConfig emptyRepository GC.emptyCache (infSourceDirA info) (infSourceDirB info) False Nothing |>=
     \(acyCache, loadpath, funcs, _) ->
     genCurryCheckProgram defaultConfig emptyRepository GC.emptyCache funcs
-                         info acyCache loadpath |>
+                         info True acyCache loadpath |>
     succeedIO ()
 
 apiDiffPerformance :: Options -> IO ()

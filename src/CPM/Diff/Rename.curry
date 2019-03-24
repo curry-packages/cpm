@@ -40,11 +40,11 @@ prefixPackageAndDeps :: Config -> Repository -> GC.GlobalCache -> String
                      -> String -> String -> IO (ErrorLogger [(String, String)])
 prefixPackageAndDeps cfg repo gc dir prefix destDir =
   resolveAndCopyDependencies cfg repo gc dir |>=
-  \deps -> (mapIO (findAllModulesInPackage . RuntimeCache.cacheDirectory dir) deps >>= succeedIO) |>=
+  \deps -> (mapM (findAllModulesInPackage . RuntimeCache.cacheDirectory dir) deps >>= succeedIO) |>=
   \depMods -> (findAllModulesInPackage dir >>= succeedIO) |>=
   \ownMods -> succeedIO (ownMods ++ concat depMods) |>=
   \allMods -> succeedIO (zip (map fst allMods) (map ((prefix ++) . fst) allMods)) |>=
-  \modMap  -> mapIO (copyMod dir deps destDir modMap) allMods >>
+  \modMap  -> mapM (copyMod dir deps destDir modMap) allMods >>
   succeedIO modMap
 
 --- Finds all modules in a package.
@@ -55,9 +55,9 @@ findAllModulesInPackage dir = findMods "" (dir </> "src")
     entries <- getDirectoryContents d
     filteredEntries <- return $ filter (\r -> length r >= 1 && head r /= '.') entries
     curryFiles <- return $ filter ((== ".curry") . takeExtension) filteredEntries
-    directoryFlags <- mapIO doesDirectoryExist (map (d </>) filteredEntries)
+    directoryFlags <- mapM doesDirectoryExist (map (d </>) filteredEntries)
     directories <- return $ map fst $ filter snd $ zip filteredEntries directoryFlags
-    depMods <- mapIO (\d' -> findMods d' (d </> d')) directories
+    depMods <- mapM (\d' -> findMods d' (d </> d')) directories
     return $ (map (modWithPath p d) curryFiles) ++ concat depMods
   modWithPath p d m = if p == "" then (takeBaseName m, d </> m)
                                  else (p ++ "." ++ takeBaseName m, d </> m)

@@ -10,19 +10,22 @@ module CPM.PackageCache.Runtime
   , writePackageConfig
   ) where
 
-import System.FilePath    ( (</>), (<.>) )
-import System.Directory   ( createDirectoryIfMissing, copyFile, getDirectoryContents
-                          , getAbsolutePath, doesDirectoryExist, doesFileExist )
+import System.FilePath    ( (</>), (<.>), takeDirectory, takeBaseName )
+import System.Directory   ( createDirectoryIfMissing, copyFile, doesFileExist
+                          , getDirectoryContents, doesDirectoryExist
+                          , getAbsolutePath )
 import Data.List          ( intercalate, split )
+import Prelude hiding (log)
 
-import CPM.Config    ( Config, binInstallDir )
+import CPM.Config         ( Config, binInstallDir )
 import CPM.ErrorLogger
 import CPM.PackageCache.Global (installedPackageDir)
-import CPM.Package    ( Package, packageId, PackageExecutable(..), sourceDirsOf
-                      , configModule, executableSpec, version, showVersion )
-import CPM.FileUtil   ( copyDirectoryFollowingSymlinks, recreateDirectory )
+import CPM.Package        ( Package, packageId, PackageExecutable(..)
+                          , sourceDirsOf, executableSpec, version
+                          , configModule, showVersion )
+import CPM.FileUtil       ( copyDirectoryFollowingSymlinks, recreateDirectory )
 import CPM.PackageCache.Local as LocalCache
-import CPM.Repository ( readPackageFromRepository )
+import CPM.Repository     ( readPackageFromRepository )
 
 -- Each package needs its own copy of all dependencies since KiCS2 and PACKS
 -- store their intermediate results for each source file in a hidden directory
@@ -69,7 +72,7 @@ ensureCacheDirectory :: String -> IO String
 ensureCacheDirectory dir = do
   createDirectoryIfMissing True packagesDir
   return packagesDir
-    where packagesDir = dir </> ".cpm" </> "packages"
+ where packagesDir = dir </> ".cpm" </> "packages"
 
 
 --- Writes the package configuration module (if specified) into the
@@ -90,6 +93,7 @@ writePackageConfig cfg pkgdir pkg loadpath =
   writeConfigFile configmod binname = do
     let configfile = pkgdir </> "src" </> foldr1 (</>) (split (=='.') configmod)
                             <.> ".curry"
+    createDirectoryIfMissing True (takeDirectory configfile)
     abspkgdir <- getAbsolutePath pkgdir
     writeFile configfile $ unlines $
       [ "module " ++ configmod ++ " where"

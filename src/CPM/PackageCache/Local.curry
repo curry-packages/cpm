@@ -23,16 +23,18 @@ module CPM.PackageCache.Local
 
 import Debug.Trace
 import System.Directory ( createDirectoryIfMissing, copyFile, getAbsolutePath
-                        , getDirectoryContents, doesDirectoryExist, doesFileExist )
-import Data.Either      ( rights )
+                        , getDirectoryContents, doesDirectoryExist
+                        , doesFileExist )
 import System.FilePath  ( (</>) )
-import IOExts           ( readCompleteFile )
+import Data.Either      ( rights )
 import Data.List        ( isPrefixOf )
+import Control.Monad
+import IOExts           ( readCompleteFile )
 
-import CPM.Config     ( Config, packageInstallDir )
+import CPM.Config       ( Config, packageInstallDir )
 import CPM.ErrorLogger
-import CPM.FileUtil   ( isSymlink, removeSymlink, createSymlink, linkTarget )
-import CPM.Package    ( Package, packageId, readPackageSpec )
+import CPM.FileUtil     ( isSymlink, removeSymlink, createSymlink, linkTarget )
+import CPM.Package      ( Package, packageId, readPackageSpec )
 import CPM.PackageCache.Global ( installedPackageDir )
 
 --- The cache directory of the local package cache.
@@ -52,13 +54,13 @@ allPackages pkgDir = do
       debugMessage $ "Reading local package cache from '" ++ cdir ++ "'..."
       cdircont <- getDirectoryContents cdir
       let pkgDirs = filter (not . isPrefixOf ".") cdircont
-      pkgPaths <- mapIO removeIfIllegalSymLink $ map (cdir </>) pkgDirs
+      pkgPaths <- mapM removeIfIllegalSymLink $ map (cdir </>) pkgDirs
       specPaths <- return $ map (</> "package.json") $ concat pkgPaths
-      specs <- mapIO (readPackageSpecIO . readCompleteFile) specPaths
+      specs <- mapM (readPackageSpecIO . readCompleteFile) specPaths
       succeedIO $ rights specs
     else succeedIO []
  where
-  readPackageSpecIO = liftIO readPackageSpec
+  readPackageSpecIO = fmap readPackageSpec
   cdir = cacheDir pkgDir
 
   removeIfIllegalSymLink target = do
@@ -67,7 +69,7 @@ allPackages pkgDir = do
     isLink     <- isSymlink target
     if isLink && (dirExists || fileExists)
       then return [target]
-      else when isLink (removeSymlink target >> done) >> return []
+      else when isLink (removeSymlink target >> return ()) >> return []
 
 --- Creates a link to a package from the global cache in the local cache. Does
 --- not overwrite existing links.
@@ -134,7 +136,7 @@ clearCache pkgDir = do
   if cacheExists
     then do
       pkgDirs <- getDirectoryContents cdir
-      forIO (map (cdir </>) $ filter (not . isDotOrDotDot) pkgDirs) deleteIfLink
+      mapM deleteIfLink (map (cdir </>) $ filter (not . isDotOrDotDot) pkgDirs)
       return ()
     else return ()
  where

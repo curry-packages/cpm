@@ -16,9 +16,10 @@ module CPM.PackageCopy
 import System.Directory ( doesDirectoryExist )
 import Data.List        ( intercalate )
 import Data.Maybe       ( mapMaybe )
+import Prelude hiding   ( log )
 
-import CPM.Config     ( Config, baseVersion )
-import CPM.Repository ( Repository, allPackages )
+import CPM.Config       ( Config, baseVersion )
+import CPM.Repository   ( Repository, allPackages )
 import CPM.Repository.Select
 import qualified CPM.LookupSet as LS
 import CPM.ErrorLogger
@@ -42,7 +43,7 @@ lookupSetForPackageCopy :: Config -> Package -> Repository -> GC.GlobalCache
                         -> String -> IO (ErrorLogger LS.LookupSet)
 lookupSetForPackageCopy cfg _ repo gc dir =
   LocalCache.allPackages dir |>= \localPkgs -> do
-    diffInLC <- mapIO filterGCLinked localPkgs
+    diffInLC <- mapM filterGCLinked localPkgs
     let lsLC = addPackagesWOBase cfg lsGC localPkgs LS.FromLocalCache in
       mapEL logSymlinkedPackage (mapMaybe id diffInLC) |>
       succeedIO lsLC
@@ -81,8 +82,8 @@ acquireAndInstallPackageWithDependencies :: Config -> Repository -> Package
                                          -> IO (ErrorLogger ())
 acquireAndInstallPackageWithDependencies cfg repo pkg =
   GC.readGlobalCache cfg repo |>= \gc ->
-  resolveDependenciesForPackage cfg pkg repo gc |>=
-  \result -> GC.installMissingDependencies cfg gc (resolvedPackages result) |>
+  resolveDependenciesForPackage cfg pkg repo gc |>= \result ->
+  GC.installMissingDependencies cfg gc (resolvedPackages result) |>
   GC.acquireAndInstallPackage cfg pkg
 
 --- Links the dependencies of a package to its local cache and copies them to
@@ -138,15 +139,19 @@ installLocalDependenciesWithRepo cfg repo dir pkgSpec =
   succeedIO (pkgSpec, cpkgs)
 
 --- Links a directory into the local package cache. Used for `cypm link`.
-linkToLocalCache :: String -> String -> IO (ErrorLogger ())
-linkToLocalCache src pkgDir = do
+linkToLocalCache :: Config -> String -> String -> IO (ErrorLogger ())
+linkToLocalCache cfg src pkgDir = do
   dirExists <- doesDirectoryExist src
   if dirExists
     then loadPackageSpec src |>= \pkgSpec ->
-         LocalCache.createLink pkgDir src (packageId pkgSpec) True |>
-         succeedIO ()
-    else log Critical ("Directory '" ++ src ++ "' does not exist.") |>
-         succeedIO ()
+         getPackageVersion cfg (name pkgSpec) (version pkgSpec) >>=
+         maybe
+           (log Critical
+                ("Package '" ++ packageId pkgSpec ++ "' not in repository!\n" ++
+                 "Note: you can only link copies of existing packages."))
+           (\_ -> LocalCache.createLink pkgDir src (packageId pkgSpec) True |>
+                  succeedIO ())
+    else log Critical ("Directory '" ++ src ++ "' does not exist.")
 
 --- Resolves the dependencies for a package copy and fills the package caches.
 resolveAndCopyDependencies :: Config -> Repository -> GC.GlobalCache -> String

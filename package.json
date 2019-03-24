@@ -19,6 +19,9 @@
         "csv"           : ">= 2.0.0",
         "flatcurry"     : ">= 3.0.0",
         "wl-pprint"     : ">= 2.0.0",
+        "time"          : ">= 2.0.0",
+        "profiling"     : ">= 2.0.0",
+        "execpath"      : ">= 2.0.0",
         "base"          : ">= 2.0.0"
     },
     "compilerCompatibility": {

@@ -18,16 +18,17 @@ module CPM.Repository
   , repositoryCacheFilePrefix
   ) where
 
-import Data.Char         ( toLower )
-import System.Directory
+import Data.Char        ( toLower )
 import Data.Either
+import Data.List
+import Data.Time
+import Control.Monad
+import System.Directory
 import System.FilePath
 import System.IO
-import IOExts            ( readCompleteFile )
-import Data.List
-import ReadShowTerm      ( showQTerm, readQTerm, showTerm, readUnqualifiedTerm )
-import System.Process    ( exitWith, system )
-import Data.Time
+import System.Process   ( exitWith, system )
+import IOExts           ( readCompleteFile )
+import ReadShowTerm     ( showQTerm, readQTerm, showTerm, readUnqualifiedTerm )
 
 import CPM.Config        ( Config, repositoryDir )
 import CPM.ConfigPackage ( packageVersion )
@@ -174,19 +175,18 @@ tryReadRepositoryFrom :: String -> IO (Repository, [String])
 tryReadRepositoryFrom path = do
   debugMessage $ "Reading repository index from '" ++ path ++ "'..."
   repos     <- checkAndGetVisibleDirectoryContents path
-  pkgPaths  <- mapIO getDir (map (path </>) repos) >>= return . concat
-  verDirs   <- mapIO checkAndGetVisibleDirectoryContents pkgPaths
+  pkgPaths  <- mapM getDir (map (path </>) repos) >>= return . concat
+  verDirs   <- mapM checkAndGetVisibleDirectoryContents pkgPaths
   verPaths  <- return $ concatMap (\ (d, p) -> map (d </>) p)
                      $ zip pkgPaths verDirs
   specPaths <- return $ map (</> "package.json") verPaths
-  putStr "Reading repository index"
-  specs     <- mapIO readPackageFile specPaths
-  putChar '\n'
+  infoMessage "Reading repository index..."
+  specs     <- mapM readPackageFile specPaths
   when (null (lefts specs)) $ debugMessage "Finished reading repository"
   return $ (Repository $ rights specs, lefts specs)
  where
   readPackageFile f = do
-    spec <- liftM readPackageSpec $ readCompleteFile f
+    spec <- readPackageSpec <$> readCompleteFile f
     seq (id $!! spec) (putChar '.' >> hFlush stdout)
     return $ case spec of
       Left err -> Left $ "Problem reading '" ++ f ++ "': " ++ err
@@ -206,7 +206,7 @@ cleanRepositoryCache cfg = do
   debugMessage $ "Cleaning repository cache '" ++
                  repositoryCacheFilePrefix cfg ++ "*'"
   system $ "/bin/rm -f " ++ quote (repositoryCacheFilePrefix cfg) ++ "*"
-  done
+  return ()
 
 ------------------------------------------------------------------------------
 --- Reads a given package from the default repository directory.

@@ -5,7 +5,7 @@
 ------------------------------------------------------------------------------
 
 module CPM.Package
-  ( Version, initialVersion
+  ( Version, initialVersion, nextMajor, nextMinor
   , VersionConstraint (..)
   , CompilerCompatibility (..)
   , Package (..), emptyPackage
@@ -42,28 +42,36 @@ module CPM.Package
 
 import Data.Char
 import Data.Either
-import System.FilePath    ( (</>) )
-import IOExts      ( readCompleteFile )
+import Data.List       ( intercalate, intersperse, isInfixOf, splitOn )
+import System.FilePath ( (</>) )
+import IOExts          ( readCompleteFile )
 import JSON.Data
 import JSON.Parser
-import JSON.Pretty ( ppJSON )
-import Data.List        ( intercalate, intersperse, isInfixOf, splitOn )
-import SetFunctions
-import Test.EasyCheck
-import Prelude hiding ((<$>))
+import JSON.Pretty     ( ppJSON )
+import Test.Prop
+import Prelude hiding  ( (<$>), (<*>), (<*), (*>), (<|>), some, empty )
 
 import DetParse
 
 import CPM.ErrorLogger
 import CPM.FileUtil (ifFileExists)
 
---- A Version. Tuple components are major, minor, patch, prerelease, e.g.
---- 3.1.1-rc5
+--- Data type representin a version number.
+--- It is a tuple where the components are major, minor, patch, prerelease,
+--- e.g., 3.1.1-rc5
 type Version = (Int, Int, Int, Maybe String)
 
 --- The initial version of a new package.
 initialVersion :: Version
 initialVersion = (0,0,1,Nothing)
+
+--- The next major version of a given version.
+nextMajor :: Version -> Version
+nextMajor (maj,_,_,_) = (maj + 1, 0, 0, Nothing)
+
+--- The next minor version of a given version.
+nextMinor :: Version -> Version
+nextMinor (maj,min,_,_) = (maj, min + 1, 0, Nothing)
 
 type Conjunction = [VersionConstraint]
 type Disjunction = [Conjunction]
@@ -73,7 +81,7 @@ type Disjunction = [Conjunction]
 --- version constraint. Each inner list of version constraints is a conjunction,
 --- the outer list is a disjunction.
 data Dependency = Dependency String Disjunction
- deriving (Eq, Ord, Show)
+ deriving (Eq,Show)
 
 --- A version constraint.
 --- @cons VExact - versions must match exactly
@@ -89,13 +97,13 @@ data VersionConstraint = VExact      Version
                        | VGte        Version
                        | VLte        Version
                        | VCompatible Version
- deriving (Eq, Ord, Show)
+ deriving (Eq,Show)
 
 --- Compiler compatibility constraint, takes the name of the compiler (kics2 or
 --- pakcs), as well as a disjunctive normal form combination of version
 --- constraints (see Dependency).
 data CompilerCompatibility = CompilerCompatibility String Disjunction
- deriving (Eq, Ord, Show)
+ deriving (Eq,Show)
 
 --- A package id consisting of the package name and version.
 data PackageId = PackageId String Version
@@ -106,7 +114,7 @@ data PackageId = PackageId String Version
 --- of options for various compilers (i.e., pairs of compiler name and
 --- options for this compiler).
 data PackageExecutable = PackageExecutable String String [(String,String)]
- deriving (Eq, Ord, Show)
+ deriving (Eq,Show)
 
 --- The specification of a single test suite for a package.
 --- It consists of a directory, a list of modules, options (for CurryCheck),
@@ -117,7 +125,7 @@ data PackageExecutable = PackageExecutable String String [(String,String)]
 --- by running CurryCheck on the given list of modules where the option
 --- string is passed to CurryCheck.
 data PackageTest = PackageTest String [String] String String
- deriving (Eq, Ord, Show)
+ deriving (Eq,Show)
 
 --- The specification to generate the documentation of the package.
 --- It consists of the name of the directory containing the documentation,
@@ -126,7 +134,7 @@ data PackageTest = PackageTest String [String] String String
 --- and the main file has the suffix "tex", e.g., "manual.tex",
 --- the default command is "pdflatex manual.tex".
 data PackageDocumentation = PackageDocumentation String String String
- deriving (Eq, Ord, Show)
+ deriving (Eq,Show)
 
 --- A source where the contents of a package can be acquired.
 --- @cons Http - URL to a ZIP file
@@ -137,7 +145,7 @@ data PackageDocumentation = PackageDocumentation String String String
 data PackageSource = Http String
                    | Git String (Maybe GitRevision)
                    | FileSource String
- deriving (Eq, Ord, Show)
+ deriving (Eq,Show)
 
 --- A Git revision.
 --- @cons Tag - A tag which might contain the string `$version$` which will
@@ -147,14 +155,14 @@ data PackageSource = Http String
 data GitRevision = Tag String
                  | Ref String
                  | VersionAsTag
- deriving (Eq, Ord, Show)
+ deriving (Eq,Show)
 
 --- The data type for package specifications.
 data Package = Package {
     name                  :: String
   , version               :: Version
-  , author                :: String
-  , maintainer            :: Maybe String
+  , author                :: [String]
+  , maintainer            :: [String]
   , synopsis              :: String
   , description           :: Maybe String
   , category              :: [String]
@@ -174,15 +182,21 @@ data Package = Package {
   , testSuite             :: Maybe [PackageTest]
   , documentation         :: Maybe PackageDocumentation
   }
- deriving (Eq, Ord, Show)
+ deriving (Eq,Show)
+
+-- A simple Show instance for Package (maybe useful for debugging):
+--instance Show Package where
+--  show p = "(Package " ++
+--           unwords [name p, showVersion (version p)
+--                   , unwords (map showDependency (dependencies p))] ++ ")"
 
 --- An empty package specification.
 emptyPackage :: Package
 emptyPackage = Package {
     name                  = ""
   , version               = initialVersion
-  , author                = ""
-  , maintainer            = Nothing
+  , author                = []
+  , maintainer            = []
   , synopsis              = ""
   , description           = Nothing
   , category              = []
@@ -214,9 +228,13 @@ execOfPackage p =
 packageSpecToJSON :: Package -> JValue
 packageSpecToJSON pkg = JObject $
   [ ("name", JString $ name pkg)
-  , ("version", JString $ showVersion $ version pkg)
-  , ("author", JString $ author pkg) ] ++
-  maybeStringToJSON "maintainer" (maintainer pkg) ++
+  , ("version", JString $ showVersion $ version pkg) ] ++
+  (case author pkg of []  -> [("author", JString "")]
+                      [s] -> [("author", JString s)]
+                      xs  -> stringListToJSON "author" xs) ++
+  (case maintainer pkg of []  -> []
+                          [s] -> [ ("maintainer", JString s) ]
+                          xs  -> stringListToJSON "maintainer" xs) ++
   [ ("synopsis", JString $ synopsis pkg) ] ++
   maybeStringToJSON "description" (description pkg) ++
   stringListToJSON  "category"    (category pkg) ++
@@ -365,7 +383,7 @@ vlt (majorA, minorA, patchA, preA) (majorB, minorB, patchB, preB) =
       Just b  -> a `ltPre` b
 
 ltPre :: String -> String -> Bool
-ltPre a b | isNumeric a && isNumeric b = (read a :: Int) < (read b :: Int)
+ltPre a b | isNumeric a && isNumeric b = (read a :: Int) < read b
           | isNumeric a = True
           | isNumeric b = False
           | otherwise   = a `ltShortlex` b
@@ -376,19 +394,19 @@ isNumeric = all isDigit
 ltShortlex :: String -> String -> Bool
 ltShortlex a b = (length a == length b && a < b) || length a < length b
 
-test_shorterPrereleaseIsSmaller :: Test.EasyCheck.Prop
+test_shorterPrereleaseIsSmaller :: Prop
 test_shorterPrereleaseIsSmaller =
   always $ (0, 0, 0, Just "rc") `vlt` (0, 0, 0, Just "beta")
 
-test_numericIsSmallerLeft :: Test.EasyCheck.Prop
+test_numericIsSmallerLeft :: Prop
 test_numericIsSmallerLeft =
   always $ (0, 0, 0, Just "1234") `vlt` (0, 0, 0, Just "rc")
 
-test_numericIsSmallerRight :: Test.EasyCheck.Prop
+test_numericIsSmallerRight :: Prop
 test_numericIsSmallerRight =
   always $ not $ (0, 0, 0, Just "rc") `vlt` (0, 0, 0, Just "1234")
 
-test_numbersAreComparedNumerically :: Test.EasyCheck.Prop
+test_numbersAreComparedNumerically :: Prop
 test_numbersAreComparedNumerically =
   always $ (0, 0, 0, Just "0003") `vlt` (0, 0, 0, Just "123")
 
@@ -472,8 +490,8 @@ packageSpecFromJObject :: [(String, JValue)] -> Either String Package
 packageSpecFromJObject kv =
   mandatoryString "name" kv $ \name ->
   mandatoryString "version" kv $ \versionS ->
-  mandatoryString "author" kv $ \author ->
-  optionalString "maintainer" kv $ \maintainer ->
+  getStringOrStringList True  "An author"    "author" $ \author ->
+  getStringOrStringList False "A maintainer" "maintainer" $ \maintainer ->
   mandatoryString "synopsis" kv $ \synopsis ->
   optionalString "description" kv $ \description ->
   getStringList "A category" "category" $ \categories ->
@@ -566,20 +584,42 @@ packageSpecFromJObject kv =
       Just JNull       -> Left $ "Expected an object, got 'null'"   ++ forKey
      where forKey = " for key 'source'"
 
+    getStringOrStringList :: Bool -> String -> String
+                          -> ([String] -> Either String a)
+                          -> Either String a
+    getStringOrStringList mandatory keystr key f = case lookup key kv of
+      Nothing -> if mandatory
+                   then Left $ "Mandatory field missing: '" ++ key ++ "'"
+                   else f []
+      Just (JArray a)  -> case stringsFromJArray keystr a of
+        Left  e -> Left e
+        Right e -> f e
+      Just (JString s) -> f [s]
+      Just (JObject _) -> Left $ expectedText ++ "an object" ++ forKey
+      Just (JNumber _) -> Left $ expectedText ++ "a number"  ++ forKey
+      Just JTrue       -> Left $ expectedText ++ "'true'"    ++ forKey
+      Just JFalse      -> Left $ expectedText ++ "'false'"   ++ forKey
+      Just JNull       -> Left $ expectedText ++ "'null'"    ++ forKey
+     where
+      forKey       = " for key '" ++ key ++ "'"
+      expectedText = "Expected an array, got "
+
     getStringList :: String -> String -> ([String] -> Either String a)
                   -> Either String a
     getStringList keystr key f = case lookup key kv of
       Nothing -> f []
       Just (JArray a)  -> case stringsFromJArray keystr a of
-        Left e -> Left e
+        Left  e -> Left e
         Right e -> f e
-      Just (JObject _) -> Left $ "Expected an array, got an object" ++ forKey
-      Just (JString _) -> Left $ "Expected an array, got a string"  ++ forKey
-      Just (JNumber _) -> Left $ "Expected an array, got a number"  ++ forKey
-      Just JTrue       -> Left $ "Expected an array, got 'true'"    ++ forKey
-      Just JFalse      -> Left $ "Expected an array, got 'false'"   ++ forKey
-      Just JNull       -> Left $ "Expected an array, got 'null'"    ++ forKey
-     where forKey = " for key '" ++ key ++ "'"
+      Just (JObject _) -> Left $ expectedText ++ "an object" ++ forKey
+      Just (JString _) -> Left $ expectedText ++ "a string"  ++ forKey
+      Just (JNumber _) -> Left $ expectedText ++ "a number"  ++ forKey
+      Just JTrue       -> Left $ expectedText ++ "'true'"    ++ forKey
+      Just JFalse      -> Left $ expectedText ++ "'false'"   ++ forKey
+      Just JNull       -> Left $ expectedText ++ "'null'"    ++ forKey
+     where
+      forKey       = " for key '" ++ key ++ "'"
+      expectedText = "Expected an array, got "
 
     getExecutableSpec :: (Maybe PackageExecutable -> Either String a)
                       -> Either String a
@@ -651,25 +691,25 @@ optionalString k kv f = case lookup k kv of
   Just JNull       -> Left $ "Expected a string, got 'null'" ++ forKey
  where forKey = " for key '" ++ k ++ "'"
 
-test_specFromJObject_mandatoryFields :: Test.EasyCheck.Prop
+test_specFromJObject_mandatoryFields :: Prop
 test_specFromJObject_mandatoryFields =
   is (packageSpecFromJObject obj)
      (\x -> isLeft x && isInfixOf "name" ((head . lefts) [x]))
   where obj = [("hello", JString "world")]
 
-test_specFromJObject_invalidVersion :: Test.EasyCheck.Prop
+test_specFromJObject_invalidVersion :: Prop
 test_specFromJObject_invalidVersion =
   is (packageSpecFromJObject obj)
      (\x -> isLeft x && isInfixOf "version" ((head . lefts) [x]))
  where obj = [ ("name", JString "mypackage"), ("author", JString "test")
              , ("synopsis", JString "great!"), ("version", JString "1.2.b")]
 
-test_specFromJObject_minimalSpec :: Test.EasyCheck.Prop
+test_specFromJObject_minimalSpec :: Prop
 test_specFromJObject_minimalSpec =
   is (packageSpecFromJObject obj) (\x -> isRight x && test x)
  where obj = [ ("name", JString "mypackage"), ("author", JString "me")
              , ("synopsis", JString "great!"), ("version", JString "1.2.3")]
-       test x = author p == "me" && name p == "mypackage"
+       test x = author p == ["me"] && name p == "mypackage"
           where p = (head . rights) [x]
 
 --- Reads a list of strings from a list of JValues.
@@ -812,14 +852,15 @@ getOptStringList optional key kv = case lookup (key++"s") kv of
                then Right []
                else Left $ "'"++key++"s' is not provided in 'testsuite'"
   Just (JArray a)  -> stringsFromJArray ("A "++key) a
-  Just (JObject _) -> Left $ "Expected an array, got an object" ++ forKey
-  Just (JString _) -> Left $ "Expected an array, got a string" ++ forKey
-  Just (JNumber _) -> Left $ "Expected an array, got a number" ++ forKey
-  Just JTrue       -> Left $ "Expected an array, got 'true'" ++ forKey
-  Just JFalse      -> Left $ "Expected an array, got 'false'" ++ forKey
-  Just JNull       -> Left $ "Expected an array, got 'null'" ++ forKey
+  Just (JObject _) -> Left $ expectedText ++ "an object" ++ forKey
+  Just (JString _) -> Left $ expectedText ++ "a string" ++ forKey
+  Just (JNumber _) -> Left $ expectedText ++ "a number" ++ forKey
+  Just JTrue       -> Left $ expectedText ++ "'true'" ++ forKey
+  Just JFalse      -> Left $ expectedText ++ "'false'" ++ forKey
+  Just JNull       -> Left $ expectedText ++ "'null'" ++ forKey
  where
   forKey = " for key '" ++ key ++ "s'"
+  expectedText = "Expected an array, got "
 
 --- Reads documentation specification from the key-value-pairs of a JObject.
 docuSpecFromJObject :: [(String, JValue)] -> Either String PackageDocumentation
@@ -836,13 +877,13 @@ docuSpecFromJObject kv =
 readVersionConstraints :: String -> Maybe [[VersionConstraint]]
 readVersionConstraints s = parse pVersionConstraints (dropWhile isSpace s)
 
-test_readVersionConstraints_single :: Test.EasyCheck.Prop
+test_readVersionConstraints_single :: Prop
 test_readVersionConstraints_single = readVersionConstraints "=1.2.3" -=- Just [[VExact (1, 2, 3, Nothing)]]
 
-test_readVersionConstraints_multi :: Test.EasyCheck.Prop
+test_readVersionConstraints_multi :: Prop
 test_readVersionConstraints_multi = readVersionConstraints "> 1.0.0, < 2.3.0" -=- Just [[VGt (1, 0, 0, Nothing), VLt (2, 3, 0, Nothing)]]
 
-test_readVersionConstraints_disjunction :: Test.EasyCheck.Prop
+test_readVersionConstraints_disjunction :: Prop
 test_readVersionConstraints_disjunction = readVersionConstraints ">= 4.0.0 || < 3.0.0, > 2.0.0" -=- Just [[VGte (4, 0, 0, Nothing)], [VLt (3, 0, 0, Nothing), VGt (2, 0, 0, Nothing)]]
 
 pVersionConstraints :: Parser [[VersionConstraint]]
@@ -855,31 +896,31 @@ pConjunction = (:) <$> pVersionConstraint <*> (pWhitespace *> char ',' *> pWhite
 readVersionConstraint :: String -> Maybe VersionConstraint
 readVersionConstraint s = parse pVersionConstraint s
 
-test_readVersionConstraint_exact :: Test.EasyCheck.Prop
+test_readVersionConstraint_exact :: Prop
 test_readVersionConstraint_exact = readVersionConstraint "=1.2.3" -=- (Just $ VExact (1, 2, 3, Nothing))
 
-test_readVersionConstraint_without :: Test.EasyCheck.Prop
+test_readVersionConstraint_without :: Prop
 test_readVersionConstraint_without = readVersionConstraint "1.2.3" -=- (Just $ VExact (1, 2, 3, Nothing))
 
-test_readVersionConstraint_invalidVersion :: Test.EasyCheck.Prop
+test_readVersionConstraint_invalidVersion :: Prop
 test_readVersionConstraint_invalidVersion = readVersionConstraint "=4.a.3" -=- Nothing
 
-test_readVersionConstraint_invalidConstraint :: Test.EasyCheck.Prop
+test_readVersionConstraint_invalidConstraint :: Prop
 test_readVersionConstraint_invalidConstraint = readVersionConstraint "x1.2.3" -=- Nothing
 
-test_readVersionConstraint_greaterThan :: Test.EasyCheck.Prop
+test_readVersionConstraint_greaterThan :: Prop
 test_readVersionConstraint_greaterThan = readVersionConstraint "> 1.2.3" -=- (Just $ VGt (1, 2, 3, Nothing))
 
-test_readVersionConstraint_greaterThanEqual :: Test.EasyCheck.Prop
+test_readVersionConstraint_greaterThanEqual :: Prop
 test_readVersionConstraint_greaterThanEqual = readVersionConstraint ">= 1.2.3" -=- (Just $ VGte (1, 2, 3, Nothing))
 
-test_readVersionConstraint_lessThan :: Test.EasyCheck.Prop
+test_readVersionConstraint_lessThan :: Prop
 test_readVersionConstraint_lessThan = readVersionConstraint "<1.2.3" -=- (Just $ VLt (1, 2, 3, Nothing))
 
-test_readVersionConstraint_lessThanEqual :: Test.EasyCheck.Prop
+test_readVersionConstraint_lessThanEqual :: Prop
 test_readVersionConstraint_lessThanEqual = readVersionConstraint "<= 1.2.3" -=- (Just $ VLte (1, 2, 3, Nothing))
 
-test_readVersionConstraint_compatible :: Test.EasyCheck.Prop
+test_readVersionConstraint_compatible :: Prop
 test_readVersionConstraint_compatible = readVersionConstraint "~>1.2.3" -=- (Just $ VCompatible (1, 2, 3, Nothing))
 
 pVersionConstraint :: Parser VersionConstraint

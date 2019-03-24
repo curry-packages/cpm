@@ -23,18 +23,20 @@ module CPM.PackageCache.Global
   , emptyCache
   ) where
 
-import System.Directory
 import Data.Either
-import IOExts       ( readCompleteFile )
 import Data.List
-import Data.Maybe   ( isJust )
+import Data.Maybe       (isJust)
 import System.FilePath
+import System.Directory
+import IOExts           ( readCompleteFile )
+import Prelude hiding   ( log )
 
-import CPM.Config   ( Config, packageInstallDir )
+import CPM.Config       ( Config, packageInstallDir )
 import CPM.ErrorLogger
-import CPM.FileUtil ( copyDirectory, inTempDir, recreateDirectory, inDirectory
-                    , removeDirectoryComplete, tempDir, whenFileExists
-                    , checkAndGetVisibleDirectoryContents, quote )
+import CPM.FileUtil     ( copyDirectory, inTempDir, recreateDirectory
+                        , inDirectory, removeDirectoryComplete
+                        , tempDir, whenFileExists
+                        , checkAndGetVisibleDirectoryContents, quote )
 import CPM.Package
 import CPM.Package.Helpers ( installPackageSourceTo )
 import CPM.Repository
@@ -150,11 +152,12 @@ installFromZip cfg zip = do
 --- Installs a package's missing dependencies.
 installMissingDependencies :: Config -> GlobalCache -> [Package]
                            -> IO (ErrorLogger ())
-installMissingDependencies cfg gc deps = if length missing > 0
-  then log Info logMsg |>
-    mapEL (acquireAndInstallPackage cfg) missing |>
-    succeedIO ()
-  else succeedIO ()
+installMissingDependencies cfg gc deps =
+  if length missing > 0
+    then log Info logMsg |>
+         mapEL (acquireAndInstallPackage cfg) missing |>
+         succeedIO ()
+    else succeedIO ()
  where
    missing = filter (not . isPackageInstalled gc) deps
    logMsg = "Installing missing dependencies " ++
@@ -221,13 +224,13 @@ readInstalledPackagesFromDir :: Repository -> String
 readInstalledPackagesFromDir repo path = do
   debugMessage $ "Reading global package cache from '" ++ path ++ "'..."
   pkgPaths <- checkAndGetVisibleDirectoryContents path
-  specs <- mapIO loadPackageSpecFromDir pkgPaths
+  specs <- mapM loadPackageSpecFromDir pkgPaths
   if null (lefts specs)
     then do debugMessage "Finished reading global package cache"
             return (Right $ GlobalCache (rights specs))
     else return (Left $ intercalate "; " (lefts specs))
  where
-  readPackageSpecIO = liftIO readPackageSpec
+  readPackageSpecIO = fmap readPackageSpec
 
   loadPackageSpecFromDir pkgdir = case packageVersionFromFile pkgdir of
     Nothing -> readPackageSpecFromFile pkgdir

@@ -12,7 +12,6 @@ module CPM.FileUtil
   , linkTarget
   , copyDirectoryFollowingSymlinks
   , quote
-  , fileInPath, getFileInPath
   , tempDir
   , inTempDir
   , inDirectory
@@ -25,14 +24,15 @@ module CPM.FileUtil
 import System.Directory   ( doesFileExist, doesDirectoryExist
                           , setCurrentDirectory, getDirectoryContents
                           , getTemporaryDirectory, doesDirectoryExist
-                          , createDirectory, getCurrentDirectory
-                          , createDirectoryIfMissing, getAbsolutePath )
+                          , createDirectory, createDirectoryIfMissing
+                          , getAbsolutePath, getCurrentDirectory )
 import System.Process     ( system, exitWith )
 import System.Environment ( getEnv )
-import IOExts             ( evalCmd, readCompleteFile )
 import System.FilePath    ( FilePath, replaceFileName, (</>)
                           , searchPathSeparator )
 import Data.List          ( intercalate, isPrefixOf, splitOn )
+import Control.Monad      ( when )
+import IOExts             ( evalCmd, readCompleteFile )
 
 --- Joins a list of directories into a search path.
 joinSearchPath :: [FilePath] -> String
@@ -84,27 +84,6 @@ linkTarget link = do
 quote :: String -> String
 quote s = "\"" ++ s ++ "\""
 
---- Checks whether a file exists in one of the directories on the PATH.
-fileInPath :: String -> IO Bool
-fileInPath file = do
-  path <- getEnv "PATH"
-  let dirs = splitOn ":" path
-  (liftIO (any id)) $ mapIO (doesFileExist . (</> file)) dirs
-
---- Checks whether a file exists in one of the directories on the PATH
---- and returns absolute path, otherwise returns `Nothing`.
-getFileInPath :: String -> IO (Maybe String)
-getFileInPath file = do
-  path <- getEnv "PATH"
-  checkPath (splitOn ":" path)
- where
-  checkPath [] = return Nothing
-  checkPath (dir:dirs) = do
-    let dirfile = dir </> file
-    ifFileExists dirfile
-                 (getAbsolutePath dirfile >>= return . Just)
-                 (checkPath dirs)
-
 --- Gets CPM's temporary directory.
 tempDir :: IO String
 tempDir = do
@@ -143,7 +122,7 @@ recreateDirectory dir = do
 removeDirectoryComplete :: String -> IO ()
 removeDirectoryComplete dir = do
   exists <- doesDirectoryExist dir
-  when exists $ system ("rm -Rf " ++ quote dir) >> done
+  when exists $ system ("rm -Rf " ++ quote dir) >> return ()
 
 --- Reads the complete contents of a file and catches any error
 --- (which is returned).

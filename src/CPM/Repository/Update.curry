@@ -11,11 +11,13 @@ module CPM.Repository.Update
 
 import System.Directory
 import System.FilePath
-import Data.List         ( isSuffixOf )
-import System.Process    ( system )
+import System.Process   ( system )
+import Data.List        ( isSuffixOf )
+import Control.Monad
+import Prelude hiding (log)
 
-import CPM.Config        ( Config, packageInstallDir, packageIndexURL
-                         , repositoryDir )
+import CPM.Config       ( Config, packageInstallDir, packageIndexURL
+                        , repositoryDir )
 import CPM.ErrorLogger
 import CPM.Package
 import CPM.Package.Helpers    ( cleanPackage )
@@ -28,14 +30,15 @@ import CPM.Repository.Select  ( addPackageToRepositoryCache
 
 ------------------------------------------------------------------------------
 --- Updates the package index from the central Git repository.
---- Cleans also the global package cache in order to support
---- downloading the newest versions.
-updateRepository :: Config -> IO (ErrorLogger ())
-updateRepository cfg = do
+--- If the second argument is `True`, also the global package cache
+--- is cleaned in order to support downloading the newest versions.
+updateRepository :: Config -> Bool -> IO (ErrorLogger ())
+updateRepository cfg cleancache = do
   cleanRepositoryCache cfg
-  debugMessage $ "Deleting global package cache: '" ++
-                 packageInstallDir cfg ++ "'"
-  removeDirectoryComplete (packageInstallDir cfg)
+  when cleancache $ do
+    debugMessage $ "Deleting global package cache: '" ++
+                   packageInstallDir cfg ++ "'"
+    removeDirectoryComplete (packageInstallDir cfg)
   debugMessage $ "Recreating package index: '" ++ repositoryDir cfg ++ "'"
   recreateDirectory (repositoryDir cfg)
   c <- inDirectory (repositoryDir cfg) downloadCommand
@@ -72,7 +75,7 @@ updateRepository cfg = do
 --- Sets the date of the last update by touching README.md.
 setLastUpdate :: Config -> IO ()
 setLastUpdate cfg =
-  system (unwords ["touch", repositoryDir cfg </> "README.md"]) >> done
+  system (unwords ["touch", repositoryDir cfg </> "README.md"]) >> return ()
 
 ------------------------------------------------------------------------------
 --- Adds a package stored in the given directory to the repository index.
@@ -109,7 +112,7 @@ addPackageToRepository cfg pkgdir force cpdir = do
     copyFile (pkgdir </> "package.json") (pkgRepositoryDir </> "package.json")
     when cpdir $ do copyDirectory pkgdir pkgInstallDir
                     inDirectory pkgInstallDir (cleanPackage cfg Debug)
-                    done
+                    return ()
     if exrepodir then updatePackageInRepositoryCache cfg pkg
                  else addPackageToRepositoryCache    cfg pkg
 

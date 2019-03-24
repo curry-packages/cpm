@@ -19,10 +19,9 @@ module CPM.Resolution
 
 import Data.Either
 import Data.List
-import Sort
 import Data.Maybe
+import Test.Prop
 import Text.Pretty
-import Test.EasyCheck
 
 import CPM.Config      ( Config, defaultConfig, compilerVersion
                        , compilerBaseVersion )
@@ -81,8 +80,9 @@ showConflict (ResolutionSuccess _ _) = "Resolution succeeded."
 showConflict (ResolutionFailure t) = case findRelevantConflict t of
   Just c  -> showConflictState c
   Nothing -> case missingPackages $ clState $ findDeepestNode t of
-    []    -> "Conflict resolution failed for an unknown reason :(\n" ++
-             "Please clean your package ('cypm clean') and try again..."
+    []    -> "Conflict resolution failed for an unknown reason... Hint:(\n" ++
+             "Please clean your package ('cypm clean') and/or\n" ++
+             "your package index ('cypm update') and try again..."
     (d@(Dependency p _):_) ->
       "There seems to be no version of package " ++ p ++
       " that can satisfy the constraint " ++ showDependency d
@@ -137,6 +137,7 @@ showResult r@(ResolutionFailure _)   = showConflict r
 --- contains the conflict tree.
 data ResolutionResult = ResolutionSuccess Package [Package]
                       | ResolutionFailure (Tree ConflictState)
+ deriving (Eq,Show)
 
 --- Represents an activation of a package in the candidate tree. Activations
 --- form a chain up to the initial activation, i.e. the initial package that
@@ -145,7 +146,7 @@ data ResolutionResult = ResolutionSuccess Package [Package]
 --- dependency led to the current package version being chosen.
 data Activation = InitialA Package
                 | ChildA Package Dependency Activation
- deriving Eq
+ deriving (Eq,Show)
 
 --- Each tree node is labeled with the current activation and all former
 --- activations.
@@ -162,7 +163,7 @@ type State = (Activation, [Activation])
 data Conflict = SecondaryConflict Activation Activation
               | PrimaryConflict Activation
               | CompilerConflict Activation
- deriving Eq
+ deriving (Eq,Show)
 
 --- A state and a potential conflict.
 type ConflictState = (State, Maybe Conflict)
@@ -218,6 +219,7 @@ clState = fst
 
 --- A tree with a label and child nodes.
 data Tree a = Node a [Tree a]
+ deriving (Eq,Show)
 
 --- Recursively applies a function to each node in a tree.
 mapTree :: (a -> b) -> Tree a -> Tree b
@@ -246,7 +248,7 @@ prune p = filterTree (not . p)
 
 --- Shows a textual representation of a tree.
 showTree :: Tree Doc -> String
-showTree = pPrint . ppTree
+showTree t = "Package dependencies:\n" ++ pPrint (ppTree t)
 
 --- Pretty prints a tree of Docs into a single Doc.
 ppTree :: Tree Doc -> Doc
@@ -284,6 +286,7 @@ candidateTree pkg ls = let s = InitialA pkg in
       then tree' acts ds
       else map (nodesForDep act d ds acts) $ findAllVersions ls p True
   tree' _ [] = []
+
   nodesForDep act d ds acts p' =
     let
       act' = ChildA p' d act
@@ -469,21 +472,21 @@ transitiveDependencies' seen ls pkg = foldl (\s d -> if d `elem` s then s else (
 transitiveDependencies :: LookupSet -> Package -> [String]
 transitiveDependencies = transitiveDependencies' []
 
-test_transitiveDependencies_simpleCase :: Test.EasyCheck.Prop
+test_transitiveDependencies_simpleCase :: Prop
 test_transitiveDependencies_simpleCase = transitiveDependencies db pkg -=- ["B", "C"]
   where pkg = cPackage "A" (0, 0, 1, Nothing) [cDep "B" ">= 1.0.0", cDep "C" "= 1.2.0"]
         b = cPackage "B" (1, 0, 9, Nothing) []
         c = cPackage "C" (1, 2, 0, Nothing) []
         db = cDB [b, c]
 
-test_transitiveDependencies_loop :: Test.EasyCheck.Prop
+test_transitiveDependencies_loop :: Prop
 test_transitiveDependencies_loop = transitiveDependencies db pkg -=- ["B", "C"]
   where pkg = cPackage "A" (0, 0, 1, Nothing) [cDep "B" ">= 1.0.0", cDep "C" "= 1.2.0"]
         b = cPackage "B" (1, 0, 0, Nothing) [cDep "C" "= 1.2.0"]
         c = cPackage "C" (1, 2, 0, Nothing) [cDep "B" ">= 1.0.0"]
         db = cDB [b, c]
 
-test_transitiveDependencies_multipleVersions :: Test.EasyCheck.Prop
+test_transitiveDependencies_multipleVersions :: Prop
 test_transitiveDependencies_multipleVersions = transitiveDependencies db pkg -=- ["B", "D", "C"]
   where pkg = cPackage "A" (0, 0, 1, Nothing) [cDep "B" ">= 1.0.0"]
         b100 = cPackage "B" (1, 0, 0, Nothing) [cDep "C" "= 1.0.0"]
@@ -499,9 +502,9 @@ isCompatibleToCompiler cfg p = case compats of
     Nothing -> False -- No constraints for current compiler
                      -- => compiler is incompatible
     Just (CompilerCompatibility _ c) ->
-               isDisjunctionCompatible (maj, min, 0, Nothing) c
+               isDisjunctionCompatible (maj, min, revi, Nothing) c
  where
-  (name, maj, min) = compilerVersion cfg
+  (name, maj, min, revi) = compilerVersion cfg
   compats = compilerCompatibility p
   constraintForCompiler = find (\(CompilerCompatibility c _) -> c == name)
                                compats
@@ -519,59 +522,58 @@ isDisjunctionCompatible ver cs = any id (map (all id) rs)
   isCompatible (VGte v) = ver `vgte` v && preReleaseCompatible ver v
   isCompatible (VCompatible v) = ver `vgte` v && ver `vlt` (nextMinor v) &&
     preReleaseCompatible ver v
-  nextMinor (maj, min, _, _) = (maj, min + 1, 0, Nothing)
 
-test_onlyConjunctionCompatible :: Test.EasyCheck.Prop
+test_onlyConjunctionCompatible :: Prop
 test_onlyConjunctionCompatible = isDisjunctionCompatible ver dis -=- True
   where dis = cDisj "= 1.0.0"
         ver = (1, 0, 0, Nothing)
 
-test_allConjunctionsCompatible :: Test.EasyCheck.Prop
+test_allConjunctionsCompatible :: Prop
 test_allConjunctionsCompatible = isDisjunctionCompatible ver dis -=- True
   where dis = cDisj ">= 1.0.0 || = 1.2.0"
         ver = (1, 2, 0, Nothing)
 
-test_oneConjunctionCompatible :: Test.EasyCheck.Prop
+test_oneConjunctionCompatible :: Prop
 test_oneConjunctionCompatible = isDisjunctionCompatible ver dis -=- True
   where ver = (1, 0, 0, Nothing)
         dis = cDisj "> 2.0.0 || = 1.0.0"
 
-test_conjunctionWithMultipleParts :: Test.EasyCheck.Prop
+test_conjunctionWithMultipleParts :: Prop
 test_conjunctionWithMultipleParts = isDisjunctionCompatible ver dis -=- True
   where ver = (1, 0, 0, Nothing)
         dis = cDisj ">= 1.0.0, < 2.0.0"
 
-test_reportsSimpleFailure :: Test.EasyCheck.Prop
+test_reportsSimpleFailure :: Prop
 test_reportsSimpleFailure = isDisjunctionCompatible ver dis -=- False
   where ver = (1, 0, 0, Nothing)
         dis = cDisj "> 1.0.0"
 
-test_reportsAllConjunctionsAsFailure :: Test.EasyCheck.Prop
+test_reportsAllConjunctionsAsFailure :: Prop
 test_reportsAllConjunctionsAsFailure = isDisjunctionCompatible ver dis -=- False
   where ver = (1, 0, 0, Nothing)
         dis = cDisj "< 1.0.0 || > 1.0.0"
 
-test_reportsRelevantPartOfConjunction :: Test.EasyCheck.Prop
+test_reportsRelevantPartOfConjunction :: Prop
 test_reportsRelevantPartOfConjunction = isDisjunctionCompatible ver dis -=- False
   where ver = (1, 0, 0, Nothing)
         dis = cDisj "< 1.0.0, > 0.5.0"
 
-test_semverCompatible :: Test.EasyCheck.Prop
+test_semverCompatible :: Prop
 test_semverCompatible = isDisjunctionCompatible ver dis -=- True
   where ver = (0, 5, 9, Nothing)
         dis = cDisj "~> 0.5.0"
 
-test_semverIncompatible :: Test.EasyCheck.Prop
+test_semverIncompatible :: Prop
 test_semverIncompatible = isDisjunctionCompatible ver dis -=- False
   where ver = (0, 7, 1, Nothing)
         dis = cDisj "~> 0.6.0"
 
-test_semverMinimum :: Test.EasyCheck.Prop
+test_semverMinimum :: Prop
 test_semverMinimum = isDisjunctionCompatible ver dis -=- False
   where ver = (0, 7, 0, Nothing)
         dis = cDisj "~> 0.7.2"
 
-test_resolvesSimpleDependency :: Test.EasyCheck.Prop
+test_resolvesSimpleDependency :: Prop
 test_resolvesSimpleDependency =
   maybeResolvedPackages (resolve defaultConfig pkg db) -=- Just [json100, pkg]
   where pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "json" "=1.0.0"]
@@ -579,20 +581,20 @@ test_resolvesSimpleDependency =
         json101 = cPackage "json" (1, 0, 1, Nothing) []
         db  = cDB [json100, json101]
 
-test_reportsUnknownPackage :: Test.EasyCheck.Prop
+test_reportsUnknownPackage :: Prop
 test_reportsUnknownPackage = showResult result -=- "There seems to be no version of package json that can satisfy the constraint json = 1.0.0"
   where result = resolve defaultConfig pkg db
         pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "json" "= 1.0.0"]
         db = cDB [pkg]
 
-test_reportsMissingPackageVersion :: Test.EasyCheck.Prop
+test_reportsMissingPackageVersion :: Prop
 test_reportsMissingPackageVersion = showResult result -=- "There seems to be no version of package json that can satisfy the constraint json = 1.2.0"
   where result = resolve defaultConfig pkg db
         pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "json" "=1.2.0"]
         json = cPackage "json" (1, 0, 0, Nothing) []
         db  = cDB [json]
 
-test_reportsSecondaryConflict :: Test.EasyCheck.Prop
+test_reportsSecondaryConflict :: Prop
 test_reportsSecondaryConflict = showResult result -=- expectedMessage
  where result = resolve defaultConfig pkg db
        pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "json" "= 1.0.0", cDep "b" ">= 0.0.1"]
@@ -607,7 +609,7 @@ test_reportsSecondaryConflict = showResult result -=- expectedMessage
         ++ "  |- b (b >= 0.0.1)\n"
         ++ "    |- json (json ~> 1.0.4)"
 
-test_reportsSecondaryConflictInsteadOfPrimary :: Test.EasyCheck.Prop
+test_reportsSecondaryConflictInsteadOfPrimary :: Prop
 test_reportsSecondaryConflictInsteadOfPrimary = showResult result -=- expectedMessage
  where result = resolve defaultConfig pkg db
        pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "json" "= 1.0.0", cDep "b" ">= 0.0.5"]
@@ -625,7 +627,7 @@ test_reportsSecondaryConflictInsteadOfPrimary = showResult result -=- expectedMe
         ++ "  |- b (b >= 0.0.5)\n"
         ++ "    |- json (json ~> 1.0.4)"
 
-test_detectsSecondaryOnFirstActivation :: Test.EasyCheck.Prop
+test_detectsSecondaryOnFirstActivation :: Prop
 test_detectsSecondaryOnFirstActivation = showResult result -=- expectedMessage
  where result = resolve defaultConfig pkg db
        pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "a" "= 0.0.1", cDep "b" "> 0.0.1"]
@@ -640,7 +642,7 @@ test_detectsSecondaryOnFirstActivation = showResult result -=- expectedMessage
         ++ "sample\n"
         ++ "  |- b (b > 0.0.1)"
 
-test_makesDecisionBetweenAlternatives :: Test.EasyCheck.Prop
+test_makesDecisionBetweenAlternatives :: Prop
 test_makesDecisionBetweenAlternatives =
   maybeResolvedPackages (resolve defaultConfig pkg db) -=- Just [json150, pkg]
   where pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "json" "> 1.0.0, < 2.0.0 || >= 4.0.0"]
@@ -648,7 +650,7 @@ test_makesDecisionBetweenAlternatives =
         json320 = cPackage "json" (3, 2, 0, Nothing) []
         db = cDB [json150, json320]
 
-test_alwaysChoosesNewestAlternative :: Test.EasyCheck.Prop
+test_alwaysChoosesNewestAlternative :: Prop
 test_alwaysChoosesNewestAlternative =
   maybeResolvedPackages (resolve defaultConfig pkg db) -=- Just [json420, pkg]
   where pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "json" "> 1.0.0, < 2.0.0 || >= 4.0.0"]
@@ -656,7 +658,7 @@ test_alwaysChoosesNewestAlternative =
         json420 = cPackage "json" (4, 2, 0, Nothing) []
         db = cDB [json150, json420]
 
-test_doesNotChoosePrereleaseByDefault :: Test.EasyCheck.Prop
+test_doesNotChoosePrereleaseByDefault :: Prop
 test_doesNotChoosePrereleaseByDefault =
   maybeResolvedPackages (resolve defaultConfig pkg db) -=- Just [b109, pkg]
   where pkg = cPackage "A" (0, 0, 1, Nothing) [cDep "B" ">= 1.0.0"]
@@ -664,7 +666,7 @@ test_doesNotChoosePrereleaseByDefault =
         b110b1 = cPackage "B" (1, 1, 0, Just "b1") []
         db = cDB [b109, b110b1]
 
-test_upgradesPackageToPrereleaseWhenNeccesary :: Test.EasyCheck.Prop
+test_upgradesPackageToPrereleaseWhenNeccesary :: Prop
 test_upgradesPackageToPrereleaseWhenNeccesary =
   maybeResolvedPackages (resolve defaultConfig pkg db) -=- Just [b110b1, c, pkg]
   where pkg = cPackage "A" (0, 0, 1, Nothing) [cDep "C" "= 1.2.0"]
@@ -673,7 +675,7 @@ test_upgradesPackageToPrereleaseWhenNeccesary =
         c = cPackage "C" (1, 2, 0, Nothing) [cDep "B" ">= 1.1.0-b1"]
         db = cDB [b109, b110b1, c]
 
-test_prefersLocalPackageCacheEvenIfOlder :: Test.EasyCheck.Prop
+test_prefersLocalPackageCacheEvenIfOlder :: Prop
 test_prefersLocalPackageCacheEvenIfOlder =
   maybeResolvedPackages (resolve defaultConfig pkg db) -=- Just [b101, pkg]
   where pkg = cPackage "A" (0, 0, 1, Nothing) [cDep "B" ">= 1.0.0"]
@@ -681,8 +683,8 @@ test_prefersLocalPackageCacheEvenIfOlder =
         b105 = cPackage "B" (1, 0, 5, Nothing) []
         db = addPackage (addPackage emptySet b101 FromLocalCache) b105 FromRepository
 
-test_reportsCompilerIncompatibility :: Test.EasyCheck.Prop
-test_reportsCompilerIncompatibility = showResult result -=- "The package json-1.0.0, dependency constraint json = 1.0.0, is not compatible to the current compiler. It was activated because:\nsample\n  |- json (json = 1.0.0)"
+test_reportsCompilerIncompatibility :: Prop
+test_reportsCompilerIncompatibility = showResult result -=- "The package json-1.0.0, dependency constraint json = 1.0.0, is not compatible to the current compiler. It was activated because:\nPackage dependencies:\nsample\n  |- json (json = 1.0.0)"
   where result = resolve defaultConfig pkg db
         pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "json" "= 1.0.0"]
         json = cPackageCC "json" (1, 0, 0, Nothing) [cCC "nocompiler" "= 1.0.0"]
@@ -692,10 +694,10 @@ cPackage :: String -> Version -> [Dependency] -> Package
 cPackage p v ds = emptyPackage {
     name = p
   , version = v
-  , author = "author"
+  , author = ["author"]
   , synopsis = "JSON library for Curry"
   , dependencies = ds
-  , maintainer = Nothing
+  , maintainer = []
   , description = Nothing
   , license = Nothing
   , licenseFile = Nothing
@@ -712,10 +714,10 @@ cPackageCC :: String -> Version -> [CompilerCompatibility] -> Package
 cPackageCC p v cs = emptyPackage {
     name = p
   , version = v
-  , author = "author"
+  , author = ["author"]
   , synopsis = "JSON library for Curry"
   , dependencies = []
-  , maintainer = Nothing
+  , maintainer = []
   , description = Nothing
   , license = Nothing
   , licenseFile = Nothing
