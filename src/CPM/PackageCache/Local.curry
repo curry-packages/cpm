@@ -29,7 +29,7 @@ import System.FilePath  ( (</>) )
 import Data.Either      ( rights )
 import Data.List        ( isPrefixOf )
 import Control.Monad
-import IOExts           ( readCompleteFile )
+import System.IOExts    ( readCompleteFile )
 
 import CPM.Config       ( Config, packageInstallDir )
 import CPM.ErrorLogger
@@ -46,19 +46,19 @@ cacheDir pkgDir = pkgDir </> ".cpm" </> "package_cache"
 --- Reads all packages specifications from the local package cache.
 ---
 --- @param dir the package directory
-allPackages :: String -> IO (ErrorLogger [Package])
+allPackages :: String -> ErrorLogger [Package]
 allPackages pkgDir = do
-  cacheExists <- doesDirectoryExist cdir
+  cacheExists <- liftIOErrorLogger $ doesDirectoryExist cdir
   if cacheExists
     then do
       debugMessage $ "Reading local package cache from '" ++ cdir ++ "'..."
-      cdircont <- getDirectoryContents cdir
+      cdircont <- liftIOErrorLogger $ getDirectoryContents cdir
       let pkgDirs = filter (not . isPrefixOf ".") cdircont
-      pkgPaths <- mapM removeIfIllegalSymLink $ map (cdir </>) pkgDirs
-      specPaths <- return $ map (</> "package.json") $ concat pkgPaths
-      specs <- mapM (readPackageSpecIO . readCompleteFile) specPaths
-      succeedIO $ rights specs
-    else succeedIO []
+      pkgPaths <- liftIOErrorLogger $ mapM removeIfIllegalSymLink $ map (cdir </>) pkgDirs
+      let specPaths = map (</> "package.json") $ concat pkgPaths
+      specs <- liftIOErrorLogger $ mapM (readPackageSpecIO . readCompleteFile) specPaths
+      return $ rights specs
+    else return []
  where
   readPackageSpecIO = fmap readPackageSpec
   cdir = cacheDir pkgDir
@@ -78,7 +78,7 @@ allPackages pkgDir = do
 --- @param dir the package directory
 --- @param gc the global package cache
 --- @param pkg the package to copy
-createLinkToGlobalCache :: Config -> String -> Package -> IO (ErrorLogger ())
+createLinkToGlobalCache :: Config -> String -> Package -> ErrorLogger ()
 createLinkToGlobalCache cfg pkgDir pkg =
   createLink pkgDir (installedPackageDir cfg pkg) (packageId pkg) False
 
@@ -90,9 +90,9 @@ createLinkToGlobalCache cfg pkgDir pkg =
 --- @param gc the global package cache
 --- @param pkgs the list of packages
 linkPackages :: Config -> String -> [Package]
-             -> IO (ErrorLogger ())
+             -> ErrorLogger ()
 linkPackages cfg pkgDir pkgs =
-  mapEL (createLinkToGlobalCache cfg pkgDir) pkgs |> succeedIO ()
+  mapM (createLinkToGlobalCache cfg pkgDir) pkgs >> return ()
 
 --- Tests whether a link in the local package cache points to a package in the
 --- global package cache.
@@ -130,12 +130,12 @@ isPackageInCache pkgDir pkg = do
 --- Clear the local package cache.
 ---
 --- @param dir the package directory
-clearCache :: String -> IO ()
+clearCache :: String -> ErrorLogger ()
 clearCache pkgDir = do
-  cacheExists <- doesDirectoryExist cdir
+  cacheExists <- liftIOErrorLogger $ doesDirectoryExist cdir
   if cacheExists
     then do
-      pkgDirs <- getDirectoryContents cdir
+      pkgDirs <- liftIOErrorLogger $ getDirectoryContents cdir
       mapM deleteIfLink (map (cdir </>) $ filter (not . isDotOrDotDot) pkgDirs)
       return ()
     else return ()
@@ -147,21 +147,21 @@ ensureCacheDir pkgDir = do
   createDirectoryIfMissing True (cacheDir pkgDir)
   return (cacheDir pkgDir)
 
-deleteIfLink :: String -> IO (ErrorLogger ())
+deleteIfLink :: String -> ErrorLogger ()
 deleteIfLink target = do
-  dirExists  <- doesDirectoryExist target
-  fileExists <- doesFileExist target
-  isLink     <- isSymlink target
+  dirExists  <- liftIOErrorLogger $ doesDirectoryExist target
+  fileExists <- liftIOErrorLogger $ doesFileExist target
+  isLink     <- liftIOErrorLogger $ isSymlink target
   if dirExists || fileExists
     then
       if isLink
-        then removeSymlink target >> succeedIO ()
-        else failIO $ "deleteIfLink can only delete links!\n" ++
+        then liftIOErrorLogger (removeSymlink target) >> return ()
+        else fail $ "deleteIfLink can only delete links!\n" ++
                       "Unexpected target: " ++ target
     else
       if isLink -- maybe it is a link to some non-existing target
-        then removeSymlink target >> succeedIO ()
-        else succeedIO ()
+        then liftIOErrorLogger (removeSymlink target) >> return ()
+        else return ()
 
 linkExists :: String -> IO Bool
 linkExists target = do
@@ -184,18 +184,19 @@ isDotOrDotDot s = case s of
 --- @param name the name of the link in the package directory (should be a
 ---        package id)
 --- @param replace replace existing link?
-createLink :: String -> String -> String -> Bool -> IO (ErrorLogger ())
+createLink :: String -> String -> String -> Bool -> ErrorLogger ()
 createLink pkgDir from name replace = do
-  ensureCacheDir pkgDir
-  exists <- linkExists target
+  liftIOErrorLogger $ ensureCacheDir pkgDir
+  exists <- liftIOErrorLogger $ linkExists target
   if exists && not replace
-    then succeedIO ()
-    else deleteIfLink target |> do
-      fromabs <- getAbsolutePath from
-      rc <- createSymlink fromabs target
+    then return ()
+    else do
+      deleteIfLink target
+      fromabs <- liftIOErrorLogger $ getAbsolutePath from
+      rc <- liftIOErrorLogger $ createSymlink fromabs target
       if rc == 0
-        then succeedIO ()
-        else failIO $ "Failed to create symlink from '" ++ from ++ "' to '" ++
+        then return ()
+        else fail $ "Failed to create symlink from '" ++ from ++ "' to '" ++
                       target ++ "', return code " ++ show rc
  where
   target = cacheDir pkgDir </> name

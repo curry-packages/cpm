@@ -26,8 +26,8 @@ import Control.Monad
 import System.Directory
 import System.FilePath
 import System.IO
+import System.IOExts    ( readCompleteFile )
 import System.Process   ( exitWith, system )
-import IOExts           ( readCompleteFile )
 import ReadShowTerm     ( showQTerm, readQTerm, showTerm, readUnqualifiedTerm )
 
 import CPM.Config        ( Config, repositoryDir )
@@ -132,14 +132,14 @@ findVersion repo pn v =
        maybeHead (x:_) = Just x
 
 --- Prints a warning if the repository index is older than 10 days.
-warnIfRepositoryOld :: Config -> IO ()
+warnIfRepositoryOld :: Config -> ErrorLogger ()
 warnIfRepositoryOld cfg = do
   let updatefile = repositoryDir cfg </> "README.md"
-  updexists <- doesFileExist updatefile
+  updexists <- liftIOErrorLogger $ doesFileExist updatefile
   if updexists
     then do
-      utime <- getModificationTime updatefile
-      ctime <- getClockTime
+      utime <- liftIOErrorLogger $ getModificationTime updatefile
+      ctime <- liftIOErrorLogger $ getClockTime
       let warntime = addDays 10 utime
       when (compareClockTime ctime warntime == GT) $ do
         -- we assume that clock time is measured in seconds
@@ -158,30 +158,30 @@ useUpdateHelp = "Use 'cypm update' to download the newest package index."
 ---
 --- @param path the location of the repository
 --- @return repository
-readRepositoryFrom :: String -> IO Repository
+readRepositoryFrom :: String -> ErrorLogger Repository
 readRepositoryFrom path = do
   (repo, repoErrors) <- tryReadRepositoryFrom path
   if null repoErrors
     then return repo
     else do errorMessage "Problems while reading the package index:"
             mapM_ errorMessage repoErrors
-            exitWith 1
+            liftIOErrorLogger $ exitWith 1
 
 --- Reads all package specifications from a repository.
 ---
 --- @param path the location of the repository
 --- @return repository and possible repository reading errors
-tryReadRepositoryFrom :: String -> IO (Repository, [String])
+tryReadRepositoryFrom :: String -> ErrorLogger (Repository, [String])
 tryReadRepositoryFrom path = do
   debugMessage $ "Reading repository index from '" ++ path ++ "'..."
-  repos     <- checkAndGetVisibleDirectoryContents path
-  pkgPaths  <- mapM getDir (map (path </>) repos) >>= return . concat
-  verDirs   <- mapM checkAndGetVisibleDirectoryContents pkgPaths
+  repos     <- liftIOErrorLogger $ checkAndGetVisibleDirectoryContents path
+  pkgPaths  <- liftIOErrorLogger (mapM getDir (map (path </>) repos) >>= return . concat)
+  verDirs   <- liftIOErrorLogger $ mapM checkAndGetVisibleDirectoryContents pkgPaths
   verPaths  <- return $ concatMap (\ (d, p) -> map (d </>) p)
                      $ zip pkgPaths verDirs
   specPaths <- return $ map (</> "package.json") verPaths
   infoMessage "Reading repository index..."
-  specs     <- mapM readPackageFile specPaths
+  specs     <- liftIOErrorLogger $ mapM readPackageFile specPaths
   when (null (lefts specs)) $ debugMessage "Finished reading repository"
   return $ (Repository $ rights specs, lefts specs)
  where
@@ -201,18 +201,19 @@ repositoryCacheFilePrefix :: Config -> String
 repositoryCacheFilePrefix cfg = repositoryDir cfg </> "REPOSITORY_CACHE"
 
 --- Cleans the repository cache.
-cleanRepositoryCache :: Config -> IO ()
+cleanRepositoryCache :: Config -> ErrorLogger ()
 cleanRepositoryCache cfg = do
   debugMessage $ "Cleaning repository cache '" ++
                  repositoryCacheFilePrefix cfg ++ "*'"
-  system $ "/bin/rm -f " ++ quote (repositoryCacheFilePrefix cfg) ++ "*"
+  liftIOErrorLogger $ system $
+    "/bin/rm -f " ++ quote (repositoryCacheFilePrefix cfg) ++ "*"
   return ()
 
 ------------------------------------------------------------------------------
 --- Reads a given package from the default repository directory.
 --- This is useful to obtain the complete package specification
 --- from a possibly incomplete package specification.
-readPackageFromRepository :: Config -> Package -> IO (ErrorLogger Package)
+readPackageFromRepository :: Config -> Package -> ErrorLogger Package
 readPackageFromRepository cfg pkg =
   let pkgdir = repositoryDir cfg </> name pkg </> showVersion (version pkg)
   in loadPackageSpec pkgdir

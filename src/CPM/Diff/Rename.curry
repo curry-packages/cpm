@@ -37,15 +37,16 @@ import CPM.Repository (Repository)
 --- @param prefix - the prefix for all module names
 --- @param destDir - the destination directory for the modified modules
 prefixPackageAndDeps :: Config -> Repository -> GC.GlobalCache -> String
-                     -> String -> String -> IO (ErrorLogger [(String, String)])
-prefixPackageAndDeps cfg repo gc dir prefix destDir =
-  resolveAndCopyDependencies cfg repo gc dir |>=
-  \deps -> (mapM (findAllModulesInPackage . RuntimeCache.cacheDirectory dir) deps >>= succeedIO) |>=
-  \depMods -> (findAllModulesInPackage dir >>= succeedIO) |>=
-  \ownMods -> succeedIO (ownMods ++ concat depMods) |>=
-  \allMods -> succeedIO (zip (map fst allMods) (map ((prefix ++) . fst) allMods)) |>=
-  \modMap  -> mapM (copyMod dir deps destDir modMap) allMods >>
-  succeedIO modMap
+                     -> String -> String -> ErrorLogger [(String, String)]
+prefixPackageAndDeps cfg repo gc dir prefix destDir = do
+  deps <- resolveAndCopyDependencies cfg repo gc dir
+  depMods <- liftIOErrorLogger $ (mapM
+               (findAllModulesInPackage . RuntimeCache.cacheDirectory dir) deps)
+  ownMods <- liftIOErrorLogger $ findAllModulesInPackage dir
+  let allMods = ownMods ++ concat depMods
+  let modMap = zip (map fst allMods) (map ((prefix ++) . fst) allMods)
+  mapM (copyMod dir deps destDir modMap) allMods
+  return modMap
 
 --- Finds all modules in a package.
 findAllModulesInPackage :: String -> IO [(String, String)]
@@ -65,12 +66,13 @@ findAllModulesInPackage dir = findMods "" (dir </> "src")
 --- Copies a module from one directory to another while renaming both the module
 --- itself as well as any references to other modules inside that module.
 copyMod :: String -> [Package] -> String -> [(String, String)]
-        -> (String, String) -> IO ()
+        -> (String, String) -> ErrorLogger ()
 copyMod origDir deps dest nameMap (name, _) = do
-  dirExists <- doesDirectoryExist (takeDirectory destPath)
-  if dirExists
-    then return ()
-    else createDirectory (takeDirectory destPath)
+  liftIOErrorLogger $ do
+    dirExists <- doesDirectoryExist (takeDirectory destPath)
+    if dirExists
+      then return ()
+      else createDirectory (takeDirectory destPath)
   transformAbstractCurryInDeps origDir deps (applyModuleRenames nameMap)
                                name destPath
  where

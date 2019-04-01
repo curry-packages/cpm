@@ -33,38 +33,39 @@ repositoryCacheDB cfg = repositoryCacheFilePrefix cfg ++ ".db"
 
 --- Writes the repository database with the current repository index
 --- if the command `sqlite3` is in the path.
-tryWriteRepositoryDB :: Config -> IO (ErrorLogger ())
+tryWriteRepositoryDB :: Config -> ErrorLogger ()
 tryWriteRepositoryDB cfg = do
-  withsqlite <- fileInPath "sqlite3"
+  withsqlite <- liftIOErrorLogger $ fileInPath "sqlite3"
   if withsqlite
     then writeRepositoryDB cfg
     else log Info
       "Command 'sqlite3' not found: install package 'sqlite3' to speed up CPM"
 
 --- Writes the repository database with the current repository index.
-writeRepositoryDB :: Config -> IO (ErrorLogger ())
+writeRepositoryDB :: Config -> ErrorLogger ()
 writeRepositoryDB cfg = do
   let sqlitefile = repositoryCacheDB cfg
-  whenFileExists sqlitefile (removeFile sqlitefile)
-  createNewDB sqlitefile
+  liftIOErrorLogger $ whenFileExists sqlitefile (removeFile sqlitefile)
+  liftIOErrorLogger $ createNewDB sqlitefile
   repo <- readRepositoryFrom (repositoryDir cfg)
   debugMessage $ "Writing repository cache DB '" ++ sqlitefile ++ "'"
-  putStr "Writing repository cache DB"
+  liftIOErrorLogger $ putStr "Writing repository cache DB"
   addPackagesToRepositoryDB cfg False (allPackages repo)
-  putChar '\n'
+  liftIOErrorLogger $ putChar '\n'
   log Info "Repository cache DB written"
 
 -- Add a list of package specifications to the database.
-addPackagesToRepositoryDB :: Config -> Bool -> [Package] -> IO (ErrorLogger ())
+addPackagesToRepositoryDB :: Config -> Bool -> [Package] -> ErrorLogger ()
 addPackagesToRepositoryDB cfg quiet pkgs =
-  mapEL (runDBAction . newEntry) pkgs |> succeedIO ()
+  mapM (runDBAction . newEntry) pkgs >> return ()
  where
   runDBAction act = do
-    result <- runWithDB (repositoryCacheDB cfg) act
+    result <- liftIOErrorLogger $ runWithDB (repositoryCacheDB cfg) act
     case result of
       Left (DBError kind str) -> log Critical $ "Repository DB failure: " ++
                                                 show kind ++ " " ++ str
-      Right _ -> (unless quiet $ putChar '.' >> hFlush stdout) >> succeedIO ()
+      Right _ -> liftIOErrorLogger
+                    (unless quiet $ putChar '.' >> hFlush stdout) >> return ()
 
   newEntry p = newIndexEntry
     (name p)

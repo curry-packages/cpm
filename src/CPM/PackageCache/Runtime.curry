@@ -49,19 +49,19 @@ cacheDirectory dir pkg = dir </> ".cpm" </> "packages" </> packageId pkg
 
 --- Copies a set of packages from the local package cache to the runtime
 --- package cache and returns the package specifications.
-copyPackages :: Config -> [Package] -> String -> IO (ErrorLogger [Package])
-copyPackages cfg pkgs dir = mapEL copyPackage pkgs
+copyPackages :: Config -> [Package] -> String -> ErrorLogger [Package]
+copyPackages cfg pkgs dir = mapM copyPackage pkgs
   where
     copyPackage pkg = do
-      cdir <- ensureCacheDirectory dir
-      destDir <- return $ cdir </> packageId pkg
-      recreateDirectory destDir
-      pkgDirExists <- doesDirectoryExist pkgDir
+      cdir <- liftIOErrorLogger $ ensureCacheDirectory dir
+      let destDir = cdir </> packageId pkg
+      liftIOErrorLogger $ recreateDirectory destDir
+      pkgDirExists <- liftIOErrorLogger $ doesDirectoryExist pkgDir
       if pkgDirExists
         then -- in order to obtain complete package specification:
-             readPackageFromRepository cfg pkg |>= \reppkg ->
-             copyDirectoryFollowingSymlinks pkgDir cdir >>
-             writePackageConfig cfg destDir reppkg "" >> succeedIO reppkg
+             readPackageFromRepository cfg pkg >>= \reppkg ->
+             liftIOErrorLogger (copyDirectoryFollowingSymlinks pkgDir cdir) >>
+             writePackageConfig cfg destDir reppkg "" >> return reppkg
         else error $ "Package " ++ packageId pkg ++
                      " could not be found in package cache."
      where
@@ -78,43 +78,44 @@ ensureCacheDirectory dir = do
 --- Writes the package configuration module (if specified) into the
 --- the package sources.
 writePackageConfig :: Config -> String -> Package -> String
-                   -> IO (ErrorLogger ())
+                   -> ErrorLogger ()
 writePackageConfig cfg pkgdir pkg loadpath =
-  maybe (succeedIO ())
+  maybe (return ())
         (\configmod ->
            let binname = maybe ""
                                (\ (PackageExecutable n _ _) -> n)
                                (executableSpec pkg)
            in if null configmod
-                then succeedIO ()
+                then return ()
                 else writeConfigFile configmod binname)
         (configModule pkg)
  where
   writeConfigFile configmod binname = do
     let configfile = pkgdir </> "src" </> foldr1 (</>) (split (=='.') configmod)
                             <.> ".curry"
-    createDirectoryIfMissing True (takeDirectory configfile)
-    abspkgdir <- getAbsolutePath pkgdir
-    writeFile configfile $ unlines $
-      [ "module " ++ configmod ++ " where"
-      , ""
-      , "--- Package version as a string."
-      , "packageVersion :: String"
-      , "packageVersion = \"" ++ showVersion (version pkg) ++ "\""
-      , ""
-      , "--- Package location."
-      , "packagePath :: String"
-      , "packagePath = " ++ show abspkgdir
-      , ""
-      , "--- Load path for the package (if it is the main package)."
-      , "packageLoadPath :: String"
-      , "packageLoadPath = " ++ show loadpath
-      ] ++
-      if null binname
-      then []
-      else [ ""
-           , "--- Location of the executable installed by this package."
-           , "packageExecutable :: String"
-           , "packageExecutable = \"" ++ binInstallDir cfg </> binname ++ "\""
-           ]
+    liftIOErrorLogger $ do
+      createDirectoryIfMissing True (takeDirectory configfile)
+      abspkgdir <- getAbsolutePath pkgdir
+      writeFile configfile $ unlines $
+        [ "module " ++ configmod ++ " where"
+        , ""
+        , "--- Package version as a string."
+        , "packageVersion :: String"
+        , "packageVersion = \"" ++ showVersion (version pkg) ++ "\""
+        , ""
+        , "--- Package location."
+        , "packagePath :: String"
+        , "packagePath = " ++ show abspkgdir
+        , ""
+        , "--- Load path for the package (if it is the main package)."
+        , "packageLoadPath :: String"
+        , "packageLoadPath = " ++ show loadpath
+        ] ++
+        if null binname
+        then []
+        else [ ""
+             , "--- Location of the executable installed by this package."
+             , "packageExecutable :: String"
+             , "packageExecutable = \"" ++ binInstallDir cfg </> binname ++ "\""
+             ]
     log Debug $ "Config module '" ++ configfile ++ "' written."

@@ -42,19 +42,19 @@ module CPM.Package
 
 import Data.Char
 import Data.Either
-import Data.List       ( intercalate, intersperse, isInfixOf, splitOn )
-import System.FilePath ( (</>) )
-import IOExts          ( readCompleteFile )
+import Data.List        ( intercalate, intersperse, isInfixOf, splitOn )
+import System.FilePath  ( (</>) )
+import System.Directory ( doesFileExist )
+import System.IOExts    ( readCompleteFile )
 import JSON.Data
 import JSON.Parser
-import JSON.Pretty     ( ppJSON )
+import JSON.Pretty      ( ppJSON )
 import Test.Prop
-import Prelude hiding  ( (<$>), (<*>), (<*), (*>), (<|>), some, empty )
+import Prelude hiding   ( (<$>), (<*>), (<*), (*>), (<|>), some, empty )
 
 import DetParse
 
 import CPM.ErrorLogger
-import CPM.FileUtil (ifFileExists)
 
 --- Data type representin a version number.
 --- It is a tuple where the components are major, minor, patch, prerelease,
@@ -327,16 +327,17 @@ writePackageSpec pkg file = writeFile file $ ppJSON $ packageSpecToJSON pkg
 --- Loads a package specification from a package directory.
 ---
 --- @param the directory containing the package.json file
-loadPackageSpec :: String -> IO (ErrorLogger Package)
+loadPackageSpec :: String -> ErrorLogger Package
 loadPackageSpec dir = do
   let packageFile = dir </> "package.json"
-  ifFileExists packageFile
-    (do debugMessage $ "Reading package specification '" ++ packageFile ++ "'..."
-        contents <- readCompleteFile packageFile
-        case readPackageSpec contents of
-          Left err -> failIO err
-          Right v  -> succeedIO v )
-    (failIO $ "Illegal package: file `package.json' does not exist!")
+  exfile <- liftIOErrorLogger $ doesFileExist packageFile
+  if exfile
+    then do debugMessage $ "Reading package specification '" ++ packageFile ++ "'..."
+            contents <- liftIOErrorLogger $ readCompleteFile packageFile
+            case readPackageSpec contents of
+               Left err -> fail err
+               Right v  -> return v
+    else fail "Illegal package: file `package.json' does not exist!"
 
 --- Checks whether two package ids are equal, i.e. if their names and versions
 --- match.
@@ -947,10 +948,10 @@ showVersion (maj, min, pat, pre) = majMinPat ++ preRelease
           Nothing        -> ""
 
 --- Tries to parse a version string.
-tryReadVersion :: String -> IO (ErrorLogger Version)
+tryReadVersion :: String -> ErrorLogger Version
 tryReadVersion s = case readVersion s of
-  Just v -> succeedIO v
-  Nothing -> failIO $ s ++ " is not a valid version"
+  Just v -> return v
+  Nothing -> fail $ s ++ " is not a valid version"
 
 --- Tries to parse a version string.
 readVersion :: String -> Maybe Version

@@ -10,7 +10,7 @@ import System.IO
 import System.Directory
 import System.FilePath ((</>))
 import System.Process
-import IOExts
+import System.IOExts
 import Debug.Trace
 import Data.List
 import Data.Maybe

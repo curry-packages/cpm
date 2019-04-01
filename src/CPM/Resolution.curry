@@ -32,11 +32,11 @@ import CPM.Package
 --- Resolves the dependencies of a package using packages from a lookup set,
 --- inside an error logger.
 resolveDependenciesFromLookupSet :: Config -> Package -> LookupSet
-                                 -> IO (ErrorLogger ResolutionResult)
+                                 -> ErrorLogger ResolutionResult
 resolveDependenciesFromLookupSet cfg pkg lookupSet =
   let result = resolve cfg pkg lookupSet in if resolutionSuccess result
-    then succeedIO result
-    else failIO $ showResult result
+    then return result
+    else fail $ showResult result
 
 --- Resolves the dependencies of a package using packages from a lookup set.
 --- The base package of the current compiler is removed from the result set.

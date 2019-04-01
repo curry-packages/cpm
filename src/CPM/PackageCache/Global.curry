@@ -28,7 +28,7 @@ import Data.List
 import Data.Maybe       (isJust)
 import System.FilePath
 import System.Directory
-import IOExts           ( readCompleteFile )
+import System.IOExts    ( readCompleteFile )
 import Prelude hiding   ( log )
 
 import CPM.Config       ( Config, packageInstallDir )
@@ -102,62 +102,62 @@ packageInstalled cfg pkg =
   doesDirectoryExist (installedPackageDir cfg pkg)
 
 --- Copy a package version to a directory.
-copyPackage :: Config -> Package -> String -> IO (ErrorLogger ())
+copyPackage :: Config -> Package -> String -> ErrorLogger ()
 copyPackage cfg pkg dir = do
-  exists <- doesDirectoryExist srcDir
+  exists <- liftIOErrorLogger $ doesDirectoryExist srcDir
   if not exists
-    then failIO $ "Package '" ++ packageId pkg ++ "' not installed"
-    else copyDirectory srcDir dir >> succeedIO ()
+    then fail $ "Package '" ++ packageId pkg ++ "' not installed"
+    else liftIOErrorLogger (copyDirectory srcDir dir) >> return ()
  where
   srcDir = installedPackageDir cfg pkg
 
 --- Acquires a package from the source specified in its specification and
 --- installs it to the global package cache.
-acquireAndInstallPackage :: Config -> Package -> IO (ErrorLogger ())
+acquireAndInstallPackage :: Config -> Package -> ErrorLogger ()
 acquireAndInstallPackage cfg reppkg =
-  readPackageFromRepository cfg reppkg |>= \pkg ->
+  readPackageFromRepository cfg reppkg >>= \pkg ->
   case source pkg of
-   Nothing -> failIO $ "No source specified for " ++ packageId pkg
-   Just  s -> log Info ("Installing package '" ++ packageId pkg ++ "'...") |>
+   Nothing -> fail $ "No source specified for " ++ packageId pkg
+   Just  s -> log Info ("Installing package '" ++ packageId pkg ++ "'...") >>
               installFromSource cfg pkg s
 
 ------------------------------------------------------------------------------
 --- Installs a package from the given package source to the global package
 --- cache.
-installFromSource :: Config -> Package -> PackageSource -> IO (ErrorLogger ())
+installFromSource :: Config -> Package -> PackageSource -> ErrorLogger ()
 installFromSource cfg pkg pkgsource = do
-  pkgDirExists <- doesDirectoryExist pkgDir
+  pkgDirExists <- liftIOErrorLogger $ doesDirectoryExist pkgDir
   if pkgDirExists
     then
       log Info $ "Package '" ++ packageId pkg ++ "' already installed, skipping"
-    else log Info ("Installing package from " ++ showPackageSource pkg) |>
+    else log Info ("Installing package from " ++ showPackageSource pkg) >>
          installPackageSourceTo pkg pkgsource (packageInstallDir cfg)
  where
   pkgDir = installedPackageDir cfg pkg
 
 --- Installs a package from a ZIP file to the global package cache.
-installFromZip :: Config -> String -> IO (ErrorLogger ())
+installFromZip :: Config -> String -> ErrorLogger ()
 installFromZip cfg zip = do
-  t <- tempDir
-  recreateDirectory (t </> "installtmp")
-  absZip <- getAbsolutePath zip
-  c <- inTempDir $ showExecCmd $ "unzip -qq -d installtmp " ++ quote absZip
+  t <- liftIOErrorLogger tempDir
+  liftIOErrorLogger $ recreateDirectory (t </> "installtmp")
+  absZip <- liftIOErrorLogger $ getAbsolutePath zip
+  c <- inTempDirEL $ showExecCmd $ "unzip -qq -d installtmp " ++ quote absZip
   if c == 0
     then
-      loadPackageSpec (t </> "installtmp") |>= \pkgSpec ->
-      log Debug ("ZIP contains " ++ packageId pkgSpec) |>
+      loadPackageSpec (t </> "installtmp") >>= \pkgSpec ->
+      log Debug ("ZIP contains " ++ packageId pkgSpec) >>
       installFromSource cfg pkgSpec (FileSource zip)
-    else failIO "failed to extract ZIP file"
+    else fail "failed to extract ZIP file"
 
 --- Installs a package's missing dependencies.
 installMissingDependencies :: Config -> GlobalCache -> [Package]
-                           -> IO (ErrorLogger ())
+                           -> ErrorLogger ()
 installMissingDependencies cfg gc deps =
   if length missing > 0
-    then log Info logMsg |>
-         mapEL (acquireAndInstallPackage cfg) missing |>
-         succeedIO ()
-    else succeedIO ()
+    then log Info logMsg >>
+         mapM (acquireAndInstallPackage cfg) missing >>
+         return ()
+    else return ()
  where
    missing = filter (not . isPackageInstalled gc) deps
    logMsg = "Installing missing dependencies " ++
@@ -170,14 +170,14 @@ missingPackages gc = filter (not . isPackageInstalled gc)
 
 --- Checkout a package from the global package cache.
 checkoutPackage :: Config -> Package
-                -> IO (ErrorLogger ())
+                -> ErrorLogger ()
 checkoutPackage cfg pkg = do
-  sexists <- doesDirectoryExist pkgDir
-  texists <- doesDirectoryExist codir
+  sexists <- liftIOErrorLogger $ doesDirectoryExist pkgDir
+  texists <- liftIOErrorLogger $ doesDirectoryExist codir
   if texists
     then log Error $ "Local package directory '" ++ codir ++ "' already exists."
     else if sexists
-           then copyDirectory pkgDir codir >> log Info logMsg
+           then liftIOErrorLogger (copyDirectory pkgDir codir) >> log Info logMsg
            else log Error $ "Package '" ++ pkgId ++ "' is not installed."
  where
   pkgId  = packageId pkg
@@ -187,9 +187,9 @@ checkoutPackage cfg pkg = do
            codir ++ "'."
 
 --- Removes a package from the global package cache.
-uninstallPackage :: Config -> String -> Version -> IO (ErrorLogger ())
+uninstallPackage :: Config -> String -> Version -> ErrorLogger ()
 uninstallPackage cfg pkg ver = do
-  exists <- doesDirectoryExist pkgDir
+  exists <- liftIOErrorLogger $ doesDirectoryExist pkgDir
   if exists
     then showExecCmd ("rm -Rf " ++ quote pkgDir) >> log Info logMsg
     else log Info $ "Package '" ++ pkgId ++ "' is not installed."
@@ -199,19 +199,19 @@ uninstallPackage cfg pkg ver = do
   logMsg = "Package '" ++ pkgId ++ "' uninstalled."
 
 --- Tries to find a package in the global package cache.
-tryFindPackage :: GlobalCache -> String -> Version -> IO (ErrorLogger Package)
+tryFindPackage :: GlobalCache -> String -> Version -> ErrorLogger Package
 tryFindPackage gc name ver = case findVersion gc name ver of
-  Just pkg -> succeedIO pkg
-  Nothing -> failIO $ "Package " ++ name ++ "-" ++ showVersion ver ++
+  Just pkg -> return pkg
+  Nothing -> fail $ "Package " ++ name ++ "-" ++ showVersion ver ++
                       " could not be found."
 
 --- Reads the global package cache.
-readGlobalCache :: Config -> Repository -> IO (ErrorLogger GlobalCache)
+readGlobalCache :: Config -> Repository -> ErrorLogger GlobalCache
 readGlobalCache config repo = do
   maybeGC <- readInstalledPackagesFromDir repo $ packageInstallDir config
   case maybeGC of
-    Left err -> failIO $ "Error reading global package cache: " ++ err
-    Right gc -> succeedIO gc
+    Left err -> fail $ "Error reading global package cache: " ++ err
+    Right gc -> return gc
 
 --- Tries to read package specifications from a GC directory structure.
 --- If some GC package directory has the same name as a package from
@@ -220,17 +220,17 @@ readGlobalCache config repo = do
 --- stored in the directory is read.
 --- This should result in faster GC loading.
 readInstalledPackagesFromDir :: Repository -> String
-                             -> IO (Either String GlobalCache)
+                             -> ErrorLogger (Either String GlobalCache)
 readInstalledPackagesFromDir repo path = do
   debugMessage $ "Reading global package cache from '" ++ path ++ "'..."
-  pkgPaths <- checkAndGetVisibleDirectoryContents path
+  pkgPaths <- liftIOErrorLogger $ checkAndGetVisibleDirectoryContents path
   specs <- mapM loadPackageSpecFromDir pkgPaths
   if null (lefts specs)
     then do debugMessage "Finished reading global package cache"
             return (Right $ GlobalCache (rights specs))
     else return (Left $ intercalate "; " (lefts specs))
  where
-  readPackageSpecIO = fmap readPackageSpec
+  readPackageSpecIO = liftIOErrorLogger . fmap readPackageSpec
 
   loadPackageSpecFromDir pkgdir = case packageVersionFromFile pkgdir of
     Nothing -> readPackageSpecFromFile pkgdir

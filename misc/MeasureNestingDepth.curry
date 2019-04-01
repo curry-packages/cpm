@@ -3,7 +3,7 @@ module MeasureNestingDepth where
 import System.Directory
 import Debug.Trace
 import Data.List
-import System.Distribution
+import Language.Curry.Distribution
 import System.FilePath
 import AbstractCurry.Types
 import AbstractCurry.Select

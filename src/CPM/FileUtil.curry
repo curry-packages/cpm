@@ -32,7 +32,7 @@ import System.FilePath    ( FilePath, replaceFileName, (</>)
                           , searchPathSeparator )
 import Data.List          ( intercalate, isPrefixOf, splitOn )
 import Control.Monad      ( when )
-import IOExts             ( evalCmd, readCompleteFile )
+import System.IOExts      ( evalCmd, readCompleteFile )
 
 --- Joins a list of directories into a search path.
 joinSearchPath :: [FilePath] -> String

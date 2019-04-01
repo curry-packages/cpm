@@ -6,6 +6,7 @@
 ------------------------------------------------------------------------------
 {-# OPTIONS_CYMAKE -F --pgmF=currypp --optF=foreigncode --optF=-o #-}
 
+
 module CPM.Repository.Select
   ( searchNameSynopsisModules
   , searchExportedModules, searchExecutable
@@ -38,12 +39,12 @@ import CPM.Package
 import CPM.Repository
 
 --- Runs a query on the repository cache DB and show debug infos.
-runQuery :: Config -> DBAction a -> IO a
+runQuery :: Config -> DBAction a -> ErrorLogger a
 runQuery cfg dbact = do
   warnIfRepositoryOld cfg
   let dbfile = repositoryCacheDB cfg
   debugMessage $ "Reading repository database '" ++ dbfile ++ "'..."
-  result <- runQueryOnDB dbfile dbact
+  result <- liftIOErrorLogger $ runQueryOnDB dbfile dbact
   debugMessage $ "Finished reading repository database"
   return result
 
@@ -51,9 +52,9 @@ runQuery cfg dbact = do
 --- in the name, synopsis, or exported modules.
 --- In each package, the name, version, synopsis, and compilerCompatibility
 --- is set.
-searchNameSynopsisModules :: Config -> String -> IO [Package]
+searchNameSynopsisModules :: Config -> String -> ErrorLogger [Package]
 searchNameSynopsisModules cfg pat =
-  runQuery cfg $ liftM (map toPackage)
+  runQuery cfg $ fmap (map toPackage)
     ``sql* Select Name, Version, Synopsis, CompilerCompatibility
            From   IndexEntry
            Where  Name            like {pattern} Or
@@ -73,10 +74,10 @@ searchNameSynopsisModules cfg pat =
 --- in the list of exported modules.
 --- In each package, the name, version, synopsis, compilerCompatibility,
 --- and exportedModules is set.
-searchExportedModules :: Config -> String -> IO [Package]
+searchExportedModules :: Config -> String -> ErrorLogger [Package]
 searchExportedModules cfg pat =
   (queryDBorCache cfg True $
-     liftM (pkgsToRepository . map toPackage)
+     fmap (pkgsToRepository . map toPackage)
        ``sql* Select Name, Version, Synopsis, CompilerCompatibility,
                      ExportedModules
               From   IndexEntry
@@ -101,10 +102,10 @@ searchExportedModules cfg pat =
 --- in the name of the executable.
 --- In each package, the name, version, synopsis, compilerCompatibility,
 --- and executableSpec is set.
-searchExecutable :: Config -> String -> IO [Package]
+searchExecutable :: Config -> String -> ErrorLogger [Package]
 searchExecutable cfg pat =
   (queryDBorCache cfg True $
-     liftM (pkgsToRepository . map toPackage)
+     fmap (pkgsToRepository . map toPackage)
        ``sql* Select Name, Version, Synopsis, CompilerCompatibility,
                      ExecutableSpec
               From   IndexEntry
@@ -126,9 +127,9 @@ searchExecutable cfg pat =
 
 --- Returns the complete repository where in each package
 --- the name, version, synopsis, and compilerCompatibility is set.
-getRepositoryWithNameVersionSynopsis :: Config -> IO Repository
+getRepositoryWithNameVersionSynopsis :: Config -> ErrorLogger Repository
 getRepositoryWithNameVersionSynopsis cfg = queryDBorCache cfg True $
-  liftM (pkgsToRepository . map toPackage)
+  fmap (pkgsToRepository . map toPackage)
     ``sql* Select Name, Version, Synopsis, CompilerCompatibility
            From   IndexEntry;''
  where
@@ -141,9 +142,9 @@ getRepositoryWithNameVersionSynopsis cfg = queryDBorCache cfg True $
 
 --- Returns the complete repository where in each package
 --- the name, version, category, and compilerCompatibility is set.
-getRepositoryWithNameVersionCategory :: Config -> IO Repository
+getRepositoryWithNameVersionCategory :: Config -> ErrorLogger Repository
 getRepositoryWithNameVersionCategory cfg = queryDBorCache cfg True $
-  liftM (pkgsToRepository . map toPackage)
+  fmap (pkgsToRepository . map toPackage)
     ``sql* Select Name, Version, Category, CompilerCompatibility
            From   IndexEntry;''
  where
@@ -157,9 +158,9 @@ getRepositoryWithNameVersionCategory cfg = queryDBorCache cfg True $
 --- Returns the complete repository where in each package
 --- the name, version, dependencies, and compilerCompatibility is set.
 --- The information is read either from the cache DB or from the cache file.
-getBaseRepository :: Config -> IO Repository
+getBaseRepository :: Config -> ErrorLogger Repository
 getBaseRepository cfg = queryDBorCache cfg False $
-  liftM (pkgsToRepository . map toBasePackage)
+  fmap (pkgsToRepository . map toBasePackage)
     ``sql* Select Name, Version, Dependencies, CompilerCompatibility
            From   IndexEntry;''
 
@@ -178,9 +179,9 @@ toBasePackage (nm,vs,deps,cmp) =
 --- in each package the name, version, dependencies, and compilerCompatibility
 --- is set.
 --- The information is read either from the cache DB or from the cache file.
-getRepoPackagesWithName :: Config -> String -> IO Repository
+getRepoPackagesWithName :: Config -> String -> ErrorLogger Repository
 getRepoPackagesWithName cfg pn = queryDBorCache cfg False $
-  liftM (pkgsToRepository . map toBasePackage)
+  fmap (pkgsToRepository . map toBasePackage)
     ``sql* Select Name, Version, Dependencies, CompilerCompatibility
            From   IndexEntry
            Where  Name = {pn} ;''
@@ -190,7 +191,7 @@ getRepoPackagesWithName cfg pn = queryDBorCache cfg False $
 --- In each package the name, version, dependencies, and compilerCompatibility
 --- is set.
 --- The information is read either from the cache DB or from the cache file.
-getRepoForPackageSpec :: Config -> Package -> IO Repository
+getRepoForPackageSpec :: Config -> Package -> ErrorLogger Repository
 getRepoForPackageSpec cfg pkgspec =
   getRepoForPackages cfg (name pkgspec : dependencyNames pkgspec)
 
@@ -199,9 +200,9 @@ getRepoForPackageSpec cfg pkgspec =
 --- In each package the name, version, dependencies, and compilerCompatibility
 --- is set.
 --- The information is read either from the cache DB or from the cache file.
-getRepoForPackages :: Config -> [String] -> IO Repository
+getRepoForPackages :: Config -> [String] -> ErrorLogger Repository
 getRepoForPackages cfg pkgnames = do
-  dbexists <- doesFileExist (repositoryCacheDB cfg)
+  dbexists <- liftIOErrorLogger $ doesFileExist (repositoryCacheDB cfg)
   if dbexists
     then do warnIfRepositoryOld cfg
             let dbfile = repositoryCacheDB cfg
@@ -216,12 +217,12 @@ getRepoForPackages cfg pkgnames = do
    | pn `elem` lpns = queryPackagesFromDB pns lpns pkgs
    | otherwise      = do
      debugMessage $ "Reading package versions of " ++ pn
-     pnpkgs <- queryPackage pn
+     pnpkgs <- liftIOErrorLogger $ queryPackage pn
      let newdeps = concatMap dependencyNames pnpkgs
      queryPackagesFromDB (newdeps++pns) (pn:lpns) (pnpkgs++pkgs)
 
   queryPackage pn = runQueryOnDB (repositoryCacheDB cfg) $
-    liftM (map toBasePackage)
+    fmap (map toBasePackage)
     ``sql* Select Name, Version, Dependencies, CompilerCompatibility
            From IndexEntry
            Where Name = {pn} ;''
@@ -231,7 +232,7 @@ getRepoForPackages cfg pkgnames = do
 --- @param cfg     - the current CPM configuration
 --- @param pkgname - the package name to be retrieved
 --- @param pre     - should pre-release versions be included?
-getAllPackageVersions :: Config -> String -> Bool -> IO [Package]
+getAllPackageVersions :: Config -> String -> Bool -> ErrorLogger [Package]
 getAllPackageVersions cfg pkgname pre = do
   repo <- getRepoPackagesWithName cfg pkgname
   return (findAllVersions repo pkgname pre)
@@ -241,17 +242,16 @@ getAllPackageVersions cfg pkgname pre = do
 --- @param cfg     - the current CPM configuration
 --- @param pkgname - the package name to be retrieved
 --- @param ver     - the requested version of the package
-getPackageVersion :: Config -> String -> Version -> IO (Maybe Package)
+getPackageVersion :: Config -> String -> Version -> ErrorLogger (Maybe Package)
 getPackageVersion cfg pkgname ver = do
   repo <- getRepoPackagesWithName cfg pkgname
   return (findVersion repo pkgname ver)
 
-
 --- If the cache DB exists, run the DB query to get the repository,
 --- otherwise read the (small or large) repository cache file.
-queryDBorCache :: Config -> Bool -> DBAction Repository -> IO Repository
+queryDBorCache :: Config -> Bool -> DBAction Repository -> ErrorLogger Repository
 queryDBorCache cfg large dbaction = do
-  dbexists <- doesFileExist (repositoryCacheDB cfg)
+  dbexists <- liftIOErrorLogger $ doesFileExist (repositoryCacheDB cfg)
   if dbexists then runQuery cfg dbaction
               else readRepository cfg large
 
@@ -262,23 +262,23 @@ pkgRead = readUnqualifiedTerm ["CPM.Package","Prelude"]
 ------------------------------------------------------------------------------
 --- Adds a new package to the repository cache.
 --- In the file-based implementation, we simply clean the cache files.
-addPackageToRepositoryCache :: Config -> Package -> IO (ErrorLogger ())
+addPackageToRepositoryCache :: Config -> Package -> ErrorLogger ()
 addPackageToRepositoryCache cfg pkg = do
-  dbexists <- doesFileExist (repositoryCacheDB cfg)
+  dbexists <- liftIOErrorLogger $ doesFileExist (repositoryCacheDB cfg)
   if dbexists then addPackagesToRepositoryDB cfg True [pkg]
-              else cleanRepositoryCache cfg >> succeedIO ()
+              else cleanRepositoryCache cfg >> return ()
 
 --- Updates an existing package in the repository cache.
 --- In the file-based implementation, we simply clean the cache files.
-updatePackageInRepositoryCache :: Config -> Package -> IO (ErrorLogger ())
+updatePackageInRepositoryCache :: Config -> Package -> ErrorLogger ()
 updatePackageInRepositoryCache cfg pkg = do
-  dbexists <- doesFileExist (repositoryCacheDB cfg)
+  dbexists <- liftIOErrorLogger $ doesFileExist (repositoryCacheDB cfg)
   if dbexists then removePackageFromRepositoryDB cfg pkg >>
                    addPackagesToRepositoryDB cfg True [pkg]
-              else cleanRepositoryCache cfg >> succeedIO ()
+              else cleanRepositoryCache cfg >> return ()
 
 --- Removes a package from the repository cache DB.
-removePackageFromRepositoryDB :: Config -> Package -> IO ()
+removePackageFromRepositoryDB :: Config -> Package -> ErrorLogger ()
 removePackageFromRepositoryDB cfg pkg = runQuery cfg
   ``sql* Delete
          From   IndexEntry

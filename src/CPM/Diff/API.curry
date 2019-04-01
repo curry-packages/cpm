@@ -37,10 +37,10 @@ import CPM.PackageCache.Global as GC
 import CPM.PackageCopy (resolveAndCopyDependencies)
 import CPM.Repository (Repository)
 
-getBaseTemp :: IO (ErrorLogger String)
+getBaseTemp :: IO String
 getBaseTemp = getTemporaryDirectory >>=
   \tmpDir -> let tmp = tmpDir </> "cpm" </> "diff"
-              in recreateDirectory tmp >> succeedIO tmp
+              in recreateDirectory tmp >> return tmp
 
 --- Compares two versions of a package from the global package cache.
 ---
@@ -54,13 +54,13 @@ getBaseTemp = getTemporaryDirectory >>=
 --- @param onlyMods - a list of modules to compare
 compareModulesFromPackages :: Config -> Repository -> GC.GlobalCache -> String
                            -> Version -> String -> Version -> Maybe [String]
-                           -> IO (ErrorLogger [(String, Differences)])
-compareModulesFromPackages cfg repo gc nameA verA nameB verB onlyMods =
-  getBaseTemp |>=
-  \baseTmp -> GC.tryFindPackage gc nameA verA |>=
-  \pkgA -> GC.tryFindPackage gc nameB verB |>=
-  \pkgB -> GC.copyPackage cfg pkgA baseTmp |>
-  GC.copyPackage cfg pkgB baseTmp |>
+                           -> ErrorLogger [(String, Differences)]
+compareModulesFromPackages cfg repo gc nameA verA nameB verB onlyMods = do
+  baseTmp <- liftIOErrorLogger getBaseTemp
+  pkgA <- GC.tryFindPackage gc nameA verA
+  pkgB <- GC.tryFindPackage gc nameB verB
+  GC.copyPackage cfg pkgA baseTmp
+  GC.copyPackage cfg pkgB baseTmp
   compareModulesInDirs cfg repo gc (baseTmp </> packageId pkgA)
     (baseTmp </> packageId pkgB) onlyMods
 
@@ -76,13 +76,13 @@ compareModulesFromPackages cfg repo gc nameA verA nameB verB onlyMods =
 --- @param onlyMods - a list of modules to compare
 compareModulesFromPackageAndDir :: Config -> Repository -> GC.GlobalCache
                                -> String -> String -> Version -> Maybe [String]
-                               -> IO (ErrorLogger [(String, Differences)])
-compareModulesFromPackageAndDir cfg repo gc dirA nameB verB onlyMods =
-  getBaseTemp |>=
-  \baseTmp -> GC.tryFindPackage gc nameB verB |>=
-  \pkgB -> loadPackageSpec dirA |>=
-  \pkgA -> GC.copyPackage cfg pkgB baseTmp |>
-  copyDirectory dirA (baseTmp </> packageId pkgA) >> succeedIO () |>
+                               -> ErrorLogger [(String, Differences)]
+compareModulesFromPackageAndDir cfg repo gc dirA nameB verB onlyMods = do
+  baseTmp <- liftIOErrorLogger getBaseTemp
+  pkgB <- GC.tryFindPackage gc nameB verB
+  pkgA <- loadPackageSpec dirA
+  GC.copyPackage cfg pkgB baseTmp
+  liftIOErrorLogger $ copyDirectory dirA (baseTmp </> packageId pkgA)
   compareModulesInDirs cfg repo gc (baseTmp </> packageId pkgA)
                        (baseTmp </> packageId pkgB) onlyMods
 
@@ -96,21 +96,21 @@ compareModulesFromPackageAndDir cfg repo gc dirA nameB verB onlyMods =
 --- @param onlyMods - a list of modules to compare
 compareModulesInDirs :: Config -> Repository -> GC.GlobalCache -> String
                      -> String -> Maybe [String]
-                     -> IO (ErrorLogger [(String, Differences)])
+                     -> ErrorLogger [(String, Differences)]
 compareModulesInDirs cfg repo gc dirA dirB onlyMods =
-  loadPackageSpec dirA |>= \pkgA ->
-  loadPackageSpec dirB |>= \pkgB ->
-  resolveAndCopyDependencies cfg repo gc dirA |>= \depsA ->
-  resolveAndCopyDependencies cfg repo gc dirB |>= \depsB ->
+  loadPackageSpec dirA >>= \pkgA ->
+  loadPackageSpec dirB >>= \pkgB ->
+  resolveAndCopyDependencies cfg repo gc dirA >>= \depsA ->
+  resolveAndCopyDependencies cfg repo gc dirB >>= \depsB ->
   let cmpmods = nub (exportedModules pkgA ++ exportedModules pkgB) in
   if null cmpmods
-    then log Info "No exported modules to compare" |> succeedIO []
-    else
-      mapEL (compareApiModule pkgA dirA depsA pkgB dirB depsB) cmpmods |>=
-      \diffs -> let modsWithDiffs = zip cmpmods diffs in
-                succeedIO $ case onlyMods of
-                  Nothing -> modsWithDiffs
-                  Just ms -> filter ((`elem` ms) . fst) modsWithDiffs
+    then log Info "No exported modules to compare" >> return []
+    else do diffs <- liftIOErrorLogger $ mapM (compareApiModule
+                       pkgA dirA depsA pkgB dirB depsB) cmpmods
+            let modsWithDiffs = zip cmpmods diffs
+            return $ case onlyMods of
+              Nothing -> modsWithDiffs
+              Just ms -> filter ((`elem` ms) . fst) modsWithDiffs
 
 --- Compares a single module from two package versions.
 ---
@@ -122,22 +122,22 @@ compareModulesInDirs cfg repo gc dirA dirB onlyMods =
 --- @param depsB - the resolved dependencies of version B of the package
 --- @param mod - the name of the module
 compareApiModule :: Package -> String -> [Package] -> Package -> String
-                 -> [Package] -> String -> IO (ErrorLogger Differences)
+                 -> [Package] -> String -> IO Differences
 compareApiModule pkgA dirA depsA pkgB dirB depsB mod =
   if mod `elem` exportedModules pkgA
     then
      if mod `elem` exportedModules pkgB
        then
-         readAbstractCurryFromPackagePath pkgA dirA depsA mod >>= succeedIO
-              |>= \prog1 ->
-         readAbstractCurryFromPackagePath pkgB dirB depsB mod >>= succeedIO
-              |>= \prog2 ->
+         readAbstractCurryFromPackagePath pkgA dirA depsA mod
+              >>= \prog1 ->
+         readAbstractCurryFromPackagePath pkgB dirB depsB mod
+              >>= \prog2 ->
          let funcDiffs = diffFuncsFiltered funcIsPublic   prog1 prog2
              typeDiffs = diffTypesFiltered typeIsPublic   prog1 prog2
              opDiffs   = diffOpsFiltered   (\_ _ -> True) prog1 prog2
-         in succeedIO $ (Nothing, funcDiffs, typeDiffs, opDiffs)
-      else succeedIO $ (Just $ Addition mod, [], [], [])
-    else succeedIO $ (Just $ Removal mod, [], [], [])
+         in return $ (Nothing, funcDiffs, typeDiffs, opDiffs)
+      else return $ (Just $ Addition mod, [], [], [])
+    else return $ (Just $ Removal mod, [], [], [])
 
 --- Differences between two versions of a package. First component is present
 --- if the module is missing in one of the package versions. The other
