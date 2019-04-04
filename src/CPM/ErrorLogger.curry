@@ -20,7 +20,7 @@ import System.Directory
 import CPM.FileUtil
 
 import Debug.Profile -- for show run-time
-import Text.Pretty
+import Text.Pretty hiding (empty)
 
 --- An error logger.
 newtype ErrorLogger a = ErrorLogger
@@ -59,6 +59,7 @@ instance Applicative ErrorLogger where
   f <*> v = f >>= \f' -> fmap f' v
 
 instance Alternative ErrorLogger where
+  empty = fail "empty"
   a <|> b = ErrorLogger $ \l s -> do
     (st, (msgs, a')) <- runErrorLogger a l s
     let (glob, showTime) = st
