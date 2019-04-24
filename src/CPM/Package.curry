@@ -15,7 +15,7 @@ module CPM.Package
   , replaceVersionInTag
   , readVersion
   , packageIdEq
-  , showPackageSource
+  , showSourceOfPackage
   , readVersionConstraint
   , readVersionConstraints
   , readPackageSpec
@@ -347,11 +347,12 @@ packageIdEq :: Package -> Package -> Bool
 packageIdEq p1 p2 = name p1 == name p2 && version p1 == version p2
 
 --- Shows the package source in human-readable format.
-showPackageSource :: Package -> String
-showPackageSource pkg = case source pkg of
+showSourceOfPackage :: Package -> String
+showSourceOfPackage pkg = case source pkg of
   Nothing -> "No source specified"
   Just  s -> showSource s
  where
+  showSource :: PackageSource -> String
   showSource (Git url rev)    = "Git " ++ url ++ showGitRev rev
   showSource (Http url)       = url
   showSource (FileSource url) = "File " ++ url

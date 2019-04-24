@@ -15,6 +15,7 @@ module CPM.PackageCache.Global
   , copyPackage
   , installMissingDependencies
   , acquireAndInstallPackage
+  , acquireAndInstallPackageFromSource
   , tryFindPackage
   , missingPackages
   , installFromZip
@@ -30,7 +31,7 @@ import List
 import Maybe (isJust)
 import FilePath
 
-import CPM.Config   ( Config, packageInstallDir )
+import CPM.Config   ( Config, packageInstallDir, packageTarFilesURL )
 import CPM.ErrorLogger
 import CPM.FileUtil ( copyDirectory, inTempDir, recreateDirectory, inDirectory
                     , removeDirectoryComplete, tempDir, whenFileExists
@@ -109,10 +110,28 @@ copyPackage cfg pkg dir = do
  where
   srcDir = installedPackageDir cfg pkg
 
---- Acquires a package from the source specified in its specification and 
+--- Acquires a package, either from the global tar file repository
+--- or from the source specified in its specification, and 
 --- installs it to the global package cache.
 acquireAndInstallPackage :: Config -> Package -> IO (ErrorLogger ())
-acquireAndInstallPackage cfg reppkg =
+acquireAndInstallPackage cfg pkg = do
+  pkgDirExists <- doesDirectoryExist (installedPackageDir cfg pkg)
+  if pkgDirExists
+    then log Info $ "Package '" ++ packageId pkg ++
+                    "' already installed, skipping"
+    else do
+      let stdurl = packageTarFilesURL cfg ++ packageId pkg ++ ".tar.gz"
+      infoMessage ("Installing package from " ++ stdurl)
+      (msgs,err) <- installPackageSourceTo pkg (Http stdurl)
+                                           (packageInstallDir cfg)
+      case err of
+        Right _ -> return (msgs,err)
+        Left  _ -> acquireAndInstallPackageFromSource cfg pkg
+
+--- Acquires a package from the source specified in its specification and 
+--- installs it to the global package cache.
+acquireAndInstallPackageFromSource :: Config -> Package -> IO (ErrorLogger ())
+acquireAndInstallPackageFromSource cfg reppkg =
   readPackageFromRepository cfg reppkg |>= \pkg ->
   case source pkg of
    Nothing -> failIO $ "No source specified for " ++ packageId pkg
@@ -128,7 +147,7 @@ installFromSource cfg pkg pkgsource = do
   if pkgDirExists
     then
       log Info $ "Package '" ++ packageId pkg ++ "' already installed, skipping"
-    else log Info ("Installing package from " ++ showPackageSource pkg) |> 
+    else log Info ("Installing package from " ++ showSourceOfPackage pkg) |> 
          installPackageSourceTo pkg pkgsource (packageInstallDir cfg)
  where
   pkgDir = installedPackageDir cfg pkg

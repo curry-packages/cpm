@@ -14,6 +14,7 @@ module CPM.Package.Helpers
 import Directory
 import FilePath
 import List         ( splitOn, nub )
+import System       ( getPID )
 
 import System.CurryPath ( addCurrySubdir )
 import Text.Pretty hiding ( (</>) )
@@ -59,16 +60,18 @@ installPackageSourceTo pkg (FileSource zipfile) installdir =
   installPkgFromFile pkg zipfile (installdir </> packageId pkg) False
 
 installPackageSourceTo pkg (Http url) installdir = do
-  let pkgDir = installdir </> packageId pkg
+  pid <- getPID
+  let pkgDir  = installdir </> packageId pkg
+      basepf  = "package" ++ show pid
       revurl  = reverse url
-      pkgfile = if take 4 revurl == "piz."    then "package.zip" else
-                if take 7 revurl == "zg.rat." then "package.tar.gz" else ""
+      pkgfile = if take 4 revurl == "piz."    then basepf ++ ".zip" else
+                if take 7 revurl == "zg.rat." then basepf ++ ".tar.gz" else ""
   if null pkgfile
     then failIO $ "Illegal URL (only .zip or .tar.gz allowed):\n" ++ url
     else do
       tmpdir <- tempDir
       let tmppkgfile = tmpdir </> pkgfile
-      c <- inTempDir $ showExecCmd $ "curl -s -o " ++ tmppkgfile ++
+      c <- inTempDir $ showExecCmd $ "curl -f -s -S -o " ++ tmppkgfile ++
                                      " " ++ quote url
       if c == 0
         then installPkgFromFile pkg tmppkgfile pkgDir True
@@ -226,7 +229,7 @@ renderPackageInfo allinfos plain installed pkg = pPrint doc
 
   src = maybe empty
               (\_ -> boldText "Source" <$$>
-                     indent 4 (text $ showPackageSource pkg))
+                     indent 4 (text $ showSourceOfPackage pkg))
               (source pkg)
 
   srcdirs =
