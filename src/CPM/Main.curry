@@ -35,7 +35,8 @@ import CPM.FileUtil ( joinSearchPath, safeReadFile, whenFileExists
 import CPM.Config   ( Config (..)
                     , readConfigurationWith, showCompilerVersion
                     , showConfiguration )
-import CPM.PackageCache.Global ( GlobalCache, readGlobalCache, allPackages
+import CPM.PackageCache.Global ( acquireAndInstallPackageFromSource
+                               , GlobalCache, readGlobalCache, allPackages
                                , installFromZip, checkoutPackage
                                , uninstallPackage, packageInstalled )
 import CPM.Package
@@ -59,7 +60,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 24/04/2019)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 13/05/2019)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -872,7 +873,7 @@ checkoutCmd (CheckoutOptions pkgname (Just ver) _) cfg =
  getRepoForPackages cfg [pkgname] >>= \repo ->
  case findVersion repo pkgname ver of
   Nothing -> packageNotFoundFailure $ pkgname ++ "-" ++ showVersion ver
-  Just  p -> acquireAndInstallPackageWithDependencies cfg repo p |>
+  Just  p -> acquireAndInstallPackageFromSource cfg p |>
              checkoutPackage cfg p
 
 installCmd :: InstallOptions -> Config -> IO (ErrorLogger ())

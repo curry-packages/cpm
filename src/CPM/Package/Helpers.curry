@@ -13,7 +13,7 @@ module CPM.Package.Helpers
 
 import Directory
 import FilePath
-import List         ( splitOn, nub )
+import List         ( isSuffixOf, nub, splitOn )
 import System       ( getPID )
 
 import System.CurryPath ( addCurrySubdir )
@@ -63,9 +63,11 @@ installPackageSourceTo pkg (Http url) installdir = do
   pid <- getPID
   let pkgDir  = installdir </> packageId pkg
       basepf  = "package" ++ show pid
-      revurl  = reverse url
-      pkgfile = if take 4 revurl == "piz."    then basepf ++ ".zip" else
-                if take 7 revurl == "zg.rat." then basepf ++ ".tar.gz" else ""
+      pkgfile = if takeExtension url == ".zip"
+                  then basepf ++ ".zip"
+                  else if ".tar.gz" `isSuffixOf` url
+                         then basepf ++ ".tar.gz"
+                         else ""
   if null pkgfile
     then failIO $ "Illegal URL (only .zip or .tar.gz allowed):\n" ++ url
     else do
@@ -82,7 +84,7 @@ installPackageSourceTo pkg (Http url) installdir = do
 --- deleted after unpacking.
 installPkgFromFile :: Package -> String -> String -> Bool -> IO (ErrorLogger ())
 installPkgFromFile pkg pkgfile pkgDir rmfile = do
-  let iszip = take 4 (reverse pkgfile) == "piz."
+  let iszip = takeExtension pkgfile == ".zip"
   absfile <- getAbsolutePath pkgfile
   createDirectory pkgDir
   c <- if iszip
