@@ -35,7 +35,7 @@ import CPM.FileUtil ( joinSearchPath, safeReadFile, whenFileExists
 import CPM.Config   ( Config (..)
                     , readConfigurationWith, showCompilerVersion
                     , showConfiguration )
-import CPM.PackageCache.Global ( acquireAndInstallPackageFromSource
+import CPM.PackageCache.Global ( acquireAndInstallPackage
                                , GlobalCache, readGlobalCache, allPackages
                                , installFromZip, checkoutPackage
                                , uninstallPackage, packageInstalled )
@@ -873,7 +873,7 @@ checkoutCmd (CheckoutOptions pkgname (Just ver) _) cfg =
  getRepoForPackages cfg [pkgname] >>= \repo ->
  case findVersion repo pkgname ver of
   Nothing -> packageNotFoundFailure $ pkgname ++ "-" ++ showVersion ver
-  Just  p -> acquireAndInstallPackageFromSource cfg p |>
+  Just  p -> acquireAndInstallPackage cfg p |>
              checkoutPackage cfg p
 
 installCmd :: InstallOptions -> Config -> IO (ErrorLogger ())
