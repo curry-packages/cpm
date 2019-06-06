@@ -265,7 +265,7 @@ pkgRead = readUnqualifiedTerm ["CPM.Package","Prelude"]
 addPackageToRepositoryCache :: Config -> Package -> IO (ErrorLogger ())
 addPackageToRepositoryCache cfg pkg = do
   dbexists <- doesFileExist (repositoryCacheDB cfg)
-  if dbexists then addPackagesToRepositoryDB cfg True [pkg]
+  if dbexists then addPackagesToRepositoryDB cfg True [Left pkg]
               else cleanRepositoryCache cfg >> succeedIO ()
 
 --- Updates an existing package in the repository cache.
@@ -274,7 +274,7 @@ updatePackageInRepositoryCache :: Config -> Package -> IO (ErrorLogger ())
 updatePackageInRepositoryCache cfg pkg = do
   dbexists <- doesFileExist (repositoryCacheDB cfg)
   if dbexists then removePackageFromRepositoryDB cfg pkg >>
-                   addPackagesToRepositoryDB cfg True [pkg]
+                   addPackagesToRepositoryDB cfg True [Left pkg]
               else cleanRepositoryCache cfg >> succeedIO ()
 
 --- Removes a package from the repository cache DB.

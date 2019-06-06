@@ -60,7 +60,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-language.org/tools/cpm> (version of 13/05/2019)"
+  "Curry Package Manager <curry-language.org/tools/cpm> (version of 06/06/2019)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -212,8 +212,10 @@ data NewOptions = NewOptions
   { projectName :: String }
 
 data UpdateOptions = UpdateOptions
-  { indexURLs :: [String]   -- the URLs of additional index repositories
-  , cleanCache :: Bool      -- clean also repository cache?
+  { indexURLs     :: [String]   -- the URLs of additional index repositories
+  , cleanCache    :: Bool       -- clean also repository cache?
+  , downloadIndex :: Bool       -- download the index repository?
+  , writeCSV      :: Bool       -- write also a CSV file of the repository DB?
   }
 
 data UploadOptions = UploadOptions
@@ -311,7 +313,7 @@ newOpts s = case optCommand s of
 updateOpts :: Options -> UpdateOptions
 updateOpts s = case optCommand s of
   Update opts -> opts
-  _           -> UpdateOptions [] True
+  _           -> UpdateOptions [] True True False
 
 uploadOpts :: Options -> UploadOptions
 uploadOpts s = case optCommand s of
@@ -560,6 +562,16 @@ optionParser allargs = optParser
              (  short "c"
              <> long "cache"
              <> help "Do not clean global package cache" )
+    <.> flag (\a -> Right $ a { optCommand = Update (updateOpts a)
+                                               { downloadIndex = False } })
+             (  short "d"
+             <> long "download"
+             <> help "Do not download the global repository index" )
+    <.> flag (\a -> Right $ a { optCommand = Update (updateOpts a)
+                                               { writeCSV = True } })
+             (  short "w"
+             <> long "writecsv"
+             <> help "Write also a CSV file of the cache database" )
 
   uploadArgs =
        flag (\a -> Right $ a { optCommand =
@@ -810,7 +822,8 @@ updateCmd opts cfg = do
                then cfg
                else cfg { packageIndexURL = head (indexURLs opts) }
                     -- TODO: allow merging from several package indices
-  checkRequiredExecutables >> updateRepository cfg' (cleanCache opts)
+  checkRequiredExecutables
+  updateRepository cfg' (cleanCache opts) (downloadIndex opts) (writeCSV opts)
 
 ------------------------------------------------------------------------------
 -- `deps` command:

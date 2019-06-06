@@ -1,6 +1,6 @@
 --- This file has been generated from
 --- 
----     cpm/src/CPM/Repository/RepositoryDB.erdterm
+---     cpm/src/CPM/Repository/IndexDB_ERD.curry
 --- 
 --- and contains definitions for all entities and relations
 --- specified in this model.

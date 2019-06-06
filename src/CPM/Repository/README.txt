@@ -18,7 +18,9 @@ after its generation:
   (also in `RepositoryDB_SQLCode.info`).
 
 The actual database queries are defined in the module
-`CPM.Repository.Select`.
+
+    CPM.Repository.Select
+
 Since these queries are defined as embedded SQL code which requires
 the Curry preprocessor to translate them, the distribution of CPM
 contains the already preprocessed module whereas the original

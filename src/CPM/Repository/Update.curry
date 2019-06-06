@@ -30,19 +30,26 @@ import CPM.Repository.Select  ( addPackageToRepositoryCache
 --- Updates the package index from the central Git repository.
 --- If the second argument is `True`, also the global package cache
 --- is cleaned in order to support downloading the newest versions.
-updateRepository :: Config -> Bool -> IO (ErrorLogger ())
-updateRepository cfg cleancache = do
+--- If the third argument is `True`, the global package index is downloaded
+--- from the central repository.
+--- If the fourth argument is `True`, also a CSV file containing the
+--- database entries is written.
+updateRepository :: Config -> Bool -> Bool -> Bool -> IO (ErrorLogger ())
+updateRepository cfg cleancache download writecsv = do
   cleanRepositoryCache cfg
   when cleancache $ do
     debugMessage $ "Deleting global package cache: '" ++
                    packageInstallDir cfg ++ "'"
     removeDirectoryComplete (packageInstallDir cfg)
   debugMessage $ "Recreating package index: '" ++ repositoryDir cfg ++ "'"
-  recreateDirectory (repositoryDir cfg)
-  c <- inDirectory (repositoryDir cfg) downloadCommand
-  if c == 0
-    then finishUpdate
-    else failIO $ "Failed to update package index, return code " ++ show c
+  if download
+    then do
+      recreateDirectory (repositoryDir cfg)
+      c <- inDirectory (repositoryDir cfg) downloadCommand
+      if c == 0
+        then finishUpdate
+        else failIO $ "Failed to update package index, return code " ++ show c
+    else tryWriteRepositoryDB cfg writecsv
  where
   downloadCommand
     | ".git" `isSuffixOf` piurl
@@ -68,7 +75,7 @@ updateRepository cfg cleancache = do
     setLastUpdate cfg
     cleanRepositoryCache cfg
     infoMessage "Successfully downloaded repository index"
-    tryWriteRepositoryDB cfg
+    tryWriteRepositoryDB cfg writecsv
 
 --- Sets the date of the last update by touching README.md.
 setLastUpdate :: Config -> IO ()
