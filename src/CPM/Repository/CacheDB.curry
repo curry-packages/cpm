@@ -2,7 +2,7 @@
 --- Operations to initialize and manipulate the repository cache database.
 ---
 --- @author Michael Hanus
---- @version March 2018
+--- @version June 2019
 ------------------------------------------------------------------------------
 
 module CPM.Repository.CacheDB
@@ -65,6 +65,7 @@ writeRepositoryDB cfg writecsv = do
                     debugMessage $ "Reading CSV file '" ++ csvfile ++ "'..."
                     readCSVFile csvfile >>= return . map Right
                   else do
+                    debugMessage $ "Fetching repository cache CSV file failed"
                     repo <- readRepositoryFrom (repositoryDir cfg)
                     return (map Left (allPackages repo))
   putStr "Writing repository cache DB"
