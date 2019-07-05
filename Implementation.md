@@ -34,6 +34,15 @@ For instance, it contains the files
     cpm/2.1.0/package.json
     cpm/2.1.1/package.json
 
+The global package index is downloaded by the CPM command
+
+    cypm update
+
+This command also create a local sqlite3 database containing
+the most important information about each package.
+The database is used by various CPM commands to accelerate
+the access to information about packages.
+
 
 Global package store
 --------------------
@@ -60,6 +69,20 @@ For instance, CPM downloads version 2.1.0 of the package `cpm` from
 If CPM cannot download anything from this location,
 it tries to download the package from the `source` field
 of the package description.
+
+
+Global package index cache
+--------------------------
+
+In order to accelerate the creation of the sqlite3 database
+during the `update` command, CPM tries to download the file
+
+    https://www.informatik.uni-kiel.de/~curry/cpm/PACKAGES/REPOSITORY_CACHE.csv
+
+which contains the database information in CSV format.
+If CPM cannot download this file, it creates the database
+by reading all package specifications of the global package index
+(which takes more time than reading the CSV file).
 
 
 Uploading packages
