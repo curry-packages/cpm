@@ -336,7 +336,7 @@ loadPackageSpec dir = do
         case readPackageSpec contents of
           Left err -> failIO err
           Right v  -> succeedIO v )
-    (failIO $ "Illegal package: file `package.json' does not exist!")
+    (failIO $ "Illegal package: file '" ++ packageFile ++ "' does not exist!")
 
 --- Checks whether two package ids are equal, i.e. if their names and versions
 --- match.
