@@ -33,7 +33,8 @@ import FilePath
 
 import CPM.Config   ( Config, packageInstallDir, packageTarFilesURL )
 import CPM.ErrorLogger
-import CPM.FileUtil ( copyDirectory, inTempDir, recreateDirectory, inDirectory
+import CPM.FileUtil ( cleanTempDir, copyDirectory, inTempDir
+                    , recreateDirectory, inDirectory
                     , removeDirectoryComplete, tempDir, whenFileExists
                     , checkAndGetVisibleDirectoryContents, quote )
 import CPM.Package
@@ -163,8 +164,9 @@ installFromZip cfg zip = do
     then
       loadPackageSpec (t </> "installtmp") |>= \pkgSpec ->
       log Debug ("ZIP contains " ++ packageId pkgSpec) |> 
+      (cleanTempDir >> succeedIO ()) |>
       installFromSource cfg pkgSpec (FileSource zip)
-    else failIO "failed to extract ZIP file"
+    else cleanTempDir >> failIO "failed to extract ZIP file"
 
 --- Installs a package's missing dependencies.
 installMissingDependencies :: Config -> GlobalCache -> [Package] 

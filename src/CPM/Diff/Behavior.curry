@@ -9,7 +9,6 @@
 
 module CPM.Diff.Behavior 
   ( ComparisonInfo (..)
-  , createBaseTemp
   , getBaseTemp
   , genCurryCheckProgram
   , diffBehavior
@@ -20,7 +19,7 @@ module CPM.Diff.Behavior
   ) where
 
 import Char      ( isAlphaNum )
-import Directory ( createDirectory, doesDirectoryExist, getTemporaryDirectory )
+import Directory ( createDirectory, doesDirectoryExist )
 import FilePath  ( (</>), joinPath )
 import Function  ( both )
 import List      ( intercalate, intersect, nub, splitOn, isPrefixOf, isInfixOf
@@ -55,7 +54,7 @@ import CPM.Diff.CurryComments (readComments, getFuncComment)
 import CPM.Diff.Rename (prefixPackageAndDeps)
 import CPM.ErrorLogger
 import CPM.FileUtil ( copyDirectory, recreateDirectory, inDirectory
-                    , joinSearchPath)
+                    , joinSearchPath, tempDir )
 import CPM.Package ( Package, Version, name, version, showVersion, packageId
                    , exportedModules, loadPackageSpec) 
 import CPM.PackageCache.Global as GC
@@ -130,18 +129,16 @@ data ComparisonInfo = ComparisonInfo
   , infModMapB :: [(String, String)] --- Map from old to new module names, ver B
   }
 
---- Create temporary directory for the behavior diff.
-createBaseTemp :: IO (ErrorLogger String)
-createBaseTemp = do
-  tmpDir <- getTemporaryDirectory
-  let  tmp = tmpDir </> "CPM" </> "bdiff" 
-  recreateDirectory tmp >> succeedIO tmp
-
 --- Get temporary directory for the behavior diff.
 getBaseTemp :: IO (ErrorLogger String)
 getBaseTemp = do
-  tmpDir <- getTemporaryDirectory
-  succeedIO $ tmpDir </> "CPM" </> "bdiff"
+  tmpdir <- tempDir
+  succeedIO $ tmpdir </> "bdiff"
+
+--- Create temporary directory for the behavior diff.
+createBaseTemp :: IO (ErrorLogger String)
+createBaseTemp =
+  getBaseTemp |>= \tmp -> recreateDirectory tmp >> succeedIO tmp
 
 --- This message is printed before CurryCheck is executed.
 infoText :: String

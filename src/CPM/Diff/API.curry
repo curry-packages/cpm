@@ -14,33 +14,34 @@ module CPM.Diff.API
   , showDifferences
   ) where
 
-import AbstractCurry.Types (CurryProg (..), CFuncDecl (..), CTypeDecl (..)
-                           , COpDecl (..), QName, CFixity (..)
-                           , CVisibility (..))
+import FilePath            ( (</>) )
+import Function            ( both )
+import List                ( nub )
+import Maybe               ( listToMaybe, catMaybes )
+
+import AbstractCurry.Types  ( CurryProg (..), CFuncDecl (..), CTypeDecl (..)
+                            , COpDecl (..), QName, CFixity (..)
+                            , CVisibility (..))
 import AbstractCurry.Pretty
-import AbstractCurry.Select (functions, funcName, types, typeName)
-import Directory (getTemporaryDirectory)
-import FilePath ((</>))
-import Function (both)
-import List (nub)
-import Maybe (listToMaybe, catMaybes)
+import AbstractCurry.Select ( functions, funcName, types, typeName )
+import Text.Pretty          ( pPrint, text, (<+>), vcat, empty, red, ($$) )
 
-import Text.Pretty (pPrint, text, (<+>), vcat, empty, red, ($$))
-
-import CPM.AbstractCurry (readAbstractCurryFromPackagePath)
-import CPM.Config (Config)
+import CPM.AbstractCurry    ( readAbstractCurryFromPackagePath )
+import CPM.Config           ( Config )
 import CPM.ErrorLogger
-import CPM.FileUtil (copyDirectory, recreateDirectory)
-import CPM.Package (Package, Version, packageId, loadPackageSpec
-                   , exportedModules)
+import CPM.FileUtil         ( copyDirectory, recreateDirectory, tempDir )
+import CPM.Package          ( Package, Version, packageId, loadPackageSpec
+                            , exportedModules)
 import CPM.PackageCache.Global as GC
-import CPM.PackageCopy (resolveAndCopyDependencies)
-import CPM.Repository (Repository)
+import CPM.PackageCopy      ( resolveAndCopyDependencies )
+import CPM.Repository       ( Repository )
 
 getBaseTemp :: IO (ErrorLogger String)
-getBaseTemp = getTemporaryDirectory >>= 
-  \tmpDir -> let tmp = tmpDir </> "cpm" </> "diff" 
-              in recreateDirectory tmp >> succeedIO tmp
+getBaseTemp = do
+  tmpDir <- tempDir
+  let tmp = tmpDir </> "diff" 
+  recreateDirectory tmp
+  succeedIO tmp
 
 --- Compares two versions of a package from the global package cache.
 ---

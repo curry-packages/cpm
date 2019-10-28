@@ -22,7 +22,8 @@ import Text.CSV
 import CPM.Config      ( Config, packageTarFilesURL, readConfigurationWith
                        , repositoryDir )
 import CPM.ErrorLogger
-import CPM.FileUtil    ( inTempDir, quote, tempDir, whenFileExists )
+import CPM.FileUtil    ( cleanTempDir, inTempDir, quote, tempDir
+                       , whenFileExists )
 import CPM.Repository.RepositoryDB
 import CPM.Package
 import CPM.Repository
@@ -72,7 +73,7 @@ writeRepositoryDB cfg writecsv = do
   addPackagesToRepositoryDB cfg False pkgentries
   putChar '\n'
   log Info "Repository cache DB written"
-  showExecCmd $ "/bin/rm -f " ++ csvfile
+  cleanTempDir
   if writecsv then saveDBAsCSV cfg
               else succeedIO ()
 

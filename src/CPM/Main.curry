@@ -29,8 +29,8 @@ import System.Path      ( fileInPath )
 import Text.CSV         ( showCSV )
 
 import CPM.ErrorLogger
-import CPM.FileUtil ( joinSearchPath, safeReadFile, whenFileExists
-                    , ifFileExists, inDirectory, inTempDir, recreateDirectory
+import CPM.FileUtil ( cleanTempDir, joinSearchPath, safeReadFile, whenFileExists
+                    , ifFileExists, inDirectory, recreateDirectory
                     , removeDirectoryComplete, copyDirectory, quote, tempDir )
 import CPM.Config   ( Config (..)
                     , readConfigurationWith, showCompilerVersion
@@ -1385,7 +1385,8 @@ diffCmd opts cfg =
          installIfNecessary repo localname diffv |> putStrLn "" >>
          readGlobalCache cfg repo |>= \gc ->
          diffAPIIfEnabled      repo gc specDir localSpec diffv |> 
-         diffBehaviorIfEnabled repo gc specDir localSpec diffv
+         diffBehaviorIfEnabled repo gc specDir localSpec diffv |>
+         cleanTempDir >> succeedIO ()
  where
   getDiffVersion repo localname = case diffVersion opts of
     Nothing -> case findLatestVersion cfg repo localname False of
@@ -1403,15 +1404,15 @@ diffCmd opts cfg =
 
   diffAPIIfEnabled repo gc specDir localSpec diffversion =
     if diffAPI opts
-    then (putStrLn "Running API diff...\n" >> succeedIO ()) |>
-         APIDiff.compareModulesFromPackageAndDir cfg repo gc specDir
-                          (name localSpec) diffversion (diffModules opts) |>=
-         \diffResults ->
-         let diffOut = APIDiff.showDifferences (map snd diffResults)
-                                             (version localSpec) diffversion
-         in unless (null diffOut) (putStrLn diffOut >> putStrLn "") >>
-            succeedIO ()
-    else succeedIO () 
+      then (putStrLn "Running API diff...\n" >> succeedIO ()) |>
+           APIDiff.compareModulesFromPackageAndDir cfg repo gc specDir
+                            (name localSpec) diffversion (diffModules opts) |>=
+           \diffResults ->
+           let diffOut = APIDiff.showDifferences (map snd diffResults)
+                                                 (version localSpec) diffversion
+           in unless (null diffOut) (putStrLn diffOut >> putStrLn "") >>
+              succeedIO ()
+      else succeedIO () 
 
   diffBehaviorIfEnabled repo gc specDir localSpec diffversion =
     if diffBehavior opts
@@ -1537,14 +1538,14 @@ uploadCmd opts cfg =
   loadPackageSpec (instdir </> pkgid) |>= \pkg ->
   testPackage pkgid instdir >>= \ecode ->
   if ecode > 0
-    then removeDirectoryComplete instdir >>
+    then cleanTempDir >>
          log Critical "ERROR in package, package not uploaded!"
     else log Info "Uploading package to global repository..." |>
          removeInstalledPkg pkgid >>
          uploadPackageSpec (instdir </> pkgid </> "package.json") |>
          -- add package to local copy of repository:
          addPackageToRepo pkgrepodir (instdir </> pkgid) pkg >>
-         removeDirectoryComplete instdir >>
+         cleanTempDir >>
          log Info ("Package '" ++ pkgid ++ "' uploaded")
  where
   addPackageToRepo pkgrepodir pkgdir pkg = do

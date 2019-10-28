@@ -21,7 +21,7 @@ import Text.Pretty hiding ( (</>) )
 
 import CPM.Config   ( Config, homePackageDir )
 import CPM.ErrorLogger
-import CPM.FileUtil ( inDirectory, inTempDir, quote
+import CPM.FileUtil ( cleanTempDir, inDirectory, inTempDir, quote
                     , removeDirectoryComplete, tempDir, whenFileExists )
 import CPM.Helpers  ( strip )
 import CPM.Package
@@ -77,7 +77,8 @@ installPackageSourceTo pkg (Http url) installdir = do
                                      " " ++ quote url
       if c == 0
         then installPkgFromFile pkg tmppkgfile pkgDir True
-        else failIO $ "`curl` failed with exit status " ++ show c
+        else do cleanTempDir
+                failIO $ "`curl` failed with exit status " ++ show c
 
 --- Installs a package from a .zip or .tar.gz file into the specified
 --- package directory. If the last argument is true, the file will be
@@ -93,6 +94,7 @@ installPkgFromFile pkg pkgfile pkgDir rmfile = do
          else inDirectory pkgDir $ showExecCmd $
                 "tar -xzf " ++ quote absfile
   when rmfile (showExecCmd ("rm -f " ++ absfile) >> done)
+  cleanTempDir
   if c == 0
     then log Info $ "Installed " ++ packageId pkg
     else do removeDirectoryComplete pkgDir

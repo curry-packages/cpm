@@ -12,11 +12,8 @@ module CPM.FileUtil
   , linkTarget
   , copyDirectoryFollowingSymlinks
   , quote
-  , tempDir
-  , inTempDir
-  , inDirectory
-  , recreateDirectory
-  , removeDirectoryComplete
+  , tempDir, cleanTempDir, inTempDir
+  , inDirectory, recreateDirectory, removeDirectoryComplete
   , safeReadFile, checkAndGetVisibleDirectoryContents
   , whenFileExists, ifFileExists
   ) where
@@ -25,7 +22,7 @@ import Directory ( doesFileExist, doesDirectoryExist, getCurrentDirectory
                  , setCurrentDirectory, getDirectoryContents
                  , getTemporaryDirectory, doesDirectoryExist, createDirectory
                  , createDirectoryIfMissing, getAbsolutePath )
-import System    ( system, getEnviron, exitWith )
+import System    ( exitWith, getEnviron, getPID, system )
 import IOExts    ( evalCmd, readCompleteFile )
 import FilePath  ( FilePath, replaceFileName, (</>), searchPathSeparator )
 import List      ( intercalate, isPrefixOf, splitOn )
@@ -80,11 +77,16 @@ linkTarget link = do
 quote :: String -> String
 quote s = "\"" ++ s ++ "\""
 
---- Gets CPM's temporary directory.
+--- Gets a temporary directory for some CPM command.
 tempDir :: IO String
 tempDir = do
-  t <- getTemporaryDirectory
-  return (t </> "cpm")
+  t   <- getTemporaryDirectory
+  pid <- getPID
+  return (t </> "cpm" ++ show pid)
+
+--- Removes the temporary directory for some CPM command.
+cleanTempDir :: IO ()
+cleanTempDir = tempDir >>= removeDirectoryComplete
 
 --- Executes an IO action with the current directory set to  CPM's temporary 
 --- directory.
