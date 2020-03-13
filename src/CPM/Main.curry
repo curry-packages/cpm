@@ -1615,8 +1615,7 @@ uploadPackageSpec pkgspecfname = do
 
 -- URL of cpm-upload script.
 uploadURL :: String
---uploadURL = "http://localhost/~mh/cpm-upload.cgi"
-uploadURL = "https://www-ps.informatik.uni-kiel.de/~mh/cpm-upload.cgi"
+uploadURL = "https://www-ps.informatik.uni-kiel.de/~cpm/cpm-upload.cgi"
 
 ------------------------------------------------------------------------------
 --- Fail with a "package not found" message.

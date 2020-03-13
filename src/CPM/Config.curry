@@ -40,7 +40,7 @@ packageIndexDefaultURL =
 --- The default URL prefix to the directory containing tar files of all packages
 packageTarFilesDefaultURL :: String
 packageTarFilesDefaultURL =
-  "https://www.informatik.uni-kiel.de/~curry/cpm/PACKAGES/"
+  "https://www-ps.informatik.uni-kiel.de/~cpm/PACKAGES/"
 
 --- Data type containing the main configuration of CPM.
 data Config = Config {
