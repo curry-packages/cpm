@@ -60,7 +60,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-lang.org/tools/cpm> (version of 28/10/2019)"
+  "Curry Package Manager <curry-lang.org/tools/cpm> (version of 13/03/2020)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
