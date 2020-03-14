@@ -333,7 +333,7 @@ docOpts s = case optCommand s of
 -- The default URL prefix where all repository packages are documented.
 -- Can be overwritten with a doc command option.
 defaultBaseDocURL :: String
-defaultBaseDocURL = "https://www.informatik.uni-kiel.de/~curry/cpm/DOC"
+defaultBaseDocURL = "https://www-ps.informatik.uni-kiel.de/~cpm/DOC"
 
 
 testOpts :: Options -> TestOptions
