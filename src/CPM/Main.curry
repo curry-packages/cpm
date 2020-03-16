@@ -25,7 +25,7 @@ import System       ( getArgs, getEnviron, setEnviron, unsetEnviron, exitWith
 import Boxes            ( table, render )
 import OptParse
 import System.CurryPath ( addCurrySubdir, stripCurrySuffix )
-import System.Path      ( fileInPath )
+import System.Path      ( fileInPath, getFileInPath )
 import Text.CSV         ( showCSV )
 
 import CPM.ErrorLogger
@@ -60,7 +60,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-lang.org/tools/cpm> (version of 13/03/2020)"
+  "Curry Package Manager <curry-lang.org/tools/cpm> (version of 16/03/2020)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -1205,15 +1205,21 @@ genPackageManual pkg specDir outputdir = case documentation pkg of
                         if null doccmd then formatCmd docmain
                                        else doccmd
       if null formatcmd
-        then infoMessage $ "Cannot format documentation file '" ++
-                           docmain ++ "' (unknown kind)"
+        then do
+          infoMessage $ "Cannot format documentation file '" ++
+                        docmain ++ "' (unknown kind)"
+          succeedIO ()
         else do
           debugMessage $ "Executing command: " ++ formatcmd
-          inDirectory (specDir </> docdir) $ system formatcmd
-          let outfile = outputdir </> replaceExtension docmain ".pdf"
-          system ("chmod -f 644 " ++ quote outfile) -- make it readable
-          infoMessage $ "Package documentation written to '" ++ outfile ++ "'."
-      succeedIO ()
+          rc <- inDirectory (specDir </> docdir) $ system formatcmd
+          if rc == 0
+            then do
+              let outfile = outputdir </> replaceExtension docmain ".pdf"
+              system ("chmod -f 644 " ++ quote outfile) -- make it readable
+              infoMessage $
+                "Package documentation written to '" ++ outfile ++ "'."
+              succeedIO ()
+            else failIO $ "Error during execution of command:\n" ++ formatcmd
  where
   formatCmd docmain
     | ".tex" `isSuffixOf` docmain
@@ -1238,7 +1244,7 @@ replaceSubString sub newsub s = replString s
       else c : replString cs
 
 --- Generate program documentation:
---- run `curry doc` on the modules provided as an argument
+--- run `curry-doc` on the modules provided as an argument
 --- or, if they are not given, on exported modules (if specified in the
 --- package), on the main executable (if specified in the package),
 --- or on all source modules of the package.
@@ -1275,12 +1281,19 @@ genDocForPrograms opts cfg docdir specDir pkg = do
  where
   apititle = "\"API Documentation of Package '" ++ name pkg ++ "'\""
 
-  currydoc = curryExec cfg ++ " doc"
+  getCurryDoc =
+    getFileInPath "curry-doc" >>=
+    maybe (do let cpmcurrydoc = binInstallDir cfg </> "curry-doc"
+              cdex <- doesFileExist cpmcurrydoc
+              if cdex then succeedIO cpmcurrydoc
+                      else failIO "Executable 'curry-doc' not found!"
+          )
+          succeedIO
 
   docModule currypath uses mod =
     runDocCmd currypath uses ["--noindexhtml", docdir, mod]
 
-  runDocCmd currypath uses docparams = do
+  runDocCmd currypath uses docparams = getCurryDoc |>= \currydoc -> do
     let useopts = if docGenImports opts
                     then []
                     else map (\ (d,u) -> "--use "++d++"@"++u) uses
