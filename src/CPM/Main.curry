@@ -230,6 +230,7 @@ data ExecOptions = ExecOptions
 data DocOptions = DocOptions
   { docDir        :: Maybe String    -- documentation directory
   , docModules    :: Maybe [String]  -- modules to be documented
+  , docReadme     :: Bool            -- generate README as HTML
   , docPrograms   :: Bool            -- generate documentation for programs
   , docManual     :: Bool            -- generate manual (if specified)
   , docGenImports :: Bool            -- generate documentation for imported pkgs
@@ -328,7 +329,7 @@ execOpts s = case optCommand s of
 docOpts :: Options -> DocOptions
 docOpts s = case optCommand s of
   Doc opts -> opts
-  _        -> DocOptions Nothing Nothing True True False defaultBaseDocURL
+  _        -> DocOptions Nothing Nothing True True True False defaultBaseDocURL
 
 -- The default URL prefix where all repository packages are documented.
 -- Can be overwritten with a doc command option.
@@ -636,13 +637,19 @@ optionParser allargs = optParser
                    "separate multiple modules by comma")
           <> optional )
     <.> flag (\a -> Right $ a { optCommand = Doc (docOpts a)
-                                               { docManual = False } })
+                                  { docManual = False, docPrograms = False } })
+          (  short "r"
+          <> long "readme"
+          <> help "Generate only README as HTML"
+          <> optional )
+    <.> flag (\a -> Right $ a { optCommand = Doc (docOpts a)
+                                  { docManual = False, docReadme = False } })
           (  short "p"
           <> long "programs"
           <> help "Generate only program documentation (with CurryDoc)"
           <> optional )
     <.> flag (\a -> Right $ a { optCommand = Doc (docOpts a)
-                                               { docPrograms = False } })
+                                  { docPrograms = False, docReadme = False } })
           (  short "t"
           <> long "text"
           <> help "Generate only manual (according to package specification)"
@@ -1191,10 +1198,45 @@ docCmd opts cfg =
   let docdir = maybe "cdoc" id (docDir opts) </> packageId pkg
   absdocdir <- getAbsolutePath docdir
   createDirectoryIfMissing True absdocdir
-  (if docManual opts then genPackageManual pkg specDir absdocdir
+  (if docReadme opts then genPackageREADME pkg specDir absdocdir
                      else succeedIO ()) |>
+    (if docManual opts then genPackageManual pkg specDir absdocdir
+                       else succeedIO ()) |>
     (if docPrograms opts then genDocForPrograms opts cfg absdocdir specDir pkg
                          else succeedIO ())
+
+--- Translate package README file to HTML, if possible (i.e., some README
+--- file and `pandoc` exists).
+genPackageREADME :: Package -> String -> String -> IO (ErrorLogger ())
+genPackageREADME pkg specDir outputdir = do
+    rmfiles  <- getReadmeFiles
+    ispandoc <- fileInPath "pandoc"
+    if null rmfiles || not ispandoc
+      then do
+        infoMessage $ "'README.html' not generated: " ++
+                      if ispandoc then "no README file found"
+                                  else "executable 'pandoc' not found"
+        succeedIO ()
+      else do
+        let readmefile = head rmfiles
+            formatcmd = formatCmd readmefile
+        debugMessage $ "Executing command: " ++ formatcmd
+        rc <- inDirectory specDir $ system formatcmd
+        if rc == 0
+          then do
+            system ("chmod -f 644 " ++ quote outfile) -- make it readable
+            infoMessage $
+              "'" ++ readmefile ++ "' translated to '" ++ outfile ++ "'."
+            succeedIO ()
+          else failIO $ "Error during execution of command:\n" ++ formatcmd
+ where
+  outfile = outputdir </> "README.html"
+
+  getReadmeFiles = do
+    entries <- getDirectoryContents specDir
+    return $ filter ("README" `isPrefixOf`) entries
+
+  formatCmd readme = "pandoc -s -t html -o " ++ outfile ++ " " ++ readme
 
 --- Generate manual according to  documentation specification of package.
 genPackageManual :: Package -> String -> String -> IO (ErrorLogger ())
