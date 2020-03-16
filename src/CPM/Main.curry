@@ -1208,7 +1208,7 @@ docCmd opts cfg =
 --- Translate package README file to HTML, if possible (i.e., some README
 --- file and `pandoc` exists).
 genPackageREADME :: Package -> String -> String -> IO (ErrorLogger ())
-genPackageREADME pkg specDir outputdir = do
+genPackageREADME _ specDir outputdir = do
     rmfiles  <- getReadmeFiles
     ispandoc <- fileInPath "pandoc"
     if null rmfiles || not ispandoc
@@ -1324,13 +1324,14 @@ genDocForPrograms opts cfg docdir specDir pkg = do
   apititle = "\"API Documentation of Package '" ++ name pkg ++ "'\""
 
   getCurryDoc =
-    getFileInPath "curry-doc" >>=
-    maybe (do let cpmcurrydoc = binInstallDir cfg </> "curry-doc"
+    getFileInPath cdbin >>=
+    maybe (do let cpmcurrydoc = binInstallDir cfg </> cdbin
               cdex <- doesFileExist cpmcurrydoc
               if cdex then succeedIO cpmcurrydoc
-                      else failIO "Executable 'curry-doc' not found!"
+                      else failIO $ "Executable '" ++ cdbin ++ "' not found!"
           )
           succeedIO
+   where cdbin = "curry-doc"
 
   docModule currypath uses mod =
     runDocCmd currypath uses ["--noindexhtml", docdir, mod]
@@ -1358,7 +1359,7 @@ genDocForPrograms opts cfg docdir specDir pkg = do
                 docPackageURL opts ++ "/base-" ++ compilerBaseVersion cfg)]
 
 ------------------------------------------------------------------------------
---- `test` command: run `curry check` on the modules provided as an argument
+--- `test` command: run `curry-check` on the modules provided as an argument
 --- or, if they are not provided, on the exported (if specified)
 --- or all source modules of the package.
 testCmd :: TestOptions -> Config -> IO (ErrorLogger ())
@@ -1373,9 +1374,18 @@ testCmd opts cfg =
       then log Info "No modules to be tested!"
       else foldEL (\_ -> execTest aspecDir) () tests
  where
-  currycheck = curryExec cfg ++ " check"
-  
-  execTest apkgdir (PackageTest dir mods ccopts script) = do
+  getCurryCheck =
+    getFileInPath ccbin >>=
+    maybe (do let cpmcurrycheck = binInstallDir cfg </> ccbin
+              ccex <- doesFileExist cpmcurrycheck
+              if ccex then succeedIO cpmcurrycheck
+                      else failIO $ "Executable '" ++ ccbin ++ "' not found!"
+          )
+          succeedIO
+   where ccbin = "curry-check"
+
+  execTest apkgdir (PackageTest dir mods ccopts script) =
+    getCurryCheck |>= \currycheck -> do
     let scriptcmd = "CURRYBIN=" ++ curryExec cfg ++ " && export CURRYBIN && " ++
                     "." </> script ++ if null ccopts then "" else ' ' : ccopts
         checkcmd  = currycheck ++ if null ccopts then "" else ' ' : ccopts
