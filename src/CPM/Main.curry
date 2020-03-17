@@ -1206,7 +1206,9 @@ docCmd opts cfg =
                          else succeedIO ())
 
 --- Translate package README file to HTML, if possible (i.e., some README
---- file and `pandoc` exists).
+--- file and `pandoc` exists). Two README files are produced:
+--- `README.html` (standalone document) and `README_I.html` (document
+--- fragment without header and footer).
 genPackageREADME :: Package -> String -> String -> IO (ErrorLogger ())
 genPackageREADME _ specDir outputdir = do
     rmfiles  <- getReadmeFiles
@@ -1219,24 +1221,31 @@ genPackageREADME _ specDir outputdir = do
         succeedIO ()
       else do
         let readmefile = head rmfiles
-            formatcmd = formatCmd readmefile
-        debugMessage $ "Executing command: " ++ formatcmd
-        rc <- inDirectory specDir $ system formatcmd
-        if rc == 0
+            formatcmd1 = formatCmd1 readmefile
+            formatcmd2 = formatCmd2 readmefile
+        debugMessage $ "Executing command: " ++ formatcmd1
+        rc1 <- inDirectory specDir $ system formatcmd1
+        debugMessage $ "Executing command: " ++ formatcmd2
+        rc2 <- inDirectory specDir $ system formatcmd2
+        if rc1 == 0 && rc2 == 0
           then do
-            system ("chmod -f 644 " ++ quote outfile) -- make it readable
+            -- make them readable:
+            system $ unwords ["chmod -f 644 ", quote outfile1, quote outfile2]
             infoMessage $
-              "'" ++ readmefile ++ "' translated to '" ++ outfile ++ "'."
+              "'" ++ readmefile ++ "' translated to '" ++ outfile1 ++ "'."
             succeedIO ()
-          else failIO $ "Error during execution of command:\n" ++ formatcmd
+          else failIO $ "Error during execution of commands:\n" ++
+                        formatcmd1 ++ "\n" ++ formatcmd2
  where
-  outfile = outputdir </> "README.html"
+  outfile1 = outputdir </> "README.html"
+  outfile2 = outputdir </> "README_I.html"
 
   getReadmeFiles = do
     entries <- getDirectoryContents specDir
     return $ filter ("README" `isPrefixOf`) entries
 
-  formatCmd readme = "pandoc -s -t html -o " ++ outfile ++ " " ++ readme
+  formatCmd1 readme = "pandoc -s -t html -o " ++ outfile1 ++ " " ++ readme
+  formatCmd2 readme = "pandoc -t html -o " ++ outfile2 ++ " " ++ readme
 
 --- Generate manual according to  documentation specification of package.
 genPackageManual :: Package -> String -> String -> IO (ErrorLogger ())
