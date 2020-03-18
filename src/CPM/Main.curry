@@ -60,7 +60,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-lang.org/tools/cpm> (version of 16/03/2020)"
+  "Curry Package Manager <curry-lang.org/tools/cpm> (version of 18/03/2020)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -240,7 +240,9 @@ data DocOptions = DocOptions
 }
 
 data TestOptions = TestOptions
-  { testModules :: Maybe [String] }
+  { testModules   :: Maybe [String]  -- modules to be tested
+  , testCheckOpts :: [String]        -- additional options passed to CurryCheck
+  }
 
 data DiffOptions = DiffOptions
   { diffVersion   :: Maybe Version   -- version to be compared
@@ -340,7 +342,7 @@ defaultBaseDocURL = "https://www-ps.informatik.uni-kiel.de/~cpm/DOC"
 testOpts :: Options -> TestOptions
 testOpts s = case optCommand s of
   Test opts -> opts
-  _         -> TestOptions Nothing
+  _         -> TestOptions Nothing []
 
 diffOpts :: Options -> DiffOptions
 diffOpts s = case optCommand s of
@@ -674,6 +676,14 @@ optionParser allargs = optParser
           (  long "modules"
           <> short "m"
           <> help "The modules to be tested, separate multiple modules by comma"
+          <> optional )
+    <.>
+    option (\s a -> Right $ a { optCommand =
+                                  Test (testOpts a) { testCheckOpts =
+                                            s : testCheckOpts (testOpts a) } })
+          (  long "option"
+          <> short "o"
+          <> help "Option passed to CurryCheck (without prefix '--'!)"
           <> optional )
 
   diffArgs =
@@ -1393,9 +1403,14 @@ testCmd opts cfg =
           succeedIO
    where ccbin = "curry-check"
 
-  execTest apkgdir (PackageTest dir mods ccopts script) =
+  execTest apkgdir (PackageTest dir mods pccopts script) =
     getCurryCheck |>= \currycheck -> do
-    let scriptcmd = "CURRYBIN=" ++ curryExec cfg ++ " && export CURRYBIN && " ++
+    let tccopts  = intercalate " " (map ("--" ++) (testCheckOpts opts))
+    let ccopts   = if null tccopts
+                     then pccopts
+                     else if null pccopts then tccopts
+                                          else tccopts ++ ' ' : pccopts
+        scriptcmd = "CURRYBIN=" ++ curryExec cfg ++ " && export CURRYBIN && " ++
                     "." </> script ++ if null ccopts then "" else ' ' : ccopts
         checkcmd  = currycheck ++ if null ccopts then "" else ' ' : ccopts
     unless (null mods) $ putStrLn $
