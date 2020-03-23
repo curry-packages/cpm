@@ -15,18 +15,19 @@ import Either
 import FilePath     ( (</>), splitSearchPath, replaceExtension, takeExtension
                     , pathSeparator, isPathSeparator )
 import IO           ( hFlush, stdout )
-import IOExts       ( evalCmd )
+import IOExts       ( evalCmd, readCompleteFile )
 import List         ( groupBy, intercalate, isPrefixOf, isSuffixOf, nub, split
                     , splitOn )
 import Sort         ( sortBy )
-import System       ( getArgs, getEnviron, setEnviron, unsetEnviron, exitWith
-                    , system )
+import System       ( getArgs, getEnviron, getPID, setEnviron, unsetEnviron
+                    , exitWith, system )
+import Time         ( calendarTimeToString, getLocalTime )
 
 import Boxes            ( table, render )
 import OptParse
 import System.CurryPath ( addCurrySubdir, stripCurrySuffix )
 import System.Path      ( fileInPath, getFileInPath )
-import Text.CSV         ( showCSV )
+import Text.CSV         ( readCSV, showCSV, writeCSVFile )
 
 import CPM.ErrorLogger
 import CPM.FileUtil ( cleanTempDir, joinSearchPath, safeReadFile, whenFileExists
@@ -241,6 +242,7 @@ data DocOptions = DocOptions
 
 data TestOptions = TestOptions
   { testModules   :: Maybe [String]  -- modules to be tested
+  , testFile      :: String          -- file to write test statistics as CSV
   , testCheckOpts :: [String]        -- additional options passed to CurryCheck
   }
 
@@ -342,7 +344,7 @@ defaultBaseDocURL = "https://www-ps.informatik.uni-kiel.de/~cpm/DOC"
 testOpts :: Options -> TestOptions
 testOpts s = case optCommand s of
   Test opts -> opts
-  _         -> TestOptions Nothing []
+  _         -> TestOptions Nothing "" []
 
 diffOpts :: Options -> DiffOptions
 diffOpts s = case optCommand s of
@@ -676,6 +678,13 @@ optionParser allargs = optParser
           (  long "modules"
           <> short "m"
           <> help "The modules to be tested, separate multiple modules by comma"
+          <> optional )
+    <.>
+    option (\s a -> Right $ a { optCommand =
+                                  Test (testOpts a) { testFile = s } })
+          (  long "file"
+          <> short "f"
+          <> help "File to store test statistics in CSV format"
           <> optional )
     <.>
     option (\s a -> Right $ a { optCommand =
@@ -1388,10 +1397,13 @@ testCmd opts cfg =
     checkCompiler cfg pkg
     aspecDir <- getAbsolutePath specDir
     mainprogs <- curryModulesInDir (aspecDir </> "src")
-    let tests = testsuites pkg mainprogs
-    if null tests
-      then log Info "No modules to be tested!"
-      else foldEL (\_ -> execTest aspecDir) () tests
+    let tests = testSuites pkg mainprogs
+    stats <- fromErrorLogger (if null tests
+               then log Info "No modules to be tested!" |> succeedIO []
+               else foldEL (execTest aspecDir) [] tests)
+    unless (null (testFile opts)) $
+      combineCSVStatsOfPkg (packageId pkg) stats (testFile opts)
+    succeedIO ()
  where
   getCurryCheck =
     getFileInPath ccbin >>=
@@ -1403,15 +1415,18 @@ testCmd opts cfg =
           succeedIO
    where ccbin = "curry-check"
 
-  execTest apkgdir (PackageTest dir mods pccopts script) =
+  execTest apkgdir stats (PackageTest dir mods pccopts script) =
     getCurryCheck |>= \currycheck -> do
-    let tccopts  = intercalate " " (map ("--" ++) (testCheckOpts opts))
-    let ccopts   = if null tccopts
+    pid <- getPID
+    let csvfile  = "TESTRESULT" ++ show pid ++ ".csv"
+        statopts = if null (testFile opts) then [] else ["statfile=" ++ csvfile]
+        tccopts  = unwords (map ("--" ++) (testCheckOpts opts ++ statopts))
+        ccopts   = if null tccopts
                      then pccopts
                      else if null pccopts then tccopts
                                           else tccopts ++ ' ' : pccopts
         scriptcmd = "CURRYBIN=" ++ curryExec cfg ++ " && export CURRYBIN && " ++
-                    "." </> script ++ if null ccopts then "" else ' ' : ccopts
+                    "." </> script ++ if null ccopts then "" else ' ' : pccopts
         checkcmd  = currycheck ++ if null ccopts then "" else ' ' : ccopts
     unless (null mods) $ putStrLn $
       "Running CurryCheck (" ++ checkcmd ++ ")\n" ++
@@ -1426,10 +1441,15 @@ testCmd opts cfg =
                     else scriptcmd
     debugMessage $ "Removing directory: " ++ currysubdir
     showExecCmd (unwords ["rm", "-rf", currysubdir])
-    inDirectory (apkgdir </> dir) $
-      execWithPkgDir (ExecOptions testcmd) cfg apkgdir
+    inDirectory (apkgdir </> dir)
+      (execWithPkgDir (ExecOptions testcmd) cfg apkgdir |>
+       if null (testFile opts) || null mods
+         then succeedIO stats
+         else do s <- readCompleteFile csvfile
+                 removeFile csvfile
+                 succeedIO (stats ++ [readCSV s]))
 
-  testsuites spec mainprogs = case testModules opts of
+  testSuites spec mainprogs = case testModules opts of
     Nothing -> maybe (let exports = exportedModules spec
                       in if null exports
                            then if null mainprogs
@@ -1439,6 +1459,25 @@ testCmd opts cfg =
                      id
                      (testSuite spec)
     Just ms -> [PackageTest "src" ms "" ""]
+
+-- Combine all CSV statistics (produced by CurryCheck for a package)
+-- into one file in CSV format by accumulating all numbers and modules.
+combineCSVStatsOfPkg :: String -> [[[String]]] -> String -> IO ()
+combineCSVStatsOfPkg pkgid csvs outfile = do
+  ltime <- getLocalTime
+  let results = foldr addStats ([], take 6 (repeat 0), "") (map fromCSV csvs)
+  writeCSVFile outfile (showStats (calendarTimeToString ltime) results)
+ where
+  fromCSV rows =
+    let [rc,total,unit,prop,eqv,io,mods] = rows !! 1
+    in (rows !! 0, map (\s -> read s :: Int) [rc,total,unit,prop,eqv,io], mods)
+
+  showStats ct (header,nums,mods) =
+    ["Package" : "Check time" : header, pkgid : ct : map show nums ++ [mods]]
+
+  addStats (header,nums1,mods1) (_,nums2,mods2) =
+    (header, map (uncurry (+)) (zip nums1 nums2), mods1 ++ " " ++ mods2)
+
 
 --- Get the names of all Curry modules contained in a directory.
 --- Modules in subdirectories are returned as hierarchical modules.
