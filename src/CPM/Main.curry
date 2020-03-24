@@ -61,7 +61,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-lang.org/tools/cpm> (version of 18/03/2020)"
+  "Curry Package Manager <curry-lang.org/tools/cpm> (version of 24/03/2020)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -242,6 +242,7 @@ data DocOptions = DocOptions
 
 data TestOptions = TestOptions
   { testModules   :: Maybe [String]  -- modules to be tested
+  , testSafe      :: Bool            -- safe test? (no scripts, no I/O props)
   , testFile      :: String          -- file to write test statistics as CSV
   , testCheckOpts :: [String]        -- additional options passed to CurryCheck
   }
@@ -344,7 +345,7 @@ defaultBaseDocURL = "https://www-ps.informatik.uni-kiel.de/~cpm/DOC"
 testOpts :: Options -> TestOptions
 testOpts s = case optCommand s of
   Test opts -> opts
-  _         -> TestOptions Nothing "" []
+  _         -> TestOptions Nothing False "" []
 
 diffOpts :: Options -> DiffOptions
 diffOpts s = case optCommand s of
@@ -679,6 +680,13 @@ optionParser allargs = optParser
           <> short "m"
           <> help "The modules to be tested, separate multiple modules by comma"
           <> optional )
+    <.>
+    flag (\a -> Right $ a { optCommand =
+                              Test (testOpts a) { testSafe = True } })
+         (  short "s"
+         <> long "safe"
+         <> help "Safe test mode (no script tests, no I/O tests)"
+         <> optional )
     <.>
     option (\s a -> Right $ a { optCommand =
                                   Test (testOpts a) { testFile = s } })
@@ -1420,13 +1428,14 @@ testCmd opts cfg =
     pid <- getPID
     let csvfile  = "TESTRESULT" ++ show pid ++ ".csv"
         statopts = if null (testFile opts) then [] else ["statfile=" ++ csvfile]
-        tccopts  = unwords (map ("--" ++) (testCheckOpts opts ++ statopts))
+        tccopts  = unwords (map ("--" ++) (testCheckOpts opts ++ statopts) ++
+                            (if testSafe opts then ["--noiotest"] else []))
         ccopts   = if null tccopts
                      then pccopts
                      else if null pccopts then tccopts
                                           else tccopts ++ ' ' : pccopts
         scriptcmd = "CURRYBIN=" ++ curryExec cfg ++ " && export CURRYBIN && " ++
-                    "." </> script ++ if null ccopts then "" else ' ' : pccopts
+                    "." </> script ++ if null pccopts then "" else ' ' : pccopts
         checkcmd  = currycheck ++ if null ccopts then "" else ' ' : ccopts
     unless (null mods) $ putStrLn $
       "Running CurryCheck (" ++ checkcmd ++ ")\n" ++
@@ -1456,9 +1465,11 @@ testCmd opts cfg =
                                   then []
                                   else [PackageTest "src" mainprogs "" ""]
                            else [PackageTest "src" exports "" ""])
-                     id
+                     (filter allowedTest)
                      (testSuite spec)
     Just ms -> [PackageTest "src" ms "" ""]
+   where
+    allowedTest (PackageTest _ _ _ scrpt) = not (testSafe opts) || null scrpt
 
 -- Combine all CSV statistics (produced by CurryCheck for a package)
 -- into one file in CSV format by accumulating all numbers and modules.
