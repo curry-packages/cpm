@@ -33,6 +33,7 @@ module CPM.Package
   , PackageExecutable (..), PackageTest (..), PackageDocumentation (..)
   , showDependency
   , showCompilerDependency
+  , showVersionConstraints
   , loadPackageSpec
   , writePackageSpec
   , Conjunction

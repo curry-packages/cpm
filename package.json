@@ -48,5 +48,7 @@
     "source": {
         "git": "https://git.ps.informatik.uni-kiel.de/curry-packages/cpm.git",
         "tag": "$version"
-    }
+    },
+    "homepage": "http://www.curry-lang.org/tools/cpm",
+    "repository": "https://git.ps.informatik.uni-kiel.de/curry-packages/cpm.git"
 }
