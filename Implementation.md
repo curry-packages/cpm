@@ -1,7 +1,8 @@
-Hints about CPM's Implementation
-================================
+Some details about CPM's Implementation
+========================================
 
-Information about CPM's local storage structure can be found in the manual.
+Information about CPM's local storage structure (i.e., on the client side)
+can be found in the manual.
 
 Here is some information about CPM's global storage structure.
 
@@ -51,7 +52,7 @@ CPM uses a global store containing a gzipped tar file for each package.
 The default URL is defined in `CPM.Config.packageTarFilesDefaultURL`,
 currently as
 
-    https://www.informatik.uni-kiel.de/~curry/cpm/PACKAGES/
+    https://www-ps.informatik.uni-kiel.de/~cpm/PACKAGES/
 
 This configuration can be changed by the `.cpmrc` value
 
@@ -64,7 +65,7 @@ In order to download the package `pkg` in version `vers`,
 CPM extends this URL by the string `pkg-vers.tar.gz`.
 For instance, CPM downloads version 2.1.0 of the package `cpm` from
 
-    https://www.informatik.uni-kiel.de/~curry/cpm/PACKAGES/cpm-2.1.0.tar.gz
+    https://www-ps.informatik.uni-kiel.de/~cpm/PACKAGES/cpm-2.1.0.tar.gz
 
 If CPM cannot download anything from this location,
 it tries to download the package from the `source` field
@@ -77,7 +78,7 @@ Global package index cache
 In order to accelerate the creation of the sqlite3 database
 during the `update` command, CPM tries to download the file
 
-    https://www.informatik.uni-kiel.de/~curry/cpm/PACKAGES/REPOSITORY_CACHE.csv
+    https://www-ps.informatik.uni-kiel.de/~cpm/PACKAGES/REPOSITORY_CACHE.csv
 
 which contains the database information in CSV format.
 If CPM cannot download this file, it creates the database
@@ -105,5 +106,4 @@ source repository. This command tests the package and, in case
 of a successful test, uploads the package to the global package
 index and store via the web script at URL
 
-    https://www-ps.informatik.uni-kiel.de/~mh/cpm-upload.cgi
-
+    https://www-ps.informatik.uni-kiel.de/~cpm/cpm-upload.cgi
