@@ -187,24 +187,48 @@ Dependencies are specified as a nested JSON object with package names as keys
 and dependency constraints as values. A dependency constraint restricts the 
 range of versions of the dependency that a package is compatible to. Constraints
 consist of elementary comparisons that can be combined into conjunctions, which
-can then be combined into one large disjunction -- essentially a disjunctive
-normal form. The supported comparison operators are $<, \leq, >, \geq, =$ and 
-$\sim>$. The first four are interpreted according to the rules for comparing
-version numbers laid out in the semantic versioning standard. $\sim>$ is called
-the \emph{semantic versioning arrow}. It requires that the package version be 
-at least as large as its argument, but still within the same minor version, i.e.
-$\sim> 1.2.3$ would match $1.2.3$, $1.2.9$ and $1.2.55$, but not $1.2.2$ or
-$1.3.0$.
+can then be combined into one large disjunction---essentially a disjunctive
+normal form.
+The supported comparison operators are
+\code{<}, \code{<=}, \code{>}, \code{>=}, \code{=}, \code{\char126},
+and \code{\char94}.
+The first five are interpreted according to the rules for comparing
+version numbers laid out in the semantic versioning standard.
+\code{\char126} requires\footnote{%
+In previous versions of CPM this was denoted
+as \code{{\char126}>} and called \emph{semantic versioning arrow}.}
+that the package version be 
+at least as large as its argument but still within the same minor version,
+i.e.,
+\code{{\char126}1.2.3} would match
+\code{1.2.3}, \code{1.2.9}, and \code{1.2.55}
+but not \code{1.2.2}, \code{1.3.0}, or \code{2.1.0}.
+Analogously, \code{\char94} requires that the package version be 
+at least as large as its argument but still within the same major version,
+i.e.,
+\code{{\char94}1.2.3} would match
+\code{1.2.3} and \code{1.4.3}
+but not \code{2.1.0}.
 
 To combine multiple comparisons into a conjunction, separate them by commas, 
-e.g. $\geq 2.0.0, < 3.0.0$ would match all versions with major version $2$. 
-Note that it would not match \textit{2.1.3-beta5} for example, since pre-release 
+e.g.,
+\begin{lstlisting}
+>= 2.0.0, < 3.0.0  
+\end{lstlisting}
+would match all versions
+with major version \code{2}.
+Note that it would not match \code{2.1.3-beta5} for example, since pre-release 
 versions are only matched if the comparison is explicitly made to a pre-release
-version, e.g. $= \text{2.1.3-beta5}$ or $\geq \text{2.1.3-beta2}$.
+version, e.g., \code{= 2.1.3-beta5} or \code{> 2.1.3-beta2}.
 
-Conjunctions can be combined into a disjunction via the $||$ characters, e.g.
-$\geq 2.0.0, < 3.0.0 || \geq 4.0.0$ would match any version within major version
-$2$ and from major version $4$ onwards, but no version within major version $3$.
+Conjunctions can be combined into a disjunction via the
+\code{||} characters, e.g.,
+\begin{lstlisting}
+>= 2.0.0, < 3.0.0 || >= 4.0.0  
+\end{lstlisting}
+would match any version within major version
+\code{2} and from major version \code{4} onwards,
+but no version within major version \code{3}.
 
 
 \clearpage
@@ -234,8 +258,9 @@ Then declare the dependencies inside the new \code{package.json} file, e.g.:
 {
   ...,
   "dependencies": {
-    "base": ">= 1.0.0, < 2.0.0",
-    "json": "~> 1.1.0"
+    "base": "^1.0.0",
+    "html": ">= 2.0.0, < 2.2.0"
+    "json": "~1.1.0"
   }
 }
 \end{lstlisting}
@@ -748,12 +773,16 @@ one can execute the command
 \section{Some CPM Internals}
 \label{sec:internals}
 
-CPM's central package index is contains all package specification files.
+CPM's central package index contains all package specification files.
 It is stored at a central server where the actual location is defined
 by CPM's configuration variable \code{PACKAGE_INDEX_URL},
 see Section~\ref{sec:config}.
-A copy of this index is stored on your
-local system in the \code{\$HOME/.cpm/index} directory, unless you
+When the command
+\begin{lstlisting}
+> cypm update
+\end{lstlisting}
+is executed, a copy of this index is downloaded and stored on your
+local system in the directory \code{\$HOME/.cpm/index}, unless you
 changed the location using the \code{REPOSITORY_PATH} setting. CPM
 uses the package index when searching for and installing packages and
 during dependency resolution.
@@ -1395,8 +1424,9 @@ are used:
     "repository": "THE (GIT) URL OF THE WEB SITE REPOSITORY",
     "dependencies": {
         "PACKAGE1" : ">= 0.0.1, < 1.5.0",
-        "PACKAGE2" : "~> 1.2.3",
-        "PACKAGE3" : ">= 2.1.4, < 3.0.0 || >= 4.0.0"
+        "PACKAGE2" : "~1.2.3",
+        "PACKAGE3" : ">= 2.1.4, < 3.0.0 || >= 4.0.0",
+        "PACKAGE2" : "^2.1.3",
     },
     "compilerCompatibility": {
         "pakcs": ">= 1.14.0, < 2.0.0",

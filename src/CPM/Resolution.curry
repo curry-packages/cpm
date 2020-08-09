@@ -521,7 +521,9 @@ isDisjunctionCompatible ver cs = any id (map (all id) rs)
   isCompatible (VLte v) = ver `vlte` v && preReleaseCompatible ver v
   isCompatible (VGt v) = ver `vgt` v && preReleaseCompatible ver v
   isCompatible (VGte v) = ver `vgte` v && preReleaseCompatible ver v
-  isCompatible (VCompatible v) = ver `vgte` v && ver `vlt` (nextMinor v) &&
+  isCompatible (VMinCompatible v) = ver `vgte` v && ver `vlt` (nextMinor v) &&
+    preReleaseCompatible ver v
+  isCompatible (VMajCompatible v) = ver `vgte` v && ver `vlt` (nextMajor v) &&
     preReleaseCompatible ver v
 
 test_onlyConjunctionCompatible :: Prop

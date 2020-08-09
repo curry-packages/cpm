@@ -56,14 +56,14 @@ import CPM.PackageCache.Runtime ( dependencyPathsSeparate, writePackageConfig )
 import CPM.PackageCopy
 import CPM.Diff.API as APIDiff
 import qualified CPM.Diff.Behavior as BDiff
-import CPM.ConfigPackage (packagePath)
+import CPM.ConfigPackage        ( packagePath )
 
 -- Banner of this tool:
 cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-  "Curry Package Manager <curry-lang.org/tools/cpm> (version of 04/05/2020)"
+   "Curry Package Manager <curry-lang.org/tools/cpm> (version of 09/08/2020)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
