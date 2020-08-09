@@ -78,116 +78,122 @@ resolveDependenciesForPackage cfg pkg repo gc =
 --- Acquires a package and its dependencies and installs them to the global
 --- package cache.
 acquireAndInstallPackageWithDependencies :: Config -> Repository -> Package
-                                         -> IO (ErrorLogger ())
-acquireAndInstallPackageWithDependencies cfg repo pkg = 
-  GC.readGlobalCache cfg repo |>= \gc ->
-  resolveDependenciesForPackage cfg pkg repo gc |>= \result ->
-  GC.installMissingDependencies cfg gc (resolvedPackages result) |>
+                                         -> ErrorLoggerIO ()
+acquireAndInstallPackageWithDependencies cfg repo pkg = do
+  gc     <- GC.readGlobalCache cfg repo
+  result <- toELM $ resolveDependenciesForPackage cfg pkg repo gc
+  GC.installMissingDependencies cfg gc (resolvedPackages result)
   GC.acquireAndInstallPackage cfg pkg
 
 --- Links the dependencies of a package to its local cache and copies them to
 --- its runtime cache. Returns the package specifications of the dependencies.
 copyDependencies :: Config -> Package -> [Package] -> String 
-                 -> IO (ErrorLogger [Package])
-copyDependencies cfg pkg pkgs dir = 
-  LocalCache.linkPackages cfg dir pkgs |>
-  RuntimeCache.copyPackages cfg pkgs' dir |>= \pkgspecs ->
-  succeedIO (if pkg `elem` pkgs then pkg : pkgspecs else pkgspecs)
+                 -> ErrorLoggerIO [Package]
+copyDependencies cfg pkg pkgs dir = do
+  toELM $ LocalCache.linkPackages cfg dir pkgs
+  pkgspecs <- RuntimeCache.copyPackages cfg pkgs' dir
+  return $ if pkg `elem` pkgs then pkg : pkgspecs else pkgspecs
  where 
   pkgs' = filter (/= pkg) pkgs
 
 --- Upgrades all dependencies of a package copy.
-upgradeAllPackages :: Config -> String -> IO (ErrorLogger ())
-upgradeAllPackages cfg dir =
-  loadPackageSpec dir |>= \pkgSpec ->
-  LocalCache.clearCache dir >> succeedIO () |>
-  installLocalDependencies cfg dir |>= \ (_,deps) ->
-  copyDependencies cfg pkgSpec deps dir |> succeedIO ()
+upgradeAllPackages :: Config -> String -> ErrorLoggerIO ()
+upgradeAllPackages cfg dir = do
+  pkgspec <- loadPackageSpecELM dir
+  execIO $ LocalCache.clearCache dir
+  (_,deps) <- installLocalDependencies cfg dir
+  copyDependencies cfg pkgspec deps dir
+  return ()
 
 --- Upgrades a single package and its transitive dependencies.
-upgradeSinglePackage :: Config -> String -> String -> IO (ErrorLogger ())
-upgradeSinglePackage cfg dir pkgName =
-  loadPackageSpec dir |>= \pkgSpec ->
-  getRepoForPackageSpec cfg pkgSpec >>= \repo ->
-  GC.readGlobalCache cfg repo |>= \gc ->
-  lookupSetForPackageCopy cfg pkgSpec repo gc dir |>= \originalLS ->
-  let transitiveDeps = pkgName : allTransitiveDependencies originalLS pkgName in
-  resolveDependenciesFromLookupSet cfg (setBaseDependency cfg pkgSpec)
-                        (LS.setLocallyIgnored originalLS transitiveDeps) |>=
-  \result -> GC.installMissingDependencies cfg gc (resolvedPackages result) |>
-  log Info (showDependencies result) |>
-  copyDependencies cfg pkgSpec (resolvedPackages result) dir |> succeedIO ()
+upgradeSinglePackage :: Config -> String -> String -> ErrorLoggerIO ()
+upgradeSinglePackage cfg dir pkgName = do
+  pkgspec <- loadPackageSpecELM dir
+  repo    <- execIO $ getRepoForPackageSpec cfg pkgspec
+  gc      <- GC.readGlobalCache cfg repo
+  originalLS <- toELM $ lookupSetForPackageCopy cfg pkgspec repo gc dir
+  let transitiveDeps = pkgName : allTransitiveDependencies originalLS pkgName
+  result <- toELM $
+    resolveDependenciesFromLookupSet cfg (setBaseDependency cfg pkgspec)
+                        (LS.setLocallyIgnored originalLS transitiveDeps)
+  GC.installMissingDependencies cfg gc (resolvedPackages result)
+  logMsg Info (showDependencies result)
+  copyDependencies cfg pkgspec (resolvedPackages result) dir
+  return ()
 
 --- Installs the dependencies of a package.
 installLocalDependencies :: Config -> String
-                         -> IO (ErrorLogger (Package,[Package]))
-installLocalDependencies cfg dir =
-  loadPackageSpec dir |>= \pkgSpec ->
-  getRepoForPackageSpec cfg pkgSpec >>= \repo ->
+                         -> ErrorLoggerIO (Package,[Package])
+installLocalDependencies cfg dir = do
+  pkgSpec <- loadPackageSpecELM dir
+  repo    <- execIO $ getRepoForPackageSpec cfg pkgSpec
   installLocalDependenciesWithRepo cfg repo dir pkgSpec
 
 --- Installs the dependencies of a package.
 installLocalDependenciesWithRepo :: Config -> Repository -> String -> Package
-                                 -> IO (ErrorLogger (Package,[Package]))
-installLocalDependenciesWithRepo cfg repo dir pkgSpec =
-  GC.readGlobalCache cfg repo |>= \gc ->
-  resolveDependenciesForPackageCopy cfg pkgSpec repo gc dir |>= \result ->
-  GC.installMissingDependencies cfg gc (resolvedPackages result) |>
-  log Info (showDependencies result) |> 
-  copyDependencies cfg pkgSpec (resolvedPackages result) dir |>= \cpkgs ->
-  succeedIO (pkgSpec, cpkgs)
+                                 -> ErrorLoggerIO (Package,[Package])
+installLocalDependenciesWithRepo cfg repo dir pkgSpec = do
+  gc <- GC.readGlobalCache cfg repo
+  result <- toELM $ resolveDependenciesForPackageCopy cfg pkgSpec repo gc dir
+  GC.installMissingDependencies cfg gc (resolvedPackages result)
+  logMsg Info (showDependencies result)
+  cpkgs <- copyDependencies cfg pkgSpec (resolvedPackages result) dir
+  return (pkgSpec, cpkgs)
 
 --- Links a directory into the local package cache. Used for `cypm link`.
-linkToLocalCache :: Config -> String -> String -> IO (ErrorLogger ())
+linkToLocalCache :: Config -> String -> String -> ErrorLoggerIO ()
 linkToLocalCache cfg src pkgDir = do
-  dirExists <- doesDirectoryExist src
+  dirExists <- execIO $ doesDirectoryExist src
   if dirExists
-    then loadPackageSpec src |>= \pkgSpec ->
-         getPackageVersion cfg (name pkgSpec) (version pkgSpec) >>=
-         maybe
-           (log Critical
-                ("Package '" ++ packageId pkgSpec ++ "' not in repository!\n" ++
-                 "Note: you can only link copies of existing packages."))
-           (\_ -> LocalCache.createLink pkgDir src (packageId pkgSpec) True |> 
-                  succeedIO ())
-    else log Critical ("Directory '" ++ src ++ "' does not exist.")
+    then do
+      pkgSpec <- loadPackageSpecELM src
+      mbp <- execIO $ getPackageVersion cfg (name pkgSpec) (version pkgSpec)
+      maybe (logMsg Critical $
+               "Package '" ++ packageId pkgSpec ++ "' not in repository!\n" ++
+               "Note: you can only link copies of existing packages.")
+            (\_ -> do toELM $ LocalCache.createLink pkgDir src
+                                (packageId pkgSpec) True
+                      return ())
+            mbp
+    else logMsg Critical $ "Directory '" ++ src ++ "' does not exist."
 
 --- Resolves the dependencies for a package copy and fills the package caches.
 resolveAndCopyDependencies :: Config -> Repository -> GC.GlobalCache -> String 
-                           -> IO (ErrorLogger [Package])
-resolveAndCopyDependencies cfg repo gc dir =
-  loadPackageSpec dir |>= resolveAndCopyDependenciesForPackage' cfg repo gc dir
+                           -> ErrorLoggerIO [Package]
+resolveAndCopyDependencies cfg repo gc dir = do
+  pkgspec <- loadPackageSpecELM dir
+  resolveAndCopyDependenciesForPackage' cfg repo gc dir pkgspec
 
 --- Resolves the dependencies for a package copy and fills the package caches.
 resolveAndCopyDependenciesForPackage ::
-     Config -> String -> Package -> IO (ErrorLogger [Package])
-resolveAndCopyDependenciesForPackage cfg dir pkgSpec =
-  getRepoForPackageSpec cfg pkgSpec >>= \repo ->
-  GC.readGlobalCache cfg repo |>= \gc ->
+     Config -> String -> Package -> ErrorLoggerIO [Package]
+resolveAndCopyDependenciesForPackage cfg dir pkgSpec = do
+  repo <- execIO $ getRepoForPackageSpec cfg pkgSpec
+  gc   <- GC.readGlobalCache cfg repo
   resolveAndCopyDependenciesForPackage' cfg repo gc dir pkgSpec
 
 resolveAndCopyDependenciesForPackage' ::
      Config -> Repository -> GC.GlobalCache -> String -> Package
-  -> IO (ErrorLogger [Package])
-resolveAndCopyDependenciesForPackage' cfg repo gc dir pkgSpec =
-  resolveDependenciesForPackageCopy cfg pkgSpec repo gc dir |>= \result -> 
-    let deps = resolvedPackages result
-        missingDeps = GC.missingPackages gc deps 
-        failMsg = "Missing dependencies " 
-                  ++ (intercalate "," $ map packageId missingDeps) 
-                  ++ "\nUse `cypm install` to install missing dependencies."
-    in if null missingDeps
-         then copyDependencies cfg pkgSpec deps dir
-         else failIO failMsg
+  -> ErrorLoggerIO [Package]
+resolveAndCopyDependenciesForPackage' cfg repo gc dir pkgSpec = do
+  result <- toELM $ resolveDependenciesForPackageCopy cfg pkgSpec repo gc dir
+  let deps = resolvedPackages result
+      missingDeps = GC.missingPackages gc deps 
+      failMsg = "Missing dependencies " 
+                ++ (intercalate "," $ map packageId missingDeps) 
+                ++ "\nUse `cypm install` to install missing dependencies."
+  if null missingDeps
+    then copyDependencies cfg pkgSpec deps dir
+    else failELM failMsg
 
 --- Resolves the dependencies for a package copy.
-resolveDependencies :: Config -> String -> IO (ErrorLogger ResolutionResult)
-resolveDependencies cfg dir =
-  loadPackageSpec dir |->
-  log Info ("Read package spec from " ++ dir) |>= \pkgSpec ->
-  getRepoForPackageSpec cfg pkgSpec >>= \repo ->
-  GC.readGlobalCache cfg repo |>= \gc ->
-  resolveDependenciesForPackageCopy cfg pkgSpec repo gc dir
+resolveDependencies :: Config -> String -> ErrorLoggerIO ResolutionResult
+resolveDependencies cfg dir = do
+  pkgSpec <- loadPackageSpecELM dir
+  logMsg Info $ "Read package spec from " ++ dir
+  repo <- execIO $ getRepoForPackageSpec cfg pkgSpec
+  gc <- GC.readGlobalCache cfg repo
+  toELM $ resolveDependenciesForPackageCopy cfg pkgSpec repo gc dir
 
 ------------------------------------------------------------------------------
 --- Sets `base` package dependency in a package to the current `baseVersion`

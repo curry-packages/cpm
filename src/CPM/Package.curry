@@ -34,7 +34,7 @@ module CPM.Package
   , showDependency
   , showCompilerDependency
   , showVersionConstraints
-  , loadPackageSpec
+  , loadPackageSpec, loadPackageSpecELM
   , writePackageSpec
   , Conjunction
   , Disjunction
@@ -324,6 +324,12 @@ packageSpecToJSON pkg = JObject $
 writePackageSpec :: Package -> String -> IO ()
 writePackageSpec pkg file = writeFile file $ ppJSON $ packageSpecToJSON pkg
 
+
+--- Loads a package specification from a package directory.
+---
+--- @param the directory containing the package.json file
+loadPackageSpecELM :: String -> ErrorLoggerIO Package
+loadPackageSpecELM = toELM . loadPackageSpec
 
 --- Loads a package specification from a package directory.
 ---

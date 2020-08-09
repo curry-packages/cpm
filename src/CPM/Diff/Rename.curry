@@ -39,7 +39,7 @@ import CPM.Repository (Repository)
 prefixPackageAndDeps :: Config -> Repository -> GC.GlobalCache -> String 
                      -> String -> String -> IO (ErrorLogger [(String, String)])
 prefixPackageAndDeps cfg repo gc dir prefix destDir = 
-  resolveAndCopyDependencies cfg repo gc dir |>= 
+  fromELM (resolveAndCopyDependencies cfg repo gc dir) |>= 
   \deps -> (mapIO (findAllModulesInPackage . RuntimeCache.cacheDirectory dir) deps >>= succeedIO) |>=
   \depMods -> (findAllModulesInPackage dir >>= succeedIO) |>=
   \ownMods -> succeedIO (ownMods ++ concat depMods) |>=

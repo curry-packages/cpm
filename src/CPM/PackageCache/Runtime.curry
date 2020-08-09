@@ -47,45 +47,47 @@ cacheDirectory dir pkg = dir </> ".cpm" </> "packages" </> packageId pkg
 
 --- Copies a set of packages from the local package cache to the runtime 
 --- package cache and returns the package specifications.
-copyPackages :: Config -> [Package] -> String -> IO (ErrorLogger [Package])
-copyPackages cfg pkgs dir = mapEL copyPackage pkgs
+copyPackages :: Config -> [Package] -> String -> ErrorLoggerIO [Package]
+copyPackages cfg pkgs dir = mapM copyPackage pkgs
   where
     copyPackage pkg = do
       cdir <- ensureCacheDirectory dir
-      destDir <- return $ cdir </> packageId pkg
-      recreateDirectory destDir
-      pkgDirExists <- doesDirectoryExist pkgDir
+      let destDir = cdir </> packageId pkg
+      execIO $ recreateDirectory destDir
+      pkgDirExists <- execIO $ doesDirectoryExist pkgDir
       if pkgDirExists
-        then -- in order to obtain complete package specification:
-             readPackageFromRepository cfg pkg |>= \reppkg ->
-             copyDirectoryFollowingSymlinks pkgDir cdir >>
-             writePackageConfig cfg destDir reppkg "" >> succeedIO reppkg
+        then do
+          -- in order to obtain complete package specification:
+          reppkg <- toELM $ readPackageFromRepository cfg pkg
+          execIO $ copyDirectoryFollowingSymlinks pkgDir cdir
+          writePackageConfig cfg destDir reppkg ""
+          return reppkg
         else error $ "Package " ++ packageId pkg ++
                      " could not be found in package cache." 
      where 
       pkgDir = LocalCache.packageDir dir pkg
 
 --- Ensures that the runtime package cache directory exists.
-ensureCacheDirectory :: String -> IO String
+ensureCacheDirectory :: String -> ErrorLoggerIO String
 ensureCacheDirectory dir = do
-  createDirectoryIfMissing True packagesDir
+  let packagesDir = dir </> ".cpm" </> "packages"
+  execIO $ createDirectoryIfMissing True packagesDir
   return packagesDir
- where packagesDir = dir </> ".cpm" </> "packages"
 
 
 --- Writes the package configuration module (if specified) into the
 --- the package sources.
-writePackageConfig :: Config -> String -> Package -> String
-                   -> IO (ErrorLogger ())
+writePackageConfig :: Config -> String -> Package -> String -> ErrorLoggerIO ()
 writePackageConfig cfg pkgdir pkg loadpath =
-  maybe (succeedIO ())
+  maybe (return ())
         (\configmod ->
            let binname = maybe ""
                                (\ (PackageExecutable n _ _) -> n)
                                (executableSpec pkg)
            in if null configmod
-                then succeedIO ()
-                else writeConfigFile configmod binname)
+                then return ()
+                else do execIO $ writeConfigFile configmod binname
+                        return ())
         (configModule pkg)
  where
   writeConfigFile configmod binname = do

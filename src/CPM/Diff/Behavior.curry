@@ -659,8 +659,8 @@ findTypeInModules cfg repo gc info acy (mod,n) =
     Nothing ->
      (case findModule mod acy of
        Just  p -> succeedIO $ p
-       Nothing -> resolveAndCopyDependencies cfg repo gc
-                                          (infSourceDirA info) |>= \deps ->
+       Nothing -> fromELM (resolveAndCopyDependencies cfg repo gc
+                                          (infSourceDirA info)) |>= \deps ->
                   readAbstractCurryFromDeps (infSourceDirA info) deps mod >>=
                                                        succeedIO) |>= \prog ->
                   case filter ((== n) . snd . typeName) (types prog) of
@@ -834,7 +834,7 @@ findFunctionsToCompare :: Config
 findFunctionsToCompare cfg repo gc dirA dirB useanalysis onlymods =
   loadPackageSpec dirA |>= \pkgA ->
   loadPackageSpec dirB |>= \pkgB ->
-  resolveAndCopyDependencies cfg repo gc dirA |>= \depsA ->
+  fromELM (resolveAndCopyDependencies cfg repo gc dirA) |>= \depsA ->
   succeedIO (let cmods = intersect (exportedModules pkgA) (exportedModules pkgB)
              in maybe cmods (intersect cmods) onlymods) |>= \mods ->
   if null mods

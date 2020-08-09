@@ -30,7 +30,7 @@ import CPM.Package
 --- Installs the source of the package from the given source location
 --- into the subdirectory `packageId pkg` of the given directory.
 installPackageSourceTo :: Package -> PackageSource -> String
-                         -> IO (ErrorLogger ())
+                       -> IO (ErrorLogger ())
 --- 
 --- @param pkg        - the package specification of the package
 --- @param source     - the source of the package
@@ -121,10 +121,10 @@ checkoutGitRef dir ref = do
 ------------------------------------------------------------------------------
 --- Cleans auxiliary files in the local package, i.e., the package
 --- containing the current working directory.
-cleanPackage :: Config -> LogLevel -> IO (ErrorLogger ())
-cleanPackage cfg ll =
-  getLocalPackageSpec cfg "." |>= \specDir ->
-  loadPackageSpec specDir     |>= \pkg ->
+cleanPackage :: Config -> LogLevel -> ErrorLoggerIO ()
+cleanPackage cfg ll = do
+  specDir <- getLocalPackageSpec cfg "."
+  pkg     <- toELM $ loadPackageSpec specDir
   let dotcpm   = specDir </> ".cpm"
       srcdirs  = map (specDir </>) (sourceDirsOf pkg)
       testdirs = map (specDir </>)
@@ -132,8 +132,9 @@ cleanPackage cfg ll =
                             (map (\ (PackageTest m _ _ _) -> m))
                             (testSuite pkg))
       rmdirs   = nub (dotcpm : map addCurrySubdir (srcdirs ++ testdirs))
-  in log ll ("Removing directories: " ++ unwords rmdirs) |>
-     (showExecCmd (unwords $ ["rm", "-rf"] ++ rmdirs) >> succeedIO ())
+  logMsg ll $ "Removing directories: " ++ unwords rmdirs
+  execIO $ showExecCmd (unwords $ ["rm", "-rf"] ++ rmdirs)
+  return ()
 
 ------------------------------------------------------------------------------
 --- Renders information about a package.
@@ -272,18 +273,18 @@ renderPackageInfo allinfos plain installed pkg = pPrint doc
 --- In order to avoid infinite loops due to cyclic file structures,
 --- the search is limited to the number of directories occurring in the
 --- current absolute path.
-getLocalPackageSpec :: Config -> String -> IO (ErrorLogger String)
+getLocalPackageSpec :: Config -> String -> ErrorLoggerIO String
 getLocalPackageSpec cfg dir = do
-  adir <- getAbsolutePath dir
+  adir <- execIO $ getAbsolutePath dir
   searchLocalSpec (length (splitPath adir)) dir
-    >>= maybe returnHomePackage succeedIO
+    >>= maybe returnHomePackage return
  where
   returnHomePackage = do
     let homepkgdir  = homePackageDir cfg
         homepkgspec = homepkgdir </> "package.json"
-    specexists <- doesFileExist homepkgspec
-    unless (specexists || null homepkgdir) $ do
-      createDirectoryIfMissing True homepkgdir
+    specexists <- execIO $ doesFileExist homepkgspec
+    unlessM (specexists || null homepkgdir) $ do
+      execIO $ createDirectoryIfMissing True homepkgdir
       let newpkg  = emptyPackage
                       { name            = snd (splitFileName homepkgdir)
                       , version         = initialVersion
@@ -291,19 +292,19 @@ getLocalPackageSpec cfg dir = do
                       , synopsis        = "Default home package"
                       , dependencies    = []
                       }
-      writePackageSpec newpkg homepkgspec
-      infoMessage $ "New empty package specification '" ++ homepkgspec ++
+      execIO $ writePackageSpec newpkg homepkgspec
+      logMsg Info $ "New empty package specification '" ++ homepkgspec ++
                     "' generated"
-    succeedIO homepkgdir
+    return homepkgdir
 
   searchLocalSpec m sdir = do
-    existsLocal <- doesFileExist $ sdir </> "package.json"
+    existsLocal <- execIO $ doesFileExist $ sdir </> "package.json"
     if existsLocal
       then return (Just sdir)
       else do
-        debugMessage ("No package.json in " ++ show sdir ++ ", trying " ++
-                      show (sdir </> ".."))
-        parentExists <- doesDirectoryExist $ sdir </> ".."
+        logMsg Debug $ "No package.json in " ++ show sdir ++ ", trying " ++
+                       show (sdir </> "..")
+        parentExists <- execIO $ doesDirectoryExist $ sdir </> ".."
         if m>0 && parentExists
           then searchLocalSpec (m-1) $ sdir </> ".."
           else return Nothing

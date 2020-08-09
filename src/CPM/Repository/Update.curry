@@ -34,8 +34,8 @@ import CPM.Repository.Select  ( addPackageToRepositoryCache
 --- from the central repository.
 --- If the fourth argument is `True`, also a CSV file containing the
 --- database entries is written.
-updateRepository :: Config -> Bool -> Bool -> Bool -> IO (ErrorLogger ())
-updateRepository cfg cleancache download writecsv = do
+updateRepository :: Config -> Bool -> Bool -> Bool -> ErrorLoggerIO ()
+updateRepository cfg cleancache download writecsv = toELM $ do
   cleanRepositoryCache cfg
   when cleancache $ do
     debugMessage $ "Deleting global package cache: '" ++
@@ -87,17 +87,15 @@ setLastUpdate cfg =
 --- If the argument `force` is true, overwrite an already existing package.
 --- If the argument `cpdir` is true, copy also the complete directory
 --- into the local package installation store.
-addPackageToRepository :: Config -> String -> Bool -> Bool
-                       -> IO (ErrorLogger ())
+addPackageToRepository :: Config -> String -> Bool -> Bool -> ErrorLoggerIO ()
 addPackageToRepository cfg pkgdir force cpdir = do
-  dirExists <- doesDirectoryExist pkgdir
+  dirExists <- execIO $ doesDirectoryExist pkgdir
   if dirExists
-    then loadPackageSpec pkgdir |>= \pkgSpec ->
-         (copyPackage pkgSpec >> succeedIO ()) |>
-         log Info ("Package in directory '" ++ pkgdir ++
-                   "' installed into local repository")
-    else log Critical ("Directory '" ++ pkgdir ++ "' does not exist.") |>
-         succeedIO ()
+    then do pkgSpec <- loadPackageSpecELM pkgdir
+            execIO $ copyPackage pkgSpec
+            logMsg Info $ "Package in directory '" ++ pkgdir ++
+                          "' installed into local repository"
+    else logMsg Critical $ "Directory '" ++ pkgdir ++ "' does not exist."
  where
   copyPackage pkg = do
     let pkgIndexDir      = name pkg </> showVersion (version pkg)
@@ -116,7 +114,7 @@ addPackageToRepository cfg pkgdir force cpdir = do
     createDirectoryIfMissing True pkgRepositoryDir
     copyFile (pkgdir </> "package.json") (pkgRepositoryDir </> "package.json")
     when cpdir $ do copyDirectory pkgdir pkgInstallDir
-                    inDirectory pkgInstallDir (cleanPackage cfg Debug)
+                    inDirectory pkgInstallDir (fromELM $ cleanPackage cfg Debug)
                     done
     if exrepodir then updatePackageInRepositoryCache cfg pkg
                  else addPackageToRepositoryCache    cfg pkg

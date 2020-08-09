@@ -101,8 +101,8 @@ compareModulesInDirs :: Config -> Repository -> GC.GlobalCache -> String
 compareModulesInDirs cfg repo gc dirA dirB onlyMods =
   loadPackageSpec dirA |>= \pkgA ->
   loadPackageSpec dirB |>= \pkgB ->
-  resolveAndCopyDependencies cfg repo gc dirA |>= \depsA ->
-  resolveAndCopyDependencies cfg repo gc dirB |>= \depsB ->
+  fromELM (resolveAndCopyDependencies cfg repo gc dirA) |>= \depsA ->
+  fromELM (resolveAndCopyDependencies cfg repo gc dirB) |>= \depsB ->
   let cmpmods = nub (exportedModules pkgA ++ exportedModules pkgB) in
   if null cmpmods
     then log Info "No exported modules to compare" |> succeedIO []
