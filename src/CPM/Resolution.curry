@@ -585,13 +585,15 @@ test_resolvesSimpleDependency =
         db  = cDB [json100, json101]
 
 test_reportsUnknownPackage :: Prop
-test_reportsUnknownPackage = showResult result -=- "There seems to be no version of package json that can satisfy the constraint json = 1.0.0"
+test_reportsUnknownPackage =
+  showResult result -=- "There seems to be no version of package json that can satisfy the constraint json = 1.0.0"
   where result = resolve defaultConfig pkg db
         pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "json" "= 1.0.0"]
         db = cDB [pkg]
 
 test_reportsMissingPackageVersion :: Prop
-test_reportsMissingPackageVersion = showResult result -=- "There seems to be no version of package json that can satisfy the constraint json = 1.2.0"
+test_reportsMissingPackageVersion =
+  showResult result -=- "There seems to be no version of package json that can satisfy the constraint json = 1.2.0"
   where result = resolve defaultConfig pkg db
         pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "json" "=1.2.0"]
         json = cPackage "json" (1, 0, 0, Nothing) []
@@ -600,7 +602,8 @@ test_reportsMissingPackageVersion = showResult result -=- "There seems to be no 
 test_reportsSecondaryConflict :: Prop
 test_reportsSecondaryConflict = showResult result -=- expectedMessage
  where result = resolve defaultConfig pkg db
-       pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "json" "= 1.0.0", cDep "b" ">= 0.0.1"]
+       pkg = cPackage "sample" (0, 0, 1, Nothing)
+                      [cDep "json" "= 1.0.0", cDep "b" ">= 0.0.1"]
        b = cPackage "b" (0, 0, 2, Nothing) [cDep "json" "~> 1.0.4"]
        json100 = cPackage "json" (1, 0, 0, Nothing) []
        json105 = cPackage "json" (1, 0, 5, Nothing) []
@@ -610,12 +613,14 @@ test_reportsSecondaryConflict = showResult result -=- expectedMessage
         ++ "  |- json (json = 1.0.0)\n"
         ++ "sample\n"
         ++ "  |- b (b >= 0.0.1)\n"
-        ++ "    |- json (json ~> 1.0.4)"
+        ++ "    |- json (json ~1.0.4)"
 
 test_reportsSecondaryConflictInsteadOfPrimary :: Prop
-test_reportsSecondaryConflictInsteadOfPrimary = showResult result -=- expectedMessage
+test_reportsSecondaryConflictInsteadOfPrimary =
+  showResult result -=- expectedMessage
  where result = resolve defaultConfig pkg db
-       pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "json" "= 1.0.0", cDep "b" ">= 0.0.5"]
+       pkg = cPackage "sample" (0, 0, 1, Nothing)
+                      [cDep "json" "= 1.0.0", cDep "b" ">= 0.0.5"]
        b001 = cPackage "b" (0, 0, 1, Nothing) []
        b002 = cPackage "b" (0, 0, 2, Nothing) []
        b003 = cPackage "b" (0, 0, 3, Nothing) []
@@ -628,12 +633,14 @@ test_reportsSecondaryConflictInsteadOfPrimary = showResult result -=- expectedMe
         ++ "  |- json (json = 1.0.0)\n"
         ++ "sample\n"
         ++ "  |- b (b >= 0.0.5)\n"
-        ++ "    |- json (json ~> 1.0.4)"
+        ++ "    |- json (json ~1.0.4)"
 
 test_detectsSecondaryOnFirstActivation :: Prop
-test_detectsSecondaryOnFirstActivation = showResult result -=- expectedMessage
+test_detectsSecondaryOnFirstActivation =
+  showResult result -=- expectedMessage
  where result = resolve defaultConfig pkg db
-       pkg = cPackage "sample" (0, 0, 1, Nothing) [cDep "a" "= 0.0.1", cDep "b" "> 0.0.1"]
+       pkg = cPackage "sample" (0, 0, 1, Nothing)
+                      [cDep "a" "= 0.0.1", cDep "b" "> 0.0.1"]
        a001 = cPackage "a" (0, 0, 1, Nothing) [cDep "b" "= 0.0.1"]
        b001 = cPackage "b" (0, 0, 1, Nothing) []
        b002 = cPackage "b" (0, 0, 2, Nothing) []
