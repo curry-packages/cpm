@@ -34,8 +34,8 @@ import CPM.Repository.Select  ( addPackageToRepositoryCache
 --- from the central repository.
 --- If the fourth argument is `True`, also a CSV file containing the
 --- database entries is written.
-updateRepository :: Config -> Bool -> Bool -> Bool -> ErrorLoggerIO ()
-updateRepository cfg cleancache download writecsv = toELM $ do
+updateRepository :: Config -> Bool -> Bool -> Bool -> Bool -> ErrorLoggerIO ()
+updateRepository cfg cleancache download usecache writecsv = toELM $ do
   cleanRepositoryCache cfg
   when cleancache $ do
     debugMessage $ "Deleting global package cache: '" ++
@@ -49,7 +49,7 @@ updateRepository cfg cleancache download writecsv = toELM $ do
       if c == 0
         then finishUpdate
         else failIO $ "Failed to update package index, return code " ++ show c
-    else tryWriteRepositoryDB cfg writecsv
+    else tryWriteRepositoryDB cfg usecache writecsv
  where
   downloadCommand
     | ".git" `isSuffixOf` piurl
@@ -75,7 +75,7 @@ updateRepository cfg cleancache download writecsv = toELM $ do
     setLastUpdate cfg
     cleanRepositoryCache cfg
     infoMessage "Successfully downloaded repository index"
-    tryWriteRepositoryDB cfg writecsv
+    tryWriteRepositoryDB cfg usecache writecsv
 
 --- Sets the date of the last update by touching README.md.
 setLastUpdate :: Config -> IO ()
@@ -113,9 +113,9 @@ addPackageToRepository cfg pkgdir force cpdir = do
     infoMessage $ "Create directory: " ++ pkgRepositoryDir
     createDirectoryIfMissing True pkgRepositoryDir
     copyFile (pkgdir </> "package.json") (pkgRepositoryDir </> "package.json")
-    when cpdir $ do copyDirectory pkgdir pkgInstallDir
-                    inDirectory pkgInstallDir (fromELM $ cleanPackage cfg Debug)
-                    done
+    when cpdir $ do
+      copyDirectory pkgdir pkgInstallDir
+      inDirectory pkgInstallDir $ runELM $ cleanPackage cfg Debug
     if exrepodir then updatePackageInRepositoryCache cfg pkg
                  else addPackageToRepositoryCache    cfg pkg
 

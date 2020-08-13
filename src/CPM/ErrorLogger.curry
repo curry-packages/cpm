@@ -10,7 +10,7 @@ module CPM.ErrorLogger
   , levelGte
   , getLogLevel, setLogLevel
   , setWithShowTime
-  , ErrorLoggerIO, fromELM, toELM, execIO, putStrELM, putStrLnELM
+  , ErrorLoggerIO, fromELM, toELM, execIO, putStrELM, putStrLnELM, runELM
   , (|>=), (|>)
   , mapEL
   , foldEL
@@ -101,6 +101,20 @@ putStrELM = execIO . putStr
 --- Prints a line in the `ErrorLoggerIO` monad.
 putStrLnELM :: String -> ErrorLoggerIO ()
 putStrLnELM = execIO . putStrLn
+
+--- Runs an `ErrorLoggerIO` monad action as an IO action.
+--- Shows all messages and exit with status 1 if an error occurred.
+runELM :: ErrorLoggerIO a -> IO a
+runELM elmact = do
+  (msgs, result) <- fromELM elmact
+  mapM showLogEntry msgs
+  let allOk =  all (levelGte Info) (map logLevelOf msgs) &&
+               either (\le -> levelGte Info (logLevelOf le))
+                      (const True)
+                      result
+  unless allOk $ exitWith 1
+  case result of Left  m -> showLogEntry m >> exitWith 1
+                 Right v -> return v
 
 ----------------------------------------------------------------------------
 
@@ -244,8 +258,8 @@ fromErrorLogger a = do
   (msgs, err) <- a 
   mapIO showLogEntry msgs
   case err of
-    Right v -> return v
     Left  m -> showLogEntry m >> exitWith 1
+    Right v -> return v
 
 --- Executes a system command and show the command as debug message.
 showExecCmd :: String -> IO Int

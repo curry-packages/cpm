@@ -63,7 +63,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-   "Curry Package Manager <curry-lang.org/tools/cpm> (version of 09/08/2020)"
+   "Curry Package Manager <curry-lang.org/tools/cpm> (version of 13/08/2020)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -93,7 +93,7 @@ runWithArgs opts = do
                    exitWith 1
     Right c' -> return c'
   debugMessage ("Current configuration:\n" ++ showConfiguration config)
-  (msgs, result) <- fromELM $ case optCommand opts of
+  runELM $ case optCommand opts of
     NoCommand   -> failELM "NoCommand"
     Config    o -> configCmd   o config
     Update    o -> updateCmd   o config
@@ -115,13 +115,8 @@ runWithArgs opts = do
     Install   o -> installCmd  o config
     Upload    o -> uploadCmd   o config
     Clean       -> cleanPackage config Info
-  mapIO showLogEntry msgs
-  let allOk =  all (levelGte Info) (map logLevelOf msgs) &&
-               either (\le -> levelGte Info (logLevelOf le))
-                      (const True)
-                      result
-  exitWith (if allOk then 0 else 1)
 
+-- The global options of CPM.
 data Options = Options
   { optLogLevel  :: LogLevel
   , optDefConfig :: [(String,String)]
@@ -218,6 +213,7 @@ data UpdateOptions = UpdateOptions
   { indexURLs     :: [String]   -- the URLs of additional index repositories
   , cleanCache    :: Bool       -- clean also repository cache?
   , downloadIndex :: Bool       -- download the index repository?
+  , useRepoCache  :: Bool       -- use repository cache to create repository DB?
   , writeCSV      :: Bool       -- write also a CSV file of the repository DB?
   }
 
@@ -321,7 +317,7 @@ newOpts s = case optCommand s of
 updateOpts :: Options -> UpdateOptions
 updateOpts s = case optCommand s of
   Update opts -> opts
-  _           -> UpdateOptions [] True True False
+  _           -> UpdateOptions [] True True True False
 
 uploadOpts :: Options -> UploadOptions
 uploadOpts s = case optCommand s of
@@ -568,13 +564,18 @@ optionParser allargs = optParser
     <.> flag (\a -> Right $ a { optCommand = Update (updateOpts a)
                                                { cleanCache = False } })
              (  short "c"
-             <> long "cache"
+             <> long "clean"
              <> help "Do not clean global package cache" )
     <.> flag (\a -> Right $ a { optCommand = Update (updateOpts a)
                                                { downloadIndex = False } })
              (  short "d"
              <> long "download"
              <> help "Do not download the global repository index" )
+    <.> flag (\a -> Right $ a { optCommand = Update (updateOpts a)
+                                               { useRepoCache = False } })
+             (  short "n"
+             <> long "nocache"
+             <> help "Do not download global repository cache files" )
     <.> flag (\a -> Right $ a { optCommand = Update (updateOpts a)
                                                { writeCSV = True } })
              (  short "w"
@@ -832,20 +833,21 @@ checkRequiredExecutables = do
 
 checkExecutables :: [String] -> IO [String]
 checkExecutables executables = do
-  present <- mapIO fileInPath executables
+  present <- mapM fileInPath executables
   return $ map fst $ filter (not . snd) (zip executables present)
 
 ------------------------------------------------------------------------------
 -- `config` command: show current CPM configuration
 configCmd :: ConfigOptions -> Config -> ErrorLoggerIO ()
-configCmd opts cfg =
-  if configAll opts
-    then do repo <- execIO $ getBaseRepository cfg
-            gc   <- readGlobalCache cfg repo
-            putStrLnELM configS
-            putStrLnELM "Installed packages:\n"
-            putStrLnELM $ unwords (map packageId (allPackages gc))
-    else putStrLnELM configS
+configCmd opts cfg
+  | configAll opts
+  = do repo <- execIO $ getBaseRepository cfg
+       gc   <- readGlobalCache cfg repo
+       putStrLnELM configS
+       putStrLnELM "Installed packages:\n"
+       putStrLnELM $ unwords . sortBy (<=) . map packageId . allPackages $ gc
+  | otherwise
+  = putStrLnELM configS
  where
   configS = unlines
              [cpmBanner, "Current configuration:", "", showConfiguration cfg]
@@ -859,7 +861,8 @@ updateCmd opts cfg = do
                else cfg { packageIndexURL = head (indexURLs opts) }
                     -- TODO: allow merging from several package indices
   execIO checkRequiredExecutables
-  updateRepository cfg' (cleanCache opts) (downloadIndex opts) (writeCSV opts)
+  updateRepository cfg' (cleanCache opts) (downloadIndex opts)
+                        (useRepoCache opts) (writeCSV opts)
 
 ------------------------------------------------------------------------------
 -- `deps` command:
@@ -1496,10 +1499,11 @@ curryModulesInDir dir = getModules "" dir
     entries <- getDirectoryContents d
     let realentries = filter (\f -> length f >= 1 && head f /= '.') entries
         newprogs    = filter (\f -> takeExtension f == ".curry") realentries
-    subdirs <- mapIO (\e -> doesDirectoryExist (d </> e) >>=
-                            \b -> return $ if b then [e] else []) realentries
+    subdirs <- mapM (\e -> do b <- doesDirectoryExist (d </> e)
+                              return $ if b then [e] else [])
+                    realentries
                >>= return . concat
-    subdirentries <- mapIO (\s -> getModules (p ++ s ++ ".") (d </> s)) subdirs
+    subdirentries <- mapM (\s -> getModules (p ++ s ++ ".") (d </> s)) subdirs
     return $ map ((p ++) . stripCurrySuffix) newprogs ++ concat subdirentries
 
 

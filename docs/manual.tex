@@ -73,34 +73,42 @@ older version of the same package.
 
 \section{Installing the Curry Package Manager}
 
-CPM is part of recent distributions of the Curry systems
-PAKCS\footnote{\url{https://www.informatik.uni-kiel.de/~pakcs/}}
-(since version 1.15.0)
-and
-KiCS2\footnote{\url{https://www-ps.informatik.uni-kiel.de/kics2/}}
-(since version 0.6.0).
-If you use an older release of PAKCS or KiCS2 or you want to
-install the most recent CPM version from the source repository,
-this section contains some hints about the installation of CPM.
+\subsection{Requirements}
 
-To install and use CPM, a working installation of either
-PAKCS in version 1.14.1 or greater, or
-KiCS2 in version 0.5.1 or greater is required. Additionally, CPM requires 
+CPM requires
 \emph{Git}\footnote{\url{http://www.git-scm.com}},
 \emph{curl}\footnote{\url{https://curl.haxx.se}},
 \emph{tar},
 and \emph{unzip} to be available on the \code{PATH} during installation and 
-operation. You also need to ensure that your Haskell installations reads files
-using UTF-8 encoding by default. Haskell uses the system locale charmap for its
-default encoding. You can check the current value using 
-\code{System.IO.localeEncoding} inside a \code{ghci} session.
+operation.
 
-It is also recommended that
+It is strongly recommended that
 SQLite\footnote{\url{https://www.sqlite.org}} is installed
 so that the executable \code{sqlite3} is in your path.
 In this case, CPM uses a SQLite database for caching
 the central package index (see Section~\ref{sec:internals}).
 This yields faster response times of various CPM commands.
+
+CPM is part of recent distributions of the Curry systems
+PAKCS\footnote{\url{https://www.informatik.uni-kiel.de/~pakcs/}}
+(since version 1.15.0)
+and
+KiCS2\footnote{\url{https://www-ps.informatik.uni-kiel.de/kics2/}}
+(since version 0.6.0) so that it can directly be used with
+these Curry systems.
+If you use an older release of PAKCS or KiCS2 or you want to
+install some CPM version from the source repository,
+the following section contains some hints about the installation of CPM.
+
+\subsection{Source Code Installation}
+
+To install and use CPM, a working installation of either
+PAKCS in version 1.14.1 or greater, or
+KiCS2 in version 0.5.1 or greater is required. 
+You need to ensure that your Haskell installation reads files
+using UTF-8 encoding by default. Haskell uses the system locale charmap for its
+default encoding. You can check the current value using 
+\code{System.IO.localeEncoding} inside a \code{ghci} session.
 
 To install CPM from the sources, enter the 
 root directory of the CPM source distribution.
@@ -701,11 +709,6 @@ CPM can be configured via the \code{\$HOME/.cpmrc} configuration file. The
 following list shows all configuration options and their default values.
 
 \begin{description}
-\item[\fbox{\code{PACKAGE_INDEX_URL}}]
-The URL of the central package index
-which is used by the \code{update} command to download the
-index of all repositories.
-
 \item[\fbox{\code{REPOSITORY_PATH}}] The path to the index of all packages.
 Default value: \code{\$HOME/.cpm/index}.
 
@@ -753,10 +756,42 @@ dependency or by setting this configuration variable,
 then this version of the base package is used.
 Thus, one can use a package even if the current compiler
 has a different version of the base libraries.
+
+\item[\fbox{\code{PACKAGE_INDEX_URL}}]
+The URL of the central package index
+which is used by the \code{update} command to download the
+index of all repositories.
+Default value:
+\begin{lstlisting}
+https://git.ps.informatik.uni-kiel.de/curry-packages/cpm-index.git
+\end{lstlisting}
+
+\item[\fbox{\code{PACKAGE_TARFILES_URL}}]
+The URL prefix to the directory containing the ``tar'' files of all packages.
+If a package $p$ with version $v$ is downloaded
+(via the \code{install} or \code{checkout} command),
+the source of the package is downloaded from this location
+as file \code{$p$-$v$.tar.gz}.
+Default value:
+\begin{lstlisting}
+https://www-ps.informatik.uni-kiel.de/~cpm/PACKAGES/
+\end{lstlisting}
+For instance, the package \code{cpm} with version \code{2.2.0}
+is downloaded from
+\begin{lstlisting}
+https://www-ps.informatik.uni-kiel.de/~cpm/PACKAGES/cpm-2.2.0.tar.gz
+\end{lstlisting}
+
 \end{description}
 %
+The CPM command
+\begin{lstlisting}
+> cypm config
+\end{lstlisting}
+show the current values of the configuration options.
+
 Note that one write the option names also in lowercase or omit
-the underscores. For instance, one can also write \code{currybin}
+the underscores. For instance, one can write \code{currybin}
 instead of \code{CURRY_BIN}.
 Moreover, one can override the values of these configuration options
 by the CPM options \code{-d} or \code{--define}.
@@ -1208,13 +1243,15 @@ a valid URL.
 The suggested formats are either a valid URL to a bug tracker
 or an email address.
 
-\item[\fbox{\code{repository}}] The location of a SCM repository containing the
-package's source code. Should be a valid URL to either a repository (e.g. a Git
-URL), or a website representing the repository.
+\item[\fbox{\code{repository}}]
+The location of a SCM repository containing the package's source
+code. Should be a valid URL to either a repository (e.g. a Git URL),
+or a website representing the repository.
 
-\item[\fbox{\code{dependencies*}}] The package's dependencies. This must be JSON
+\item[\fbox{\code{dependencies*}}]
+The package's dependencies. This must be JSON
 object where the keys are package names and the values are version 
-constraints. See Section~\ref{sec:package-basics}.
+constraints. See Section~\ref{sec:package-basics} for more details.
 
 \item[\fbox{\code{compilerCompatibility}}] The package's compatibility to 
 different Curry compilers. Expects a JSON object where the keys are compiler 
