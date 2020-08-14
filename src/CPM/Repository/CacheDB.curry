@@ -6,7 +6,7 @@
 ------------------------------------------------------------------------------
 
 module CPM.Repository.CacheDB
-  ( repositoryCacheDB, tryWriteRepositoryDB, addPackagesToRepositoryDB )
+  ( repositoryCacheDB, tryInstallRepositoryDB, addPackagesToRepositoryDB )
  where
 
 import Directory    ( doesFileExist, removeFile )
@@ -36,10 +36,10 @@ repositoryCacheDB cfg = repositoryCacheFilePrefix cfg ++ ".db"
 repositoryCacheCSV :: Config -> String
 repositoryCacheCSV cfg = repositoryCacheFilePrefix cfg ++ ".csv"
 
---- Writes the repository database with the current repository index
+--- Installs the repository database with the current repository index
 --- if the command `sqlite3` is in the path.
-tryWriteRepositoryDB :: Config -> Bool -> Bool -> IO (ErrorLogger ())
-tryWriteRepositoryDB cfg usecache writecsv = do
+tryInstallRepositoryDB :: Config -> Bool -> Bool -> IO (ErrorLogger ())
+tryInstallRepositoryDB cfg usecache writecsv = do
   withsqlite <- fileInPath "sqlite3"
   if withsqlite
     then installRepositoryDB cfg usecache writecsv

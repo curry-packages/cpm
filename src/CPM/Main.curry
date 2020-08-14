@@ -63,7 +63,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-   "Curry Package Manager <curry-lang.org/tools/cpm> (version of 13/08/2020)"
+   "Curry Package Manager <curry-lang.org/tools/cpm> (version of 14/08/2020)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -556,7 +556,7 @@ optionParser allargs = optParser
   updateArgs =
     option (\s a -> let opts = updateOpts a
                     in Right $ a { optCommand = Update opts
-                                          { indexURLs = s : indexURLs opts } })
+                                     { indexURLs = s : indexURLs opts } })
          (  short "u"
          <> long "url"
          <> metavar "URL"
@@ -856,10 +856,7 @@ configCmd opts cfg
 -- `update` command:
 updateCmd :: UpdateOptions -> Config -> ErrorLoggerIO ()
 updateCmd opts cfg = do
-  let cfg' = if null (indexURLs opts)
-               then cfg
-               else cfg { packageIndexURL = head (indexURLs opts) }
-                    -- TODO: allow merging from several package indices
+  let cfg' = cfg { packageIndexURLs = indexURLs opts ++ packageIndexURLs cfg }
   execIO checkRequiredExecutables
   updateRepository cfg' (cleanCache opts) (downloadIndex opts)
                         (useRepoCache opts) (writeCSV opts)

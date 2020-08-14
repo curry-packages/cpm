@@ -6,7 +6,7 @@
 
 module CPM.Config 
   ( Config ( Config, packageInstallDir, binInstallDir, repositoryDir
-           , appPackageDir, packageIndexURL, packageTarFilesURL
+           , appPackageDir, packageIndexURLs, packageTarFilesURL
            , homePackageDir, curryExec
            , compilerVersion, compilerBaseVersion, baseVersion )
   , readConfigurationWith, defaultConfig
@@ -19,7 +19,7 @@ import qualified Distribution as Dist
 import FilePath     ( (</>), isAbsolute )
 import Function     ( (***) )
 import IOExts       ( evalCmd )
-import List         ( split, splitOn, intersperse )
+import List         ( intercalate, intersperse, split, splitOn )
 import Maybe        ( mapMaybe )
 import Read         ( readInt )
 
@@ -30,17 +30,18 @@ import CPM.ErrorLogger
 import CPM.FileUtil ( ifFileExists )
 import CPM.Helpers  ( strip )
 
---- The default location of the central package index.
-packageIndexDefaultURL :: String
-packageIndexDefaultURL =
-  "https://git.ps.informatik.uni-kiel.de/curry-packages/cpm-index.git"
--- If you have an ssh access to git.ps.informatik.uni-kiel.de:
--- "ssh://git@git.ps.informatik.uni-kiel.de:55055/curry-packages/cpm-index.git"
-
 --- The default URL prefix to the directory containing tar files of all packages
 packageTarFilesDefaultURL :: String
 packageTarFilesDefaultURL =
   "https://www-ps.informatik.uni-kiel.de/~cpm/PACKAGES/"
+
+--- The default location of the central package index.
+packageIndexDefaultURLs :: [String]
+packageIndexDefaultURLs =
+  [packageTarFilesDefaultURL ++ "INDEX.tar.gz",
+   "https://git.ps.informatik.uni-kiel.de/curry-packages/cpm-index.git"]
+-- If you have an ssh access to git.ps.informatik.uni-kiel.de:
+--["ssh://git@git.ps.informatik.uni-kiel.de:55055/curry-packages/cpm-index.git"]
 
 --- Data type containing the main configuration of CPM.
 data Config = Config {
@@ -52,8 +53,8 @@ data Config = Config {
   , repositoryDir :: String
     --- Directory where the application packages are stored (cmd 'install')
   , appPackageDir :: String
-    --- URL to the package index repository
-  , packageIndexURL :: String
+    --- URLs tried for downloading the package index
+  , packageIndexURLs :: [String]
     --- URL prefix to the directory containing tar files of all packages
   , packageTarFilesURL :: String
     --- The directory where the default home package is stored
@@ -76,7 +77,7 @@ defaultConfig = Config
   , binInstallDir          = "$HOME/.cpm/bin"
   , repositoryDir          = "$HOME/.cpm/index" 
   , appPackageDir          = ""
-  , packageIndexURL        = packageIndexDefaultURL
+  , packageIndexURLs       = packageIndexDefaultURLs
   , packageTarFilesURL     = packageTarFilesDefaultURL
   , homePackageDir         = ""
   , curryExec              = Dist.installDir </> "bin" </> Dist.curryCompiler
@@ -100,7 +101,7 @@ showConfiguration cfg = unlines
   , "BIN_INSTALL_PATH       : " ++ binInstallDir       cfg
   , "APP_PACKAGE_PATH       : " ++ appPackageDir       cfg
   , "HOME_PACKAGE_PATH      : " ++ homePackageDir      cfg
-  , "PACKAGE_INDEX_URL      : " ++ packageIndexURL     cfg
+  , "PACKAGE_INDEX_URL      : " ++ intercalate "|" (packageIndexURLs cfg)
   , "PACKAGE_TARFILES_URL   : " ++ packageTarFilesURL  cfg
   ]
   
@@ -274,7 +275,7 @@ keySetters =
   , ("BININSTALLPATH"     , \v c -> c { binInstallDir      = v })
   , ("CURRYBIN"           , \v c -> c { curryExec          = v })
   , ("HOMEPACKAGEPATH"    , \v c -> c { homePackageDir     = v })
-  , ("PACKAGEINDEXURL"    , \v c -> c { packageIndexURL    = v })
+  , ("PACKAGEINDEXURL"    , \v c -> c { packageIndexURLs   = [v] })
   , ("PACKAGETARFILESURL" , \v c -> c { packageTarFilesURL = v })
   , ("PACKAGEINSTALLPATH" , \v c -> c { packageInstallDir  = v })
   , ("REPOSITORYPATH"     , \v c -> c { repositoryDir      = v })
