@@ -12,12 +12,12 @@ flatcurry https://git.ps.informatik.uni-kiel.de/curry-packages/flatcurry.git v2.
 frontend-exec https://git.ps.informatik.uni-kiel.de/curry-packages/frontend-exec.git v0.0.1
 json https://git.ps.informatik.uni-kiel.de/curry-packages/json.git v2.0.0
 opt-parse https://git.ps.informatik.uni-kiel.de/curry-packages/opt-parse.git v0.0.3
-profiling https://git.ps.informatik.uni-kiel.de/curry-packages/profiling.git v1.0.0
+profiling https://git.ps.informatik.uni-kiel.de/curry-packages/profiling.git v1.1.0
 propertyfile https://git.ps.informatik.uni-kiel.de/curry-packages/propertyfile.git v0.0.1
 queue https://git.ps.informatik.uni-kiel.de/curry-packages/queue.git v0.0.1
 random https://git.ps.informatik.uni-kiel.de/curry-packages/random.git v0.0.1
 redblacktree https://git.ps.informatik.uni-kiel.de/curry-packages/redblacktree.git v0.0.1
 scc https://git.ps.informatik.uni-kiel.de/curry-packages/scc.git v0.0.1
-socket https://git.ps.informatik.uni-kiel.de/curry-packages/socket.git v0.0.1
+socket https://git.ps.informatik.uni-kiel.de/curry-packages/socket.git v0.1.0
 wl-pprint https://git.ps.informatik.uni-kiel.de/curry-packages/wl-pprint.git v0.0.1
 xml https://git.ps.informatik.uni-kiel.de/curry-packages/xml.git v2.0.0
