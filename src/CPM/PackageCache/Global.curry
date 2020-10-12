@@ -31,7 +31,7 @@ import List
 import Maybe (isJust)
 import FilePath
 
-import CPM.Config   ( Config, packageInstallDir, packageTarFilesURL )
+import CPM.Config   ( Config, packageInstallDir, packageTarFilesURLs )
 import CPM.ErrorLogger
 import CPM.FileUtil ( cleanTempDir, copyDirectory, inTempDir
                     , recreateDirectory, inDirectory
@@ -120,14 +120,22 @@ acquireAndInstallPackage cfg pkg = do
   if pkgDirExists
     then logMsg Info $ "Package '" ++ packageId pkg ++
                        "' already installed, skipping"
-    else do
-      let stdurl = packageTarFilesURL cfg ++ packageId pkg ++ ".tar.gz"
-      logMsg Info ("Installing package from " ++ stdurl)
-      (msgs,err) <- execIO $ installPackageSourceTo pkg (Http stdurl)
-                                                    (packageInstallDir cfg)
-      case err of
-        Right _ -> toELM $ return (msgs,err)
-        Left  _ -> toELM $ acquireAndInstallPackageFromSource cfg pkg
+    else tryInstallFromURLs (packageTarFilesURLs cfg)
+ where
+  tryInstallFromURLs []         = toELM $ failIO "No URLs for installations"
+  tryInstallFromURLs (url:urls) = do
+    let stdurl = url ++ "/" ++ packageId pkg ++ ".tar.gz"
+    logMsg Info $ "Installing package from " ++ stdurl
+    (msgs,err) <- execIO $ installPackageSourceTo pkg (Http stdurl)
+                                                  (packageInstallDir cfg)
+    case err of
+      Left  _ -> if null urls
+                   then toELM $ failIO downloadError
+                   else tryInstallFromURLs urls
+      Right _ -> toELM $ acquireAndInstallPackageFromSource cfg pkg
+
+  downloadError =
+    "Package downloading failed. Use option '-v debug' for more infos."
 
 --- Acquires a package from the source specified in its specification and 
 --- installs it to the global package cache.
@@ -135,9 +143,9 @@ acquireAndInstallPackageFromSource :: Config -> Package -> IO (ErrorLogger ())
 acquireAndInstallPackageFromSource cfg reppkg =
   readPackageFromRepository cfg reppkg |>= \pkg ->
   case source pkg of
-   Nothing -> failIO $ "No source specified for " ++ packageId pkg
-   Just  s -> log Info ("Installing package '" ++ packageId pkg ++ "'...") |> 
-              installFromSource cfg pkg s
+    Nothing -> failIO $ "No source specified for " ++ packageId pkg
+    Just  s -> log Info ("Installing package '" ++ packageId pkg ++ "'...") |> 
+               installFromSource cfg pkg s
 
 ------------------------------------------------------------------------------
 --- Installs a package from the given package source to the global package

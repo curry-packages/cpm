@@ -73,8 +73,10 @@ installPackageSourceTo pkg (Http url) installdir = do
     else do
       tmpdir <- tempDir
       let tmppkgfile = tmpdir </> pkgfile
-      c <- inTempDir $ showExecCmd $ "curl -f -s -S -o " ++ tmppkgfile ++
-                                     " " ++ quote url
+      ll <- getLogLevel
+      c <- inTempDir $ showExecCmd $
+             "curl -f -s " ++ (if ll==Debug then "-S" else "")
+                           ++ " -o " ++ tmppkgfile ++ " " ++ quote url
       if c == 0
         then installPkgFromFile pkg tmppkgfile pkgDir True
         else do cleanTempDir

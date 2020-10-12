@@ -6,7 +6,7 @@
 
 module CPM.Config 
   ( Config ( Config, packageInstallDir, binInstallDir, repositoryDir
-           , appPackageDir, packageIndexURLs, packageTarFilesURL
+           , appPackageDir, packageIndexURLs, packageTarFilesURLs
            , homePackageDir, curryExec
            , compilerVersion, compilerBaseVersion, baseVersion )
   , readConfigurationWith, defaultConfig
@@ -31,15 +31,15 @@ import CPM.FileUtil ( ifFileExists )
 import CPM.Helpers  ( strip )
 
 --- The default URL prefix to the directory containing tar files of all packages
-packageTarFilesDefaultURL :: String
-packageTarFilesDefaultURL =
-  "https://www-ps.informatik.uni-kiel.de/~cpm/PACKAGES/"
+packageTarFilesDefaultURLs :: [String]
+packageTarFilesDefaultURLs =
+  ["https://www-ps.informatik.uni-kiel.de/~cpm/PACKAGES"]
 
 --- The default location of the central package index.
 packageIndexDefaultURLs :: [String]
 packageIndexDefaultURLs =
-  [packageTarFilesDefaultURL ++ "INDEX.tar.gz",
-   "https://git.ps.informatik.uni-kiel.de/curry-packages/cpm-index.git"]
+  map  (++"/INDEX.tar.gz") packageTarFilesDefaultURLs ++
+  ["https://git.ps.informatik.uni-kiel.de/curry-packages/cpm-index.git"]
 -- If you have an ssh access to git.ps.informatik.uni-kiel.de:
 --["ssh://git@git.ps.informatik.uni-kiel.de:55055/curry-packages/cpm-index.git"]
 
@@ -55,8 +55,8 @@ data Config = Config {
   , appPackageDir :: String
     --- URLs tried for downloading the package index
   , packageIndexURLs :: [String]
-    --- URL prefix to the directory containing tar files of all packages
-  , packageTarFilesURL :: String
+    --- URL prefixes to the directory containing tar files of all packages
+  , packageTarFilesURLs :: [String]
     --- The directory where the default home package is stored
   , homePackageDir :: String
     --- The executable of the Curry system used to compile and check packages
@@ -78,7 +78,7 @@ defaultConfig = Config
   , repositoryDir          = "$HOME/.cpm/index" 
   , appPackageDir          = ""
   , packageIndexURLs       = packageIndexDefaultURLs
-  , packageTarFilesURL     = packageTarFilesDefaultURL
+  , packageTarFilesURLs    = packageTarFilesDefaultURLs
   , homePackageDir         = ""
   , curryExec              = Dist.installDir </> "bin" </> Dist.curryCompiler
   , compilerVersion        = ( Dist.curryCompiler
@@ -102,7 +102,7 @@ showConfiguration cfg = unlines
   , "APP_PACKAGE_PATH       : " ++ appPackageDir       cfg
   , "HOME_PACKAGE_PATH      : " ++ homePackageDir      cfg
   , "PACKAGE_INDEX_URL      : " ++ intercalate "|" (packageIndexURLs cfg)
-  , "PACKAGE_TARFILES_URL   : " ++ packageTarFilesURL  cfg
+  , "PACKAGE_TARFILES_URL   : " ++ intercalate "|" (packageTarFilesURLs cfg)
   ]
   
 --- Shows the compiler version in the configuration.
@@ -270,16 +270,18 @@ stripProps = map ((map toUpper . filter (/='_') . strip) *** strip)
 --- record with a value for that option.
 keySetters :: [(String, String -> Config -> Config)]
 keySetters =
-  [ ("APPPACKAGEPATH"     , \v c -> c { appPackageDir      = v })
-  , ("BASEVERSION"        , \v c -> c { baseVersion        = v })
-  , ("BININSTALLPATH"     , \v c -> c { binInstallDir      = v })
-  , ("CURRYBIN"           , \v c -> c { curryExec          = v })
-  , ("HOMEPACKAGEPATH"    , \v c -> c { homePackageDir     = v })
-  , ("PACKAGEINDEXURL"    , \v c -> c { packageIndexURLs   = [v] })
-  , ("PACKAGETARFILESURL" , \v c -> c { packageTarFilesURL = v })
-  , ("PACKAGEINSTALLPATH" , \v c -> c { packageInstallDir  = v })
-  , ("REPOSITORYPATH"     , \v c -> c { repositoryDir      = v })
+  [ ("APPPACKAGEPATH"     , \v c -> c { appPackageDir       = v })
+  , ("BASEVERSION"        , \v c -> c { baseVersion         = v })
+  , ("BININSTALLPATH"     , \v c -> c { binInstallDir       = v })
+  , ("CURRYBIN"           , \v c -> c { curryExec           = v })
+  , ("HOMEPACKAGEPATH"    , \v c -> c { homePackageDir      = v })
+  , ("PACKAGEINDEXURL"    , \v c -> c { packageIndexURLs    = breakURLs v })
+  , ("PACKAGETARFILESURL" , \v c -> c { packageTarFilesURLs = breakURLs v })
+  , ("PACKAGEINSTALLPATH" , \v c -> c { packageInstallDir   = v })
+  , ("REPOSITORYPATH"     , \v c -> c { repositoryDir       = v })
   ]
+ where
+  breakURLs = splitOn "|"
 
 --- Sequentially applies a list of functions that transform a value to a value
 --- of that type (i.e. a fold). Each function can error out with a Left, in 

@@ -19,7 +19,7 @@ import Database.CDBI.Connection
 import System.Path  ( fileInPath )
 import Text.CSV
 
-import CPM.Config      ( Config, packageTarFilesURL, readConfigurationWith
+import CPM.Config      ( Config, packageTarFilesURLs, readConfigurationWith
                        , repositoryDir )
 import CPM.ErrorLogger
 import CPM.FileUtil    ( cleanTempDir, inTempDir, quote, tempDir
@@ -56,15 +56,27 @@ installRepositoryDB :: Config -> Bool -> Bool -> IO (ErrorLogger ())
 installRepositoryDB cfg False writecsv = writeRepositoryDB cfg False writecsv
 installRepositoryDB cfg True  writecsv = do
   let sqlitefile = repositoryCacheDB cfg
-      dburl      = packageTarFilesURL cfg ++ "/REPOSITORY_CACHE.db"
   whenFileExists sqlitefile (removeFile sqlitefile)
-  c <- inTempDir $ showExecCmd $
-         "curl -f -s -o " ++ quote sqlitefile ++ " " ++ quote dburl
+  c <- tryDownloadFromURLs sqlitefile (packageTarFilesURLs cfg)
+                           "REPOSITORY_CACHE.db"
   dbexists <- doesFileExist sqlitefile
   if c == 0 && dbexists
     then if writecsv then saveDBAsCSV cfg
                      else succeedIO ()
     else writeRepositoryDB cfg True writecsv
+
+--- Tries to download some target file (first argument) from a list of
+--- base URLs where the source file (third argument) is located.
+--- Returns 0 if the download was successfull.
+tryDownloadFromURLs :: String -> [String] -> String -> IO Int
+tryDownloadFromURLs _      []                 _    = return 1
+tryDownloadFromURLs target (baseurl:baseurls) file = do
+  let sourceurl = baseurl ++ "/" ++ file
+  rc <- inTempDir $ showExecCmd $
+          "curl -f -s -o " ++ quote target ++ " " ++ quote sourceurl
+  if rc == 0
+    then return 0
+    else tryDownloadFromURLs target baseurls file
 
 --- Writes the repository database with the current repository index.
 --- It is generated either from the CSV file `REPOSITORY_CACHE.csv`
@@ -79,11 +91,10 @@ writeRepositoryDB cfg usecache writecsv = do
   createNewDB sqlitefile
   tmpdir <- tempDir
   let csvfile = tmpdir </> "cachedb.csv"
-      csvurl  = packageTarFilesURL cfg ++ "/REPOSITORY_CACHE.csv"
   showExecCmd $ "/bin/rm -f " ++ csvfile
   c <- if usecache
-         then inTempDir $ showExecCmd $
-                "curl -f -s -o " ++ csvfile ++ " " ++ quote csvurl
+         then tryDownloadFromURLs csvfile (packageTarFilesURLs cfg)
+                                  "REPOSITORY_CACHE.csv"
          else return 1
   csvexists <- doesFileExist csvfile
   pkgentries <- if c == 0 && csvexists

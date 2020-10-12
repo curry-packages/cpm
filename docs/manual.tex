@@ -763,8 +763,11 @@ which is used by the \code{update} command to download the
 index of all repositories.
 Default value:
 \begin{lstlisting}
-https://git.ps.informatik.uni-kiel.de/curry-packages/cpm-index.git
+https://www-ps.informatik.uni-kiel.de/~cpm/PACKAGES/INDEX.tar.gz
 \end{lstlisting}
+One can also provide more than one URL which are tried in sequential order
+until one index could be downloaded.
+In this case, the URLs should be separated by a vertical bar (\ccode{|}).
 
 \item[\fbox{\code{PACKAGE_TARFILES_URL}}]
 The URL prefix to the directory containing the ``tar'' files of all packages.
@@ -781,6 +784,11 @@ is downloaded from
 \begin{lstlisting}
 https://www-ps.informatik.uni-kiel.de/~cpm/PACKAGES/cpm-2.2.0.tar.gz
 \end{lstlisting}
+One can also provide more than one URL prefix
+which are tried in sequential order until the package could be downloaded
+from one of them.
+In this case, the URL prefixes should be separated
+by a vertical bar (\ccode{|}).
 
 \end{description}
 %
@@ -788,7 +796,7 @@ The CPM command
 \begin{lstlisting}
 > cypm config
 \end{lstlisting}
-show the current values of the configuration options.
+shows the current values of the configuration options.
 
 Note that one write the option names also in lowercase or omit
 the underscores. For instance, one can write \code{currybin}

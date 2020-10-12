@@ -122,7 +122,7 @@ runELM elmact = do
 (|>=) :: IO (ErrorLogger a) -> (a -> IO (ErrorLogger b)) -> IO (ErrorLogger b)
 a |>= f = do
   (msgs, err) <- a 
-  mapIO showLogEntry msgs
+  mapM showLogEntry msgs
   case err of
     Right v -> do (msgs', err') <- f v 
                   return (msgs', err')
@@ -137,7 +137,7 @@ mapEL :: (a -> IO (ErrorLogger b)) -> [a] -> IO (ErrorLogger [b])
 mapEL _ [] = succeedIO []
 mapEL f (x:xs) = do
   (msgs, err) <- f x
-  mapIO showLogEntry msgs
+  mapM showLogEntry msgs
   case err of
     Right v -> do
       (msgs', xs') <- mapEL f xs
@@ -151,7 +151,7 @@ foldEL :: (a -> b -> IO (ErrorLogger a)) -> a -> [b] -> IO (ErrorLogger a)
 foldEL _ z [] = succeedIO z
 foldEL f z (x:xs) = do
   (msgs, err) <- f z x
-  mapIO showLogEntry msgs
+  mapM showLogEntry msgs
   case err of
     Right v -> foldEL f v xs
     Left m -> return $ ([], Left m)
@@ -256,7 +256,7 @@ errorMessage msg = (log Error msg |> succeedIO ()) >> done
 fromErrorLogger :: IO (ErrorLogger a) -> IO a
 fromErrorLogger a = do
   (msgs, err) <- a 
-  mapIO showLogEntry msgs
+  mapM showLogEntry msgs
   case err of
     Left  m -> showLogEntry m >> exitWith 1
     Right v -> return v
