@@ -1754,8 +1754,9 @@ setTagInGit pkg = do
 uploadPackageSpec :: String -> ErrorLoggerIO ()
 uploadPackageSpec pkgspecfname = do
   pkgspec <- execIO $ readFile pkgspecfname
-  (rc,out,err) <- execIO $
-                    evalCmd "curl" ["--data-binary", "@-", uploadURL ] pkgspec
+  let curlopts = ["--data-binary", "@-", uploadURL ]
+  logMsg Debug $ unwords ("curl" : curlopts) ++ "\n" ++ pkgspec
+  (rc,out,err) <- execIO $ evalCmd "curl" curlopts pkgspec
   unlessM (null out) $ logMsg Info out
   if rc == 0
     then return ()
