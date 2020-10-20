@@ -63,7 +63,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine,bannerText,bannerLine]
  where
  bannerText =
-   "Curry Package Manager <curry-lang.org/tools/cpm> (version of 12/10/2020)"
+   "Curry Package Manager <curry-lang.org/tools/cpm> (version of 20/10/2020)"
  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -95,25 +95,25 @@ runWithArgs opts = do
   debugMessage ("Current configuration:\n" ++ showConfiguration config)
   runELM $ case optCommand opts of
     NoCommand   -> failELM "NoCommand"
-    Config    o -> configCmd   o config
-    Update    o -> updateCmd   o config
-    Compiler  o -> curryCmd    o config
-    Exec      o -> execCmd     o config
-    Doc       o -> docCmd      o config
-    Test      o -> testCmd     o config
-    Uninstall o -> uninstall   o config
-    Deps      o -> depsCmd     o config
-    PkgInfo   o -> infoCmd     o config
-    Link      o -> linkCmd     o config
-    Add       o -> addCmd      o config
-    New       o -> newPackage  o 
-    List      o -> listCmd     o config
-    Search    o -> searchCmd   o config
-    Upgrade   o -> upgradeCmd  o config
-    Diff      o -> diffCmd     o config
-    Checkout  o -> checkoutCmd o config
-    Install   o -> installCmd  o config
-    Upload    o -> uploadCmd   o config
+    Config    o -> configCmd    o config
+    Update    o -> updateCmd    o config
+    Compiler  o -> curryCmd     o config
+    Exec      o -> execCmd      o config
+    Doc       o -> docCmd       o config
+    Test      o -> testCmd      o config
+    Uninstall o -> uninstallCmd o config
+    Deps      o -> depsCmd      o config
+    PkgInfo   o -> infoCmd      o config
+    Link      o -> linkCmd      o config
+    Add       o -> addCmd       o config
+    New       o -> newCmd       o
+    List      o -> listCmd      o config
+    Search    o -> searchCmd    o config
+    Upgrade   o -> upgradeCmd   o config
+    Diff      o -> diffCmd      o config
+    Checkout  o -> checkoutCmd  o config
+    Install   o -> installCmd   o config
+    Upload    o -> uploadCmd    o config
     Clean       -> cleanPackage config Info
 
 -- The global options of CPM.
@@ -1018,11 +1018,11 @@ installExecutable cfg pkg = do
              "It is recommended to add '" ++bindir++ "' to your path!"
 
 
-uninstall :: UninstallOptions -> Config -> ErrorLoggerIO ()
-uninstall (UninstallOptions (Just pkgname) (Just ver)) cfg =
+uninstallCmd :: UninstallOptions -> Config -> ErrorLoggerIO ()
+uninstallCmd (UninstallOptions (Just pkgname) (Just ver)) cfg =
   uninstallPackage cfg pkgname ver
 --- uninstalls an application (i.e., binary) provided by a package:
-uninstall (UninstallOptions (Just pkgname) Nothing) cfg = do
+uninstallCmd (UninstallOptions (Just pkgname) Nothing) cfg = do
   let copkgdir  = appPackageDir cfg </> pkgname
   codirexists <- execIO $ doesDirectoryExist copkgdir
   if codirexists
@@ -1032,10 +1032,11 @@ uninstall (UninstallOptions (Just pkgname) Nothing) cfg = do
       execIO $ removeDirectoryComplete copkgdir
       logMsg Info ("Package '" ++ pkgname ++
                    "' uninstalled from application package cache.")
-    else failELM $ "Package '" ++ pkgname ++ "' is not installed."
-uninstall (UninstallOptions Nothing (Just _)) _ =
+    else failELM $
+           "Cannot find executable installed for package '" ++ pkgname ++ "'."
+uninstallCmd (UninstallOptions Nothing (Just _)) _ =
   logMsg Error "Please provide a package and version number!"
-uninstall (UninstallOptions Nothing Nothing) cfg = do
+uninstallCmd (UninstallOptions Nothing Nothing) cfg = do
   pkgdir <- getLocalPackageSpec cfg "."
   pkg    <- loadPackageSpecELM pkgdir
   uninstallPackageExecutable cfg pkg
@@ -1608,9 +1609,9 @@ computePackageLoadPath cfg pkgdir = do
                        showVersion (version pkg) /= compilerBaseVersion cfg
 
 
---- Creates a new package.
-newPackage :: NewOptions -> ErrorLoggerIO ()
-newPackage (NewOptions pname) = execIO $ do
+--- Implementation of the `new` command: create a new package.
+newCmd :: NewOptions -> ErrorLoggerIO ()
+newCmd (NewOptions pname) = execIO $ do
   exists <- doesDirectoryExist pname
   when exists $ do
     errorMessage $ "There is already a directory with the new project name.\n"

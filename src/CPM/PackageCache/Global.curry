@@ -126,8 +126,8 @@ acquireAndInstallPackage cfg pkg = do
   tryInstallFromURLs (url:urls) = do
     let stdurl = url ++ "/" ++ packageId pkg ++ ".tar.gz"
     logMsg Info $ "Installing package from " ++ stdurl
-    (msgs,err) <- execIO $ installPackageSourceTo pkg (Http stdurl)
-                                                  (packageInstallDir cfg)
+    (_,err) <- execIO $ installPackageSourceTo pkg (Http stdurl)
+                                               (packageInstallDir cfg)
     case err of
       Left  _ -> if null urls
                    then toELM $ failIO downloadError
