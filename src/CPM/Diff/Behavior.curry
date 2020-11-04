@@ -391,7 +391,7 @@ genTestFunction info groundequiv tm (isprod,f) =
  where
   (fmod,fname) = funcName f
   modName = "Compare"
-  both fun (a, a) = (fun a, fun a)
+  both fun (a, b) = (fun a, fun b)
   testName = "test_" ++
        combineTuple (both (replace' '.' '_') $ (fmod, encodeCurryId fname)) "_"
   testName1 = (modName, testName++"_1")
