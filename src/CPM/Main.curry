@@ -60,11 +60,11 @@ import CPM.ConfigPackage        ( packagePath )
 
 -- Banner of this tool:
 cpmBanner :: String
-cpmBanner = unlines [bannerLine,bannerText,bannerLine]
+cpmBanner = unlines [bannerLine, bannerText, bannerLine]
  where
- bannerText =
-   "Curry Package Manager <curry-lang.org/tools/cpm> (version of 20/10/2020)"
- bannerLine = take (length bannerText) (repeat '-')
+  bannerText =
+    "Curry Package Manager <curry-lang.org/tools/cpm> (version of 04/11/2020)"
+  bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
 main = do
@@ -1685,7 +1685,9 @@ uploadCmd opts cfg = do
   installPkg lpkg instdir
   let pkgid = packageId lpkg
   pkg <- loadPackageSpecELM (instdir </> pkgid)
-  ecode <- testPackage pkgid instdir
+  -- Test package if CurryCheck is installed:
+  mbccfile <- execIO $ getFileInPath "curry-check"
+  ecode <- maybe (return 0) (\_ -> testPackage pkgid instdir) mbccfile
   if ecode > 0
     then do execIO cleanTempDir
             logMsg Critical "ERROR in package, package not uploaded!"
