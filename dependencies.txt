@@ -7,14 +7,16 @@ containers https://git.ps.informatik.uni-kiel.de/curry-packages/containers.git v
 csv https://git.ps.informatik.uni-kiel.de/curry-packages/csv.git v3.0.0
 currypath https://git.ps.informatik.uni-kiel.de/curry-packages/currypath.git v3.0.0
 det-parse https://git.ps.informatik.uni-kiel.de/curry-packages/det-parse.git v3.0.0
+directory https://git.ps.informatik.uni-kiel.de/curry-packages/directory.git v3.0.0
+distribution https://git.ps.informatik.uni-kiel.de/curry-packages/distribution.git v3.0.0
 execpath https://git.ps.informatik.uni-kiel.de/curry-packages/execpath.git v3.0.0
 filepath https://git.ps.informatik.uni-kiel.de/curry-packages/filepath.git v3.0.0
-finite-map https://git.ps.informatik.uni-kiel.de/curry-packages/finite-map.git v3.0.0
 flatcurry https://git.ps.informatik.uni-kiel.de/curry-packages/flatcurry.git v3.0.0
 frontend-exec https://git.ps.informatik.uni-kiel.de/curry-packages/frontend-exec.git v3.0.0
 io-extra https://git.ps.informatik.uni-kiel.de/curry-packages/io-extra.git v3.0.0
 json https://git.ps.informatik.uni-kiel.de/curry-packages/json.git v3.0.0
 opt-parse https://git.ps.informatik.uni-kiel.de/curry-packages/opt-parse.git v3.0.0
+process https://git.ps.informatik.uni-kiel.de/curry-packages/process.git v3.0.0
 profiling https://git.ps.informatik.uni-kiel.de/curry-packages/profiling.git v3.0.0
 propertyfile https://git.ps.informatik.uni-kiel.de/curry-packages/propertyfile.git v3.0.0
 queue https://git.ps.informatik.uni-kiel.de/curry-packages/queue.git v3.0.0
