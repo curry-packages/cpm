@@ -143,7 +143,7 @@ log lvl msg = ErrorLogger $ \l wst ->
   showTime t = show (t `div` 1000) ++ "." ++ show ((t `mod` 1000) `div` 10)
 
 infoMessage :: String -> ErrorLogger ()
-infoMessage msg = infoMessage msg
+infoMessage msg = log Info msg
 
 debugMessage :: String -> ErrorLogger ()
 debugMessage msg = log Debug msg
