@@ -6,7 +6,7 @@ module CPM.ErrorLogger
   ( ErrorLogger (runErrorLogger)
   , LogEntry
   , LogLevel (..), logLevelOf
-  , log, getLogLevel, setLogLevel, getWithShowTime, setWithShowTime
+  , logAt, getLogLevel, setLogLevel, getWithShowTime, setWithShowTime
   , logInfo, logDebug, logError, logCritical, showLogEntry, levelGte
   , putStrELM, putStrLnELM
   , fromErrorLogger
@@ -131,8 +131,9 @@ levelGte Critical Quiet = True
 levelGte Critical Error = True
 levelGte Critical Critical = True
 
-log :: LogLevel -> String -> ErrorLogger ()
-log lvl msg = ErrorLogger $ \l wst ->
+--- Logs a message at a user-defined level.
+logAt :: LogLevel -> String -> ErrorLogger ()
+logAt lvl msg = ErrorLogger $ \l wst ->
   if wst
     then do
       runtime <- getProcessInfos >>= return . maybe 0 id . lookup ElapsedTime
@@ -142,17 +143,21 @@ log lvl msg = ErrorLogger $ \l wst ->
  where
   showTime t = show (t `div` 1000) ++ "." ++ show ((t `mod` 1000) `div` 10)
 
+--- Logs a message at the info level.
 logInfo :: String -> ErrorLogger ()
-logInfo = log Info
+logInfo = logAt Info
 
+--- Logs a message at the debug level.
 logDebug :: String -> ErrorLogger ()
-logDebug = log Debug
+logDebug = logAt Debug
 
+--- Logs a message at the error level.
 logError :: String -> ErrorLogger ()
-logError = log Error
+logError = logAt Error
 
+--- Logs a message at the critical level.
 logCritical :: String -> ErrorLogger ()
-logCritical = log Critical
+logCritical = logAt Critical
 
 --- Prints a string in the `ErrorLogger` monad.
 putStrELM :: String -> ErrorLogger ()

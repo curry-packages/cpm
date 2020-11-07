@@ -13,7 +13,6 @@ import System.Directory    ( doesFileExist, removeFile )
 import System.FilePath     ( (</>) )
 import System.IO           ( hFlush, stdout )
 import Control.Monad
-import Prelude hiding (log)
 import ReadShowTerm
 
 import Database.CDBI.ER

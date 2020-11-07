@@ -31,7 +31,6 @@ import Data.Maybe       (isJust)
 import System.FilePath
 import System.Directory
 import System.IOExts    ( readCompleteFile )
-import Prelude hiding   ( log )
 
 import CPM.Config       ( Config, packageInstallDir, packageTarFilesURLs )
 import CPM.ErrorLogger

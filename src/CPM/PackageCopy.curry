@@ -16,7 +16,6 @@ module CPM.PackageCopy
 import System.Directory ( doesDirectoryExist )
 import Data.List        ( intercalate )
 import Data.Maybe       ( mapMaybe )
-import Prelude hiding   ( log )
 
 import CPM.Config       ( Config, baseVersion )
 import CPM.Repository   ( Repository, allPackages )

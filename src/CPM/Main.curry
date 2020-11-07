@@ -23,7 +23,7 @@ import System.Process      ( exitWith, system, getPID )
 import Control.Monad       ( when, unless, foldM )
 import System.IOExts       ( evalCmd, readCompleteFile )
 import Language.Curry.Distribution ( installDir )
-import Prelude hiding (log, (<|>))
+import Prelude hiding      ( (<|>) )
 
 import Boxes            ( table, render )
 import OptParse

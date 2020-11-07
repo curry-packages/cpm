@@ -14,7 +14,6 @@ import System.FilePath
 import System.Process   ( system )
 import Data.List        ( isSuffixOf )
 import Control.Monad
-import Prelude hiding (log)
 
 import CPM.Config        ( Config, packageInstallDir, packageIndexURLs
                          , repositoryDir )

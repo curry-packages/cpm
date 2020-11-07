@@ -15,7 +15,6 @@ import System.Directory   ( createDirectoryIfMissing, copyFile, doesFileExist
                           , getDirectoryContents, doesDirectoryExist
                           , getAbsolutePath )
 import Data.List          ( intercalate, split )
-import Prelude hiding (log)
 
 import CPM.Config         ( Config, binInstallDir )
 import CPM.ErrorLogger

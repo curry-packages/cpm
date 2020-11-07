@@ -16,7 +16,7 @@ import System.FilePath
 import System.Process     ( getPID )
 import Data.List          ( isSuffixOf, splitOn, nub )
 import Control.Monad
-import Prelude hiding     ( empty, log )
+import Prelude hiding     ( empty )
 
 import System.CurryPath   ( addCurrySubdir )
 import Text.Pretty hiding ( (</>) )
@@ -135,7 +135,7 @@ cleanPackage cfg ll = do
                             (map (\ (PackageTest m _ _ _) -> m))
                             (testSuite pkg))
       rmdirs   = nub (dotcpm : map addCurrySubdir (srcdirs ++ testdirs))
-  log ll $ "Removing directories: " ++ unwords rmdirs
+  logAt ll $ "Removing directories: " ++ unwords rmdirs
   showExecCmd (unwords $ ["rm", "-rf"] ++ rmdirs)
   return ()
 

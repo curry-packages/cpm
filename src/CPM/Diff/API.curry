@@ -18,7 +18,7 @@ import System.Directory     ( getTemporaryDirectory )
 import System.FilePath      ( (</>) )
 import Data.List            ( nub )
 import Data.Maybe           ( listToMaybe, catMaybes )
-import Prelude hiding       ( empty, log )
+import Prelude hiding       ( empty )
 
 import AbstractCurry.Types  ( CurryProg (..), CFuncDecl (..), CTypeDecl (..)
                             , COpDecl (..), QName, CFixity (..)

@@ -26,7 +26,6 @@ import Data.List          ( intercalate, intersect, nub, splitOn, isPrefixOf
                           , isInfixOf, find, delete, (\\), nubBy )
 import Data.Maybe         ( isJust, fromJust, fromMaybe, listToMaybe )
 import Control.Monad
-import Prelude hiding (log)
 
 import AbstractCurry.Build
 import AbstractCurry.Pretty ( defaultOptions, ppCTypeExpr, showCProg )
