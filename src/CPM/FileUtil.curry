@@ -13,6 +13,7 @@ module CPM.FileUtil
   , copyDirectoryFollowingSymlinks
   , quote
   , tempDir
+  , cleanTempDir
   , inTempDir
   , inDirectory
   , recreateDirectory

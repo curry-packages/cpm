@@ -140,7 +140,7 @@ log lvl msg = ErrorLogger $ \l wst ->
   showTime t = show (t `div` 1000) ++ "." ++ show ((t `mod` 1000) `div` 10)
 
 infoMessage :: String -> ErrorLogger ()
-infoMessage msg = log Info msg
+infoMessage msg = infoMessage msg
 
 debugMessage :: String -> ErrorLogger ()
 debugMessage msg = log Debug msg
@@ -153,11 +153,11 @@ criticalMessage msg = log Critical msg
 
 --- Prints a string in the `ErrorLogger` monad.
 putStrELM :: String -> ErrorLogger ()
-putStrELM = execIO . putStr
+putStrELM = liftIOErrorLogger . putStr
 
 --- Prints a line in the `ErrorLogger` monad.
 putStrLnELM :: String -> ErrorLogger ()
-putStrLnELM = execIO . putStrLn
+putStrLnELM = liftIOErrorLogger . putStrLn
 
 --- Transforms an error logger action into a standard IO action.
 --- It shows all messages and, if the result is not available,

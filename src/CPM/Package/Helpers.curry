@@ -49,7 +49,7 @@ installPackageSourceTo pkg (Git url rev) installdir = do
       Just VersionAsTag ->
         let tag = "v" ++ (showVersion $ version pkg)
         in checkoutGitRef pkgDir tag >>
-           log Info ("Package '" ++ packageId pkg ++ "' installed")
+           infoMessage ("Package '" ++ packageId pkg ++ "' installed")
     else liftIOErrorLogger (removeDirectoryComplete pkgDir) >>
          fail ("Failed to clone repository from '" ++ url ++
                  "', return code " ++ show c)
@@ -75,12 +75,12 @@ installPackageSourceTo pkg (Http url) installdir = do
       tmpdir <- liftIOErrorLogger tempDir
       let tmppkgfile = tmpdir </> pkgfile
       ll <- getLogLevel
-      c <- liftIOErrorLogger $ inTempDir $ showExecCmd $
+      c <- inTempDir $ showExecCmd $
              "curl -f -s " ++ (if ll == Debug then "-S" else "")
                            ++ " -o " ++ tmppkgfile ++ " " ++ quote url
       if c == 0
         then installPkgFromFile pkg tmppkgfile pkgDir True
-        else do cleanTempDir
+        else do liftIOErrorLogger cleanTempDir
                 fail $ "`curl` failed with exit status " ++ show c
 
 --- Installs a package from a .zip or .tar.gz file into the specified
@@ -97,9 +97,9 @@ installPkgFromFile pkg pkgfile pkgDir rmfile = do
          else inDirectoryEL pkgDir $ showExecCmd $
                 "tar -xzf " ++ quote absfile
   when rmfile (showExecCmd ("rm -f " ++ absfile) >> return ())
-  cleanTempDir
+  liftIOErrorLogger cleanTempDir
   if c == 0
-    then log Info $ "Installed " ++ packageId pkg
+    then infoMessage $ "Installed " ++ packageId pkg
     else do liftIOErrorLogger $ removeDirectoryComplete pkgDir
             fail ("Failed to unzip package, return code " ++ show c)
 

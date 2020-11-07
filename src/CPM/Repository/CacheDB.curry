@@ -45,7 +45,7 @@ tryInstallRepositoryDB cfg usecache writecsv = do
   withsqlite <- liftIOErrorLogger $ fileInPath "sqlite3"
   if withsqlite
     then installRepositoryDB cfg usecache writecsv
-    else log Info
+    else infoMessage
       "Command 'sqlite3' not found: install package 'sqlite3' to speed up CPM"
 
 --- Writes the repository database with the current repository index.
@@ -111,7 +111,7 @@ writeRepositoryDB cfg usecache writecsv = do
   putStr "Writing repository cache DB"
   addPackagesToRepositoryDB cfg False pkgentries
   putChar '\n'
-  log Info "Repository cache DB written"
+  infoMessage "Repository cache DB written"
   cleanTempDir
   if writecsv then saveDBAsCSV cfg
               else return ()
@@ -156,7 +156,7 @@ saveDBAsCSV cfg = do
                                               show kind ++ " " ++ str
     Right es -> do let csvfile = repositoryCacheCSV cfg
                    writeCSVFile csvfile (map showIndexEntry es)
-                   log Info ("CSV file '" ++ csvfile ++ "' written!")
+                   infoMessage ("CSV file '" ++ csvfile ++ "' written!")
  where
   showIndexEntry (IndexEntry _ pn pv deps cc syn cat dirs mods exe) =
     [pn,pv,deps,cc,syn,cat,dirs,mods,exe]

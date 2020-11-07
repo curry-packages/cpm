@@ -34,7 +34,7 @@ module CPM.Package
   , showDependency
   , showCompilerDependency
   , showVersionConstraints
-  , loadPackageSpec, loadPackageSpecELM
+  , loadPackageSpec
   , writePackageSpec
   , Conjunction
   , Disjunction
@@ -341,7 +341,7 @@ loadPackageSpec dir = do
             case readPackageSpec contents of
                Left err -> fail err
                Right v  -> return v
-    else fail "Illegal package: file `" ++ packageFile ++ "' does not exist!"
+    else fail $ "Illegal package: file `" ++ packageFile ++ "' does not exist!"
 
 --- Checks whether two package ids are equal, i.e. if their names and versions
 --- match.
