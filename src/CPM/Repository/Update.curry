@@ -40,17 +40,17 @@ import CPM.Repository.Select  ( addPackageToRepositoryCache
 --- If the fifth argument is `True`, also a CSV file containing the
 --- database entries is written.
 updateRepository :: Config -> Bool -> Bool -> Bool -> Bool -> ErrorLogger ()
-updateRepository cfg cleancache download usecache writecsv = toELM $ do
+updateRepository cfg cleancache download usecache writecsv = do
   cleanRepositoryCache cfg
   when cleancache $ do
     debugMessage $ "Deleting global package cache: '" ++
                    packageInstallDir cfg ++ "'"
-    liftIOErrorLogger $ removeDirectoryComplete (packageInstallDir cfg)
+    liftIOErrorLogger $ removeDirectoryComplete $ packageInstallDir cfg
   debugMessage $ "Recreating package index: '" ++ repositoryDir cfg ++ "'"
   if download
     then do
-      liftIOErrorMessage $ recreateDirectory (repositoryDir cfg)
-      c <- liftIOErrorMessage $ inDirectory (repositoryDir cfg) (tryDownload (packageIndexURLs cfg))
+      liftIOErrorLogger $ recreateDirectory $ repositoryDir cfg
+      c <- inDirectoryEL (repositoryDir cfg) (tryDownload (packageIndexURLs cfg))
       if c == 0
         then finishUpdate
         else fail $ "Failed to update package index, return code " ++ show c
@@ -101,7 +101,7 @@ addPackageToRepository :: Config -> String -> Bool -> Bool -> ErrorLogger ()
 addPackageToRepository cfg pkgdir force cpdir = do
   dirExists <- liftIOErrorLogger $ doesDirectoryExist pkgdir
   if dirExists
-    then do pkgSpec <- loadPackageSpecELM pkgdir
+    then do pkgSpec <- loadPackageSpec pkgdir
             copyPackage pkgSpec
             infoMessage $ "Package in directory '" ++ pkgdir ++
                           "' installed into local repository"
@@ -121,13 +121,13 @@ addPackageToRepository cfg pkgdir force cpdir = do
                else error $ "Package installation directory '" ++
                             pkgInstallDir ++ "' already exists!\n"
     infoMessage $ "Create directory: " ++ pkgRepositoryDir
-    liftIOErrorLogger $ do $
+    liftIOErrorLogger $ do
       createDirectoryIfMissing True pkgRepositoryDir
       copyFile (pkgdir </> "package.json")
                (pkgRepositoryDir </> "package.json")
-      when cpdir $ do
-        copyDirectory pkgdir pkgInstallDir
-        inDirectory pkgInstallDir $ runELM $ cleanPackage cfg Debug
+    when cpdir $ do
+      liftIOErrorLogger $ copyDirectory pkgdir pkgInstallDir
+      inDirectoryEL pkgInstallDir $ cleanPackage cfg Debug
     if exrepodir then updatePackageInRepositoryCache cfg pkg
                  else addPackageToRepositoryCache    cfg pkg
 

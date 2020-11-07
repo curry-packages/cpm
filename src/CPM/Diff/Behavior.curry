@@ -18,7 +18,7 @@ module CPM.Diff.Behavior
   , findFunctionsToCompare
   ) where
 
-import System.Directory   ( createDirectory, doesDirectoryExist )
+import System.Directory   ( createDirectory, doesDirectoryExist, getTemporaryDirectory )
 import System.FilePath    ( (</>), joinPath )
 import System.Environment ( getEnv, setEnv, unsetEnv )
 import Data.Char          ( isAlphaNum )
@@ -169,7 +169,7 @@ diffBehavior :: Config
              -> Maybe [String]
              -> ErrorLogger ()
 diffBehavior cfg repo gc info groundequiv useanalysis cmods = do
-  getBaseTemp <- liftIOErrorLogger $ baseTmp
+  baseTmp <- liftIOErrorLogger getBaseTemp
   (acyCache, loadpath, funcs, removed) <-
     findFunctionsToCompare cfg repo gc (infSourceDirA info) (infSourceDirB info)
                           useanalysis cmods
