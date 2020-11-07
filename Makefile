@@ -1,5 +1,5 @@
 # Root location of the Curry System specified by variable CURRYROOT
-CURRYROOT := $(shell curry --nocypm :set v0 :set -time :add Distribution :eval "putStrLn installDir" :quit)
+CURRYROOT := $(shell curry --nocypm :set v0 :set -time :add Language.Curry.Distribution :eval "putStrLn installDir" :quit)
 
 # Curry system binary:
 export CURRY = $(CURRYROOT)/bin/curry
@@ -8,7 +8,7 @@ export CURRY = $(CURRYROOT)/bin/curry
 TOOL = $(HOME)/.cpm/bin/cypm
 
 # The compiler name (e.g., pakcs or kics2):
-CURRYCOMPILER := $(shell $(CURRY) :set v0 :set -time :add Distribution :eval "putStrLn curryCompiler" :quit)
+CURRYCOMPILER := $(shell $(CURRY) :set v0 :set -time :add Language.Curry.Distribution :eval "putStrLn curryCompiler" :quit)
 
 # Executable of CurryCheck (for testing):
 CURRYCHECK := $(shell which curry-check)
