@@ -48,15 +48,15 @@ cacheDir pkgDir = pkgDir </> ".cpm" </> "package_cache"
 --- @param dir the package directory
 allPackages :: String -> ErrorLogger [Package]
 allPackages pkgDir = do
-  cacheExists <- liftIOErrorLogger $ doesDirectoryExist cdir
+  cacheExists <- liftIOEL $ doesDirectoryExist cdir
   if cacheExists
     then do
       debugMessage $ "Reading local package cache from '" ++ cdir ++ "'..."
-      cdircont <- liftIOErrorLogger $ getDirectoryContents cdir
+      cdircont <- liftIOEL $ getDirectoryContents cdir
       let pkgDirs = filter (not . isPrefixOf ".") cdircont
-      pkgPaths <- liftIOErrorLogger $ mapM removeIfIllegalSymLink $ map (cdir </>) pkgDirs
+      pkgPaths <- liftIOEL $ mapM removeIfIllegalSymLink $ map (cdir </>) pkgDirs
       let specPaths = map (</> "package.json") $ concat pkgPaths
-      specs <- liftIOErrorLogger $ mapM (readPackageSpecIO . readCompleteFile) specPaths
+      specs <- liftIOEL $ mapM (readPackageSpecIO . readCompleteFile) specPaths
       return $ rights specs
     else return []
  where
@@ -132,10 +132,10 @@ isPackageInCache pkgDir pkg = do
 --- @param dir the package directory
 clearCache :: String -> ErrorLogger ()
 clearCache pkgDir = do
-  cacheExists <- liftIOErrorLogger $ doesDirectoryExist cdir
+  cacheExists <- liftIOEL $ doesDirectoryExist cdir
   if cacheExists
     then do
-      pkgDirs <- liftIOErrorLogger $ getDirectoryContents cdir
+      pkgDirs <- liftIOEL $ getDirectoryContents cdir
       mapM deleteIfLink (map (cdir </>) $ filter (not . isDotOrDotDot) pkgDirs)
       return ()
     else return ()
@@ -149,18 +149,18 @@ ensureCacheDir pkgDir = do
 
 deleteIfLink :: String -> ErrorLogger ()
 deleteIfLink target = do
-  dirExists  <- liftIOErrorLogger $ doesDirectoryExist target
-  fileExists <- liftIOErrorLogger $ doesFileExist target
-  isLink     <- liftIOErrorLogger $ isSymlink target
+  dirExists  <- liftIOEL $ doesDirectoryExist target
+  fileExists <- liftIOEL $ doesFileExist target
+  isLink     <- liftIOEL $ isSymlink target
   if dirExists || fileExists
     then
       if isLink
-        then liftIOErrorLogger (removeSymlink target) >> return ()
+        then liftIOEL (removeSymlink target) >> return ()
         else fail $ "deleteIfLink can only delete links!\n" ++
                       "Unexpected target: " ++ target
     else
       if isLink -- maybe it is a link to some non-existing target
-        then liftIOErrorLogger (removeSymlink target) >> return ()
+        then liftIOEL (removeSymlink target) >> return ()
         else return ()
 
 linkExists :: String -> IO Bool
@@ -186,14 +186,14 @@ isDotOrDotDot s = case s of
 --- @param replace replace existing link?
 createLink :: String -> String -> String -> Bool -> ErrorLogger ()
 createLink pkgDir from name replace = do
-  liftIOErrorLogger $ ensureCacheDir pkgDir
-  exists <- liftIOErrorLogger $ linkExists target
+  liftIOEL $ ensureCacheDir pkgDir
+  exists <- liftIOEL $ linkExists target
   if exists && not replace
     then return ()
     else do
       deleteIfLink target
-      fromabs <- liftIOErrorLogger $ getAbsolutePath from
-      rc <- liftIOErrorLogger $ createSymlink fromabs target
+      fromabs <- liftIOEL $ getAbsolutePath from
+      rc <- liftIOEL $ createSymlink fromabs target
       if rc == 0
         then return ()
         else fail $ "Failed to create symlink from '" ++ from ++ "' to '" ++

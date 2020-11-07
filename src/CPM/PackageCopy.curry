@@ -43,7 +43,7 @@ lookupSetForPackageCopy :: Config -> Package -> Repository -> GC.GlobalCache
                         -> String -> ErrorLogger LS.LookupSet
 lookupSetForPackageCopy cfg _ repo gc dir = do
   localPkgs <- LocalCache.allPackages dir
-  diffInLC <- liftIOErrorLogger $ mapM filterGCLinked localPkgs
+  diffInLC <- liftIOEL $ mapM filterGCLinked localPkgs
   let lsLC = addPackagesWOBase cfg lsGC localPkgs LS.FromLocalCache
   mapM logSymlinkedPackage (mapMaybe id diffInLC)
   return lsLC
@@ -143,7 +143,7 @@ installLocalDependenciesWithRepo cfg repo dir pkgSpec = do
 --- Links a directory into the local package cache. Used for `cypm link`.
 linkToLocalCache :: Config -> String -> String -> ErrorLogger ()
 linkToLocalCache cfg src pkgDir = do
-  dirExists <- liftIOErrorLogger $ doesDirectoryExist src
+  dirExists <- liftIOEL $ doesDirectoryExist src
   if dirExists
     then do
       pkgSpec <- loadPackageSpec src

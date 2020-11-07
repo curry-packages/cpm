@@ -50,7 +50,7 @@ installPackageSourceTo pkg (Git url rev) installdir = do
         let tag = "v" ++ (showVersion $ version pkg)
         in checkoutGitRef pkgDir tag >>
            infoMessage ("Package '" ++ packageId pkg ++ "' installed")
-    else liftIOErrorLogger (removeDirectoryComplete pkgDir) >>
+    else liftIOEL (removeDirectoryComplete pkgDir) >>
          fail ("Failed to clone repository from '" ++ url ++
                  "', return code " ++ show c)
  where
@@ -61,7 +61,7 @@ installPackageSourceTo pkg (FileSource zipfile) installdir =
   installPkgFromFile pkg zipfile (installdir </> packageId pkg) False
 
 installPackageSourceTo pkg (Http url) installdir = do
-  pid <- liftIOErrorLogger $ getPID
+  pid <- liftIOEL $ getPID
   let pkgDir  = installdir </> packageId pkg
       basepf  = "package" ++ show pid
       pkgfile = if takeExtension url == ".zip"
@@ -72,7 +72,7 @@ installPackageSourceTo pkg (Http url) installdir = do
   if null pkgfile
     then fail $ "Illegal URL (only .zip or .tar.gz allowed):\n" ++ url
     else do
-      tmpdir <- liftIOErrorLogger tempDir
+      tmpdir <- liftIOEL tempDir
       let tmppkgfile = tmpdir </> pkgfile
       ll <- getLogLevel
       c <- inTempDirEL $ showExecCmd $
@@ -80,7 +80,7 @@ installPackageSourceTo pkg (Http url) installdir = do
                            ++ " -o " ++ tmppkgfile ++ " " ++ quote url
       if c == 0
         then installPkgFromFile pkg tmppkgfile pkgDir True
-        else do liftIOErrorLogger cleanTempDir
+        else do liftIOEL cleanTempDir
                 fail $ "`curl` failed with exit status " ++ show c
 
 --- Installs a package from a .zip or .tar.gz file into the specified
@@ -89,18 +89,18 @@ installPackageSourceTo pkg (Http url) installdir = do
 installPkgFromFile :: Package -> String -> String -> Bool -> ErrorLogger ()
 installPkgFromFile pkg pkgfile pkgDir rmfile = do
   let iszip = takeExtension pkgfile == ".zip"
-  absfile <- liftIOErrorLogger $ getAbsolutePath pkgfile
-  liftIOErrorLogger $ createDirectory pkgDir
+  absfile <- liftIOEL $ getAbsolutePath pkgfile
+  liftIOEL $ createDirectory pkgDir
   c <- if iszip
          then inTempDirEL $ showExecCmd $ "unzip -qq -d " ++ quote pkgDir ++
                                         " " ++ quote absfile
          else inDirectoryEL pkgDir $ showExecCmd $
                 "tar -xzf " ++ quote absfile
   when rmfile (showExecCmd ("rm -f " ++ absfile) >> return ())
-  liftIOErrorLogger cleanTempDir
+  liftIOEL cleanTempDir
   if c == 0
     then infoMessage $ "Installed " ++ packageId pkg
-    else do liftIOErrorLogger $ removeDirectoryComplete pkgDir
+    else do liftIOEL $ removeDirectoryComplete pkgDir
             fail ("Failed to unzip package, return code " ++ show c)
 
 --- Checks out a specific ref of a Git repository and deletes
@@ -112,8 +112,8 @@ checkoutGitRef :: String -> String -> ErrorLogger ()
 checkoutGitRef dir ref = do
   c <- inDirectoryEL dir $ execQuietCmd (\q -> unwords ["git checkout", q, ref])
   if c == 0
-    then liftIOErrorLogger removeGitFiles >> return ()
-    else liftIOErrorLogger (removeDirectoryComplete dir) >>
+    then liftIOEL removeGitFiles >> return ()
+    else liftIOEL (removeDirectoryComplete dir) >>
          fail ("Failed to check out " ++ ref ++ ", return code " ++ show c)
  where
    removeGitFiles = do
@@ -278,16 +278,16 @@ renderPackageInfo allinfos plain installed pkg = pPrint doc
 --- current absolute path.
 getLocalPackageSpec :: Config -> String -> ErrorLogger String
 getLocalPackageSpec cfg dir = do
-  adir <- liftIOErrorLogger $ getAbsolutePath dir
+  adir <- liftIOEL $ getAbsolutePath dir
   spec <- searchLocalSpec (length (splitPath adir)) dir
   maybe returnHomePackage return spec
  where
   returnHomePackage = do
     let homepkgdir  = homePackageDir cfg
         homepkgspec = homepkgdir </> "package.json"
-    specexists <- liftIOErrorLogger $ doesFileExist homepkgspec
+    specexists <- liftIOEL $ doesFileExist homepkgspec
     unless (specexists || null homepkgdir) $ do
-      liftIOErrorLogger $ createDirectoryIfMissing True homepkgdir
+      liftIOEL $ createDirectoryIfMissing True homepkgdir
       let newpkg  = emptyPackage
                       { name            = snd (splitFileName homepkgdir)
                       , version         = initialVersion
@@ -295,19 +295,19 @@ getLocalPackageSpec cfg dir = do
                       , synopsis        = "Default home package"
                       , dependencies    = []
                       }
-      liftIOErrorLogger $ writePackageSpec newpkg homepkgspec
+      liftIOEL $ writePackageSpec newpkg homepkgspec
       infoMessage $ "New empty package specification '" ++ homepkgspec ++
                     "' generated"
     return homepkgdir
 
   searchLocalSpec m sdir = do
-    existsLocal <- liftIOErrorLogger $ doesFileExist $ sdir </> "package.json"
+    existsLocal <- liftIOEL $ doesFileExist $ sdir </> "package.json"
     if existsLocal
       then return (Just sdir)
       else do
         debugMessage ("No package.json in " ++ show sdir ++ ", trying " ++
                       show (sdir </> ".."))
-        parentExists <- liftIOErrorLogger $ doesDirectoryExist $ sdir </> ".."
+        parentExists <- liftIOEL $ doesDirectoryExist $ sdir </> ".."
         if m>0 && parentExists
           then searchLocalSpec (m-1) $ sdir </> ".."
           else return Nothing

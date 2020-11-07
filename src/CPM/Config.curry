@@ -160,7 +160,7 @@ setHomePackageDir cfg
 --- Sets the correct compiler version in the configuration.
 setCompilerVersion :: Config -> ErrorLogger Config
 setCompilerVersion cfg0 = do
-  cfg <- liftIOErrorLogger $ setCompilerExecutable cfg0
+  cfg <- liftIOEL $ setCompilerExecutable cfg0
   let initbase = baseVersion cfg
   if curryExec cfg == Dist.installDir </> "bin" </> Dist.curryCompiler
     then return cfg { compilerVersion = currVersion
@@ -184,16 +184,16 @@ setCompilerVersion cfg0 = do
  where
   getCompilerVersion currybin = do
     debugMessage $ "Getting version information from " ++ currybin
-    (r,s,e) <-  liftIOErrorLogger $ evalCmd currybin
+    (r,s,e) <-  liftIOEL $ evalCmd currybin
                  ["--compiler-name","--numeric-version","--base-version"] ""
     if r>0
       then error $ "Cannot determine compiler version:\n" ++ e
       else case lines s of
         [sname,svers,sbver] -> return (sname,svers,sbver)
         _ -> do debugMessage $ "Query version information again..."
-                (c1,sname,e1) <- liftIOErrorLogger $ evalCmd currybin ["--compiler-name"] ""
-                (c2,svers,e2) <- liftIOErrorLogger $ evalCmd currybin ["--numeric-version"] ""
-                (c3,sbver,e3) <- liftIOErrorLogger $ evalCmd currybin ["--base-version"] ""
+                (c1,sname,e1) <- liftIOEL $ evalCmd currybin ["--compiler-name"] ""
+                (c2,svers,e2) <- liftIOEL $ evalCmd currybin ["--numeric-version"] ""
+                (c3,sbver,e3) <- liftIOEL $ evalCmd currybin ["--base-version"] ""
                 when (c1 > 0 || c2 > 0 || c3 > 0) $
                   error $ "Cannot determine compiler version:\n" ++
                           unlines (filter (not . null) [e1,e2,e3])
@@ -210,10 +210,10 @@ setCompilerVersion cfg0 = do
 --- any missing directories. May return an error using `Left`.
 readConfigurationWith :: [(String,String)] -> ErrorLogger (Either String Config)
 readConfigurationWith defsettings = do
-  home <- liftIOErrorLogger $ getHomeDirectory
+  home <- liftIOEL $ getHomeDirectory
   let configFile = home </> ".cpmrc"
-  exfile <- liftIOErrorLogger $ doesFileExist configFile
-  settingsFromFile <- liftIOErrorLogger $
+  exfile <- liftIOEL $ doesFileExist configFile
+  settingsFromFile <- liftIOEL $
     if exfile
       then readPropertyFile configFile >>= return . stripProps
       else return []
@@ -221,11 +221,11 @@ readConfigurationWith defsettings = do
                          (settingsFromFile ++ stripProps defsettings)
   case mergedSettings of
     Left e   -> return $ Left e
-    Right s0 -> do s1 <- liftIOErrorLogger $ replaceHome s0
+    Right s0 -> do s1 <- liftIOEL $ replaceHome s0
                    s2 <- setCompilerVersion s1
-                   s3 <- liftIOErrorLogger $ setAppPackageDir   s2
-                   s4 <- liftIOErrorLogger $ setHomePackageDir  s3
-                   liftIOErrorLogger $ createDirectories s4
+                   s3 <- liftIOEL $ setAppPackageDir   s2
+                   s4 <- liftIOEL $ setHomePackageDir  s3
+                   liftIOEL $ createDirectories s4
                    return $ Right s4
 
 replaceHome :: Config -> IO Config

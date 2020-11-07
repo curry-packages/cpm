@@ -10,7 +10,7 @@ module CPM.ErrorLogger
   , infoMessage, debugMessage, errorMessage, criticalMessage, showLogEntry, levelGte
   , putStrELM, putStrLnELM
   , fromErrorLogger
-  , showExecCmd, execQuietCmd, liftIOErrorLogger, tryErrorLogger
+  , showExecCmd, execQuietCmd, liftIOEL, tryEL
   , inDirectoryEL, inTempDirEL
   ) where
 
@@ -156,11 +156,11 @@ criticalMessage msg = log Critical msg
 
 --- Prints a string in the `ErrorLogger` monad.
 putStrELM :: String -> ErrorLogger ()
-putStrELM = liftIOErrorLogger . putStr
+putStrELM = liftIOEL . putStr
 
 --- Prints a line in the `ErrorLogger` monad.
 putStrLnELM :: String -> ErrorLogger ()
-putStrLnELM = liftIOErrorLogger . putStrLn
+putStrLnELM = liftIOEL . putStrLn
 
 --- Transforms an error logger action into a standard IO action.
 --- It shows all messages and, if the result is not available,
@@ -176,7 +176,7 @@ fromErrorLogger l s a = do
 --- Executes a system command and show the command as debug message.
 showExecCmd :: String -> ErrorLogger Int
 showExecCmd cmd = debugMessage ("Executing: " ++ cmd) >>
-  liftIOErrorLogger (system cmd)
+  liftIOEL (system cmd)
 
 --- Executes a parameterized system command.
 --- The parameter is set to `-q` unless the LogLevel is Debug.
@@ -197,23 +197,23 @@ setLogLevel l = ErrorLogger $ \ _ s -> return ((l, s), ([], Right ()))
 setWithShowTime :: Bool -> ErrorLogger ()
 setWithShowTime s = ErrorLogger $ \ l _ -> return ((l, s), ([], Right ()))
 
-liftIOErrorLogger :: IO a -> ErrorLogger a
-liftIOErrorLogger ma = ErrorLogger (\l s -> do a <- ma
-                                               return ((l, s), ([], Right a)))
+liftIOEL :: IO a -> ErrorLogger a
+liftIOEL ma = ErrorLogger (\l s -> do a <- ma
+                                      return ((l, s), ([], Right a)))
 
 --- Tries to execute an EL action and returns either an error that
 --- occurred or the value.
-tryErrorLogger :: ErrorLogger a -> ErrorLogger (Either LogEntry a)
-tryErrorLogger a = liftIOErrorLogger $ fmap (snd . snd) $ runErrorLogger a Quiet False
+tryEL :: ErrorLogger a -> ErrorLogger (Either LogEntry a)
+tryEL a = liftIOEL $ fmap (snd . snd) $ runErrorLogger a Quiet False
 
 --- Executes an EL action with the current directory set to a specific
 --- directory.
 inDirectoryEL :: String -> ErrorLogger b -> ErrorLogger b
 inDirectoryEL dir b = do
-  previous <- liftIOErrorLogger getCurrentDirectory
-  liftIOErrorLogger $ setCurrentDirectory dir
+  previous <- liftIOEL getCurrentDirectory
+  liftIOEL $ setCurrentDirectory dir
   b' <- b
-  liftIOErrorLogger $ setCurrentDirectory previous
+  liftIOEL $ setCurrentDirectory previous
   return b'
 
 
@@ -221,9 +221,9 @@ inDirectoryEL dir b = do
 --- directory.
 inTempDirEL :: ErrorLogger b -> ErrorLogger b
 inTempDirEL b = do
-  t <- liftIOErrorLogger tempDir
-  exists <- liftIOErrorLogger $ doesDirectoryExist t
+  t <- liftIOEL tempDir
+  exists <- liftIOEL $ doesDirectoryExist t
   if exists
     then return ()
-    else liftIOErrorLogger $ createDirectory t
+    else liftIOEL $ createDirectory t
   inDirectoryEL t b

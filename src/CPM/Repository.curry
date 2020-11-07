@@ -135,11 +135,11 @@ findVersion repo pn v =
 warnIfRepositoryOld :: Config -> ErrorLogger ()
 warnIfRepositoryOld cfg = do
   let updatefile = repositoryDir cfg </> "README.md"
-  updexists <- liftIOErrorLogger $ doesFileExist updatefile
+  updexists <- liftIOEL $ doesFileExist updatefile
   if updexists
     then do
-      utime <- liftIOErrorLogger $ getModificationTime updatefile
-      ctime <- liftIOErrorLogger $ getClockTime
+      utime <- liftIOEL $ getModificationTime updatefile
+      ctime <- liftIOEL $ getClockTime
       let warntime = addDays 10 utime
       when (compareClockTime ctime warntime == GT) $ do
         -- we assume that clock time is measured in seconds
@@ -165,7 +165,7 @@ readRepositoryFrom path = do
     then return repo
     else do errorMessage "Problems while reading the package index:"
             mapM_ errorMessage repoErrors
-            liftIOErrorLogger $ exitWith 1
+            liftIOEL $ exitWith 1
 
 --- Reads all package specifications from a repository.
 ---
@@ -174,14 +174,14 @@ readRepositoryFrom path = do
 tryReadRepositoryFrom :: String -> ErrorLogger (Repository, [String])
 tryReadRepositoryFrom path = do
   debugMessage $ "Reading repository index from '" ++ path ++ "'..."
-  repos     <- liftIOErrorLogger $ checkAndGetVisibleDirectoryContents path
-  pkgPaths  <- liftIOErrorLogger (mapM getDir (map (path </>) repos) >>= return . concat)
-  verDirs   <- liftIOErrorLogger $ mapM checkAndGetVisibleDirectoryContents pkgPaths
+  repos     <- liftIOEL $ checkAndGetVisibleDirectoryContents path
+  pkgPaths  <- liftIOEL $ mapM getDir (map (path </>) repos) >>= return . concat
+  verDirs   <- liftIOEL $ mapM checkAndGetVisibleDirectoryContents pkgPaths
   verPaths  <- return $ concatMap (\ (d, p) -> map (d </>) p)
                      $ zip pkgPaths verDirs
   specPaths <- return $ map (</> "package.json") verPaths
   infoMessage "Reading repository index..."
-  specs     <- liftIOErrorLogger $ mapM readPackageFile specPaths
+  specs     <- liftIOEL $ mapM readPackageFile specPaths
   when (null (lefts specs)) $ debugMessage "Finished reading repository"
   return $ (Repository $ rights specs, lefts specs)
  where
@@ -205,7 +205,7 @@ cleanRepositoryCache :: Config -> ErrorLogger ()
 cleanRepositoryCache cfg = do
   debugMessage $ "Cleaning repository cache '" ++
                  repositoryCacheFilePrefix cfg ++ "*'"
-  liftIOErrorLogger $ system $
+  liftIOEL $ system $
     "/bin/rm -f " ++ quote (repositoryCacheFilePrefix cfg) ++ "*"
   return ()
 

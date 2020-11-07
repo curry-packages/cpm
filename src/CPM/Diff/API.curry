@@ -58,7 +58,7 @@ compareModulesFromPackages :: Config -> Repository -> GC.GlobalCache -> String
                            -> Version -> String -> Version -> Maybe [String]
                            -> ErrorLogger [(String, Differences)]
 compareModulesFromPackages cfg repo gc nameA verA nameB verB onlyMods = do
-  baseTmp <- liftIOErrorLogger getBaseTemp
+  baseTmp <- liftIOEL getBaseTemp
   pkgA <- GC.tryFindPackage gc nameA verA
   pkgB <- GC.tryFindPackage gc nameB verB
   GC.copyPackage cfg pkgA baseTmp
@@ -80,11 +80,11 @@ compareModulesFromPackageAndDir :: Config -> Repository -> GC.GlobalCache
                                -> String -> String -> Version -> Maybe [String]
                                -> ErrorLogger [(String, Differences)]
 compareModulesFromPackageAndDir cfg repo gc dirA nameB verB onlyMods = do
-  baseTmp <- liftIOErrorLogger getBaseTemp
+  baseTmp <- liftIOEL getBaseTemp
   pkgB <- GC.tryFindPackage gc nameB verB
   pkgA <- loadPackageSpec dirA
   GC.copyPackage cfg pkgB baseTmp
-  liftIOErrorLogger $ copyDirectory dirA (baseTmp </> packageId pkgA)
+  liftIOEL $ copyDirectory dirA (baseTmp </> packageId pkgA)
   compareModulesInDirs cfg repo gc (baseTmp </> packageId pkgA)
                        (baseTmp </> packageId pkgB) onlyMods
 
@@ -107,7 +107,7 @@ compareModulesInDirs cfg repo gc dirA dirB onlyMods =
   let cmpmods = nub (exportedModules pkgA ++ exportedModules pkgB) in
   if null cmpmods
     then infoMessage "No exported modules to compare" >> return []
-    else do diffs <- liftIOErrorLogger $ mapM (compareApiModule
+    else do diffs <- liftIOEL $ mapM (compareApiModule
                        pkgA dirA depsA pkgB dirB depsB) cmpmods
             let modsWithDiffs = zip cmpmods diffs
             return $ case onlyMods of

@@ -42,7 +42,7 @@ runQuery cfg dbact = do
   warnIfRepositoryOld cfg
   let dbfile = repositoryCacheDB cfg
   debugMessage $ "Reading repository database '" ++ dbfile ++ "'..."
-  result <- liftIOErrorLogger $ runQueryOnDB dbfile dbact
+  result <- liftIOEL $ runQueryOnDB dbfile dbact
   debugMessage $ "Finished reading repository database"
   return result
 
@@ -200,7 +200,7 @@ getRepoForPackageSpec cfg pkgspec =
 --- The information is read either from the cache DB or from the cache file.
 getRepoForPackages :: Config -> [String] -> ErrorLogger Repository
 getRepoForPackages cfg pkgnames = do
-  dbexists <- liftIOErrorLogger $ doesFileExist (repositoryCacheDB cfg)
+  dbexists <- liftIOEL $ doesFileExist (repositoryCacheDB cfg)
   if dbexists
     then do warnIfRepositoryOld cfg
             let dbfile = repositoryCacheDB cfg
@@ -215,7 +215,7 @@ getRepoForPackages cfg pkgnames = do
    | pn `elem` lpns = queryPackagesFromDB pns lpns pkgs
    | otherwise      = do
      debugMessage $ "Reading package versions of " ++ pn
-     pnpkgs <- liftIOErrorLogger $ queryPackage pn
+     pnpkgs <- liftIOEL $ queryPackage pn
      let newdeps = concatMap dependencyNames pnpkgs
      queryPackagesFromDB (newdeps++pns) (pn:lpns) (pnpkgs++pkgs)
 
@@ -249,7 +249,7 @@ getPackageVersion cfg pkgname ver = do
 --- otherwise read the (small or large) repository cache file.
 queryDBorCache :: Config -> Bool -> DBAction Repository -> ErrorLogger Repository
 queryDBorCache cfg large dbaction = do
-  dbexists <- liftIOErrorLogger $ doesFileExist (repositoryCacheDB cfg)
+  dbexists <- liftIOEL $ doesFileExist (repositoryCacheDB cfg)
   if dbexists then runQuery cfg dbaction
               else readRepository cfg large
 
@@ -262,7 +262,7 @@ pkgRead = readUnqualifiedTerm ["CPM.Package","Prelude"]
 --- In the file-based implementation, we simply clean the cache files.
 addPackageToRepositoryCache :: Config -> Package -> ErrorLogger ()
 addPackageToRepositoryCache cfg pkg = do
-  dbexists <- liftIOErrorLogger $ doesFileExist (repositoryCacheDB cfg)
+  dbexists <- liftIOEL $ doesFileExist (repositoryCacheDB cfg)
   if dbexists then addPackagesToRepositoryDB cfg True [Left pkg]
               else cleanRepositoryCache cfg >> return ()
 
@@ -270,7 +270,7 @@ addPackageToRepositoryCache cfg pkg = do
 --- In the file-based implementation, we simply clean the cache files.
 updatePackageInRepositoryCache :: Config -> Package -> ErrorLogger ()
 updatePackageInRepositoryCache cfg pkg = do
-  dbexists <- liftIOErrorLogger $ doesFileExist (repositoryCacheDB cfg)
+  dbexists <- liftIOEL $ doesFileExist (repositoryCacheDB cfg)
   if dbexists then removePackageFromRepositoryDB cfg pkg >>
                    addPackagesToRepositoryDB cfg True [Left pkg]
               else cleanRepositoryCache cfg >> return ()

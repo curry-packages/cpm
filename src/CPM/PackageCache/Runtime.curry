@@ -55,13 +55,13 @@ copyPackages cfg pkgs dir = mapM copyPackage pkgs
     copyPackage pkg = do
       cdir <- ensureCacheDirectory dir
       let destDir = cdir </> packageId pkg
-      liftIOErrorLogger $ recreateDirectory destDir
-      pkgDirExists <- liftIOErrorLogger $ doesDirectoryExist pkgDir
+      liftIOEL $ recreateDirectory destDir
+      pkgDirExists <- liftIOEL $ doesDirectoryExist pkgDir
       if pkgDirExists
         then do
           -- in order to obtain complete package specification:
           reppkg <- readPackageFromRepository cfg pkg
-          liftIOErrorLogger $ copyDirectoryFollowingSymlinks pkgDir cdir
+          liftIOEL $ copyDirectoryFollowingSymlinks pkgDir cdir
           writePackageConfig cfg destDir reppkg ""
           return reppkg
         else error $ "Package " ++ packageId pkg ++
@@ -73,7 +73,7 @@ copyPackages cfg pkgs dir = mapM copyPackage pkgs
 ensureCacheDirectory :: String -> ErrorLogger String
 ensureCacheDirectory dir = do
   let packagesDir = dir </> ".cpm" </> "packages"
-  liftIOErrorLogger $ createDirectoryIfMissing True packagesDir
+  liftIOEL $ createDirectoryIfMissing True packagesDir
   return packagesDir
 
 
@@ -95,7 +95,7 @@ writePackageConfig cfg pkgdir pkg loadpath =
   writeConfigFile configmod binname = do
     let configfile = pkgdir </> "src" </> foldr1 (</>) (split (=='.') configmod)
                             <.> ".curry"
-    liftIOErrorLogger $ do
+    liftIOEL $ do
       createDirectoryIfMissing True (takeDirectory configfile)
       abspkgdir <- getAbsolutePath pkgdir
       writeFile configfile $ unlines $

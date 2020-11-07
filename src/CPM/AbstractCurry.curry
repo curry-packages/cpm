@@ -90,7 +90,7 @@ readAbstractCurryFromPackagePath pkg pkgDir deps modname = do
 readAbstractCurryFromDeps :: String -> [Package] -> String -> ErrorLogger CurryProg
 readAbstractCurryFromDeps pkgDir deps modname = do
   pkg <- loadPackageSpec pkgDir
-  liftIOErrorLogger $ readAbstractCurryFromPackagePath pkg pkgDir deps modname
+  liftIOEL $ readAbstractCurryFromPackagePath pkg pkgDir deps modname
 
 --- Applies a transformation function to a module from a package or one of its
 --- dependencies and writes the modified module to a file in Curry form.
@@ -104,7 +104,7 @@ transformAbstractCurryInDeps :: String -> [Package] -> (CurryProg -> CurryProg)
                              -> String -> String -> ErrorLogger ()
 transformAbstractCurryInDeps pkgDir deps transform modname destFile = do
   acy <- readAbstractCurryFromDeps pkgDir deps modname
-  liftIOErrorLogger $ writeFile destFile $ showCProg (transform acy)
+  liftIOEL $ writeFile destFile $ showCProg (transform acy)
 
 --- Renames all references to some modules in a Curry program.
 ---

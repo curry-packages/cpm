@@ -42,7 +42,7 @@ repositoryCacheCSV cfg = repositoryCacheFilePrefix cfg ++ ".csv"
 --- if the command `sqlite3` is in the path.
 tryInstallRepositoryDB :: Config -> Bool -> Bool -> ErrorLogger ()
 tryInstallRepositoryDB cfg usecache writecsv = do
-  withsqlite <- liftIOErrorLogger $ fileInPath "sqlite3"
+  withsqlite <- liftIOEL $ fileInPath "sqlite3"
   if withsqlite
     then installRepositoryDB cfg usecache writecsv
     else infoMessage
@@ -58,10 +58,10 @@ installRepositoryDB :: Config -> Bool -> Bool -> ErrorLogger ()
 installRepositoryDB cfg False writecsv = writeRepositoryDB cfg False writecsv
 installRepositoryDB cfg True  writecsv = do
   let sqlitefile = repositoryCacheDB cfg
-  liftIOErrorLogger $ whenFileExists sqlitefile $ removeFile sqlitefile
+  liftIOEL $ whenFileExists sqlitefile $ removeFile sqlitefile
   c <- tryDownloadFromURLs sqlitefile (packageTarFilesURLs cfg)
                            "REPOSITORY_CACHE.db"
-  dbexists <- liftIOErrorLogger $ doesFileExist sqlitefile
+  dbexists <- liftIOEL $ doesFileExist sqlitefile
   if c == 0 && dbexists
     then if writecsv then saveDBAsCSV cfg
                      else return ()
@@ -89,31 +89,31 @@ tryDownloadFromURLs target (baseurl:baseurls) file = do
 writeRepositoryDB :: Config -> Bool -> Bool -> ErrorLogger ()
 writeRepositoryDB cfg usecache writecsv = do
   let sqlitefile = repositoryCacheDB cfg
-  liftIOErrorLogger $ do
+  liftIOEL $ do
     whenFileExists sqlitefile (removeFile sqlitefile)
     createNewDB sqlitefile
-  tmpdir <- liftIOErrorLogger $ tempDir
+  tmpdir <- liftIOEL $ tempDir
   let csvfile = tmpdir </> "cachedb.csv"
   showExecCmd $ "/bin/rm -f " ++ csvfile
   c <- if usecache
          then tryDownloadFromURLs csvfile (packageTarFilesURLs cfg)
                                   "REPOSITORY_CACHE.csv"
          else return 1
-  csvexists <- liftIOErrorLogger $ doesFileExist csvfile
+  csvexists <- liftIOEL $ doesFileExist csvfile
   pkgentries <- if c == 0 && csvexists
                   then do
                     debugMessage $ "Reading CSV file '" ++ csvfile ++ "'..."
-                    (liftIOErrorLogger $ readCSVFile csvfile) >>= return . map Right
+                    (liftIOEL $ readCSVFile csvfile) >>= return . map Right
                   else do
                     when usecache $ debugMessage $
                       "Fetching repository cache CSV file failed"
                     repo <- readRepositoryFrom (repositoryDir cfg)
                     return $ map Left $ allPackages repo
-  liftIOErrorLogger $ putStr "Writing repository cache DB"
+  liftIOEL $ putStr "Writing repository cache DB"
   addPackagesToRepositoryDB cfg False pkgentries
-  liftIOErrorLogger $ putChar '\n'
+  liftIOEL $ putChar '\n'
   infoMessage "Repository cache DB written"
-  liftIOErrorLogger $ cleanTempDir
+  liftIOEL $ cleanTempDir
   if writecsv then saveDBAsCSV cfg 
               else return ()
 
@@ -126,11 +126,11 @@ addPackagesToRepositoryDB cfg quiet pkgs =
   mapM (runDBAction . newEntry) pkgs >> return ()
  where
   runDBAction act = do
-    result <- liftIOErrorLogger $ runWithDB (repositoryCacheDB cfg) act
+    result <- liftIOEL $ runWithDB (repositoryCacheDB cfg) act
     case result of
       Left (DBError kind str) -> criticalMessage $ "Repository DB failure: " ++
                                                    show kind ++ " " ++ str
-      Right _ -> liftIOErrorLogger $ do
+      Right _ -> liftIOEL $ do
         unless quiet $ putChar '.'
         hFlush stdout
         return ()
@@ -153,13 +153,13 @@ addPackagesToRepositoryDB cfg quiet pkgs =
 --- provided as a parameter.
 saveDBAsCSV :: Config -> ErrorLogger ()
 saveDBAsCSV cfg = do
-  result <- liftIOErrorLogger $ runWithDB (repositoryCacheDB cfg)
+  result <- liftIOEL $ runWithDB (repositoryCacheDB cfg)
                                           (getAllEntries indexEntry_CDBI_Description)
   case result of
     Left (DBError kind str) -> criticalMessage $ "Repository DB failure: " ++
                                                  show kind ++ " " ++ str
     Right es -> do let csvfile = repositoryCacheCSV cfg
-                   liftIOErrorLogger $ writeCSVFile csvfile $ map showIndexEntry es
+                   liftIOEL $ writeCSVFile csvfile $ map showIndexEntry es
                    infoMessage ("CSV file '" ++ csvfile ++ "' written!")
  where
   showIndexEntry (IndexEntry _ pn pv deps cc syn cat dirs mods exe) =

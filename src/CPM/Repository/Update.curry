@@ -45,11 +45,11 @@ updateRepository cfg cleancache download usecache writecsv = do
   when cleancache $ do
     debugMessage $ "Deleting global package cache: '" ++
                    packageInstallDir cfg ++ "'"
-    liftIOErrorLogger $ removeDirectoryComplete $ packageInstallDir cfg
+    liftIOEL $ removeDirectoryComplete $ packageInstallDir cfg
   debugMessage $ "Recreating package index: '" ++ repositoryDir cfg ++ "'"
   if download
     then do
-      liftIOErrorLogger $ recreateDirectory $ repositoryDir cfg
+      liftIOEL $ recreateDirectory $ repositoryDir cfg
       c <- inDirectoryEL (repositoryDir cfg) (tryDownload (packageIndexURLs cfg))
       if c == 0
         then finishUpdate
@@ -69,20 +69,20 @@ updateRepository cfg cleancache download usecache writecsv = do
     = do let tarfile = "INDEX.tar"
          c1 <- showExecCmd $ unwords ["curl", "-s", "-o", tarfile, quote piurl]
          c2 <- showExecCmd $ unwords ["tar", "-xf", tarfile]
-         liftIOErrorLogger $ removeFile tarfile
+         liftIOEL $ removeFile tarfile
          return (c1+c2)
     | ".tar.gz" `isSuffixOf` piurl
     = do let tarfile = "INDEX.tar.gz"
          c1 <- showExecCmd $ unwords ["curl", "-s", "-o", tarfile, quote piurl]
          c2 <- showExecCmd $ unwords ["tar", "-xzf", tarfile]
-         liftIOErrorLogger $ removeFile tarfile
+         liftIOEL $ removeFile tarfile
          return (c1+c2)
     | otherwise
     = do errorMessage $ "Unknown kind of package index URL: " ++ piurl
          return 1
 
   finishUpdate = do
-    liftIOErrorLogger $ setLastUpdate cfg
+    liftIOEL $ setLastUpdate cfg
     cleanRepositoryCache cfg
     infoMessage "Successfully downloaded repository index"
     tryInstallRepositoryDB cfg usecache writecsv
@@ -99,7 +99,7 @@ setLastUpdate cfg =
 --- into the local package installation store.
 addPackageToRepository :: Config -> String -> Bool -> Bool -> ErrorLogger ()
 addPackageToRepository cfg pkgdir force cpdir = do
-  dirExists <- liftIOErrorLogger $ doesDirectoryExist pkgdir
+  dirExists <- liftIOEL $ doesDirectoryExist pkgdir
   if dirExists
     then do pkgSpec <- loadPackageSpec pkgdir
             copyPackage pkgSpec
@@ -111,22 +111,22 @@ addPackageToRepository cfg pkgdir force cpdir = do
     let pkgIndexDir      = name pkg </> showVersion (version pkg)
         pkgRepositoryDir = repositoryDir cfg </> pkgIndexDir
         pkgInstallDir    = packageInstallDir cfg </> packageId pkg
-    exrepodir <- liftIOErrorLogger $ doesDirectoryExist pkgRepositoryDir
+    exrepodir <- liftIOEL $ doesDirectoryExist pkgRepositoryDir
     when (exrepodir && not force) $ error $
       "Package repository directory '" ++
       pkgRepositoryDir ++ "' already exists!\n"
-    expkgdir <- liftIOErrorLogger $ doesDirectoryExist pkgInstallDir
+    expkgdir <- liftIOEL $ doesDirectoryExist pkgInstallDir
     when expkgdir $
-      if force then liftIOErrorLogger $ removeDirectoryComplete pkgInstallDir
+      if force then liftIOEL $ removeDirectoryComplete pkgInstallDir
                else error $ "Package installation directory '" ++
                             pkgInstallDir ++ "' already exists!\n"
     infoMessage $ "Create directory: " ++ pkgRepositoryDir
-    liftIOErrorLogger $ do
+    liftIOEL $ do
       createDirectoryIfMissing True pkgRepositoryDir
       copyFile (pkgdir </> "package.json")
                (pkgRepositoryDir </> "package.json")
     when cpdir $ do
-      liftIOErrorLogger $ copyDirectory pkgdir pkgInstallDir
+      liftIOEL $ copyDirectory pkgdir pkgInstallDir
       inDirectoryEL pkgInstallDir $ cleanPackage cfg Debug
     if exrepodir then updatePackageInRepositoryCache cfg pkg
                  else addPackageToRepositoryCache    cfg pkg

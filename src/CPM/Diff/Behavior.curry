@@ -169,7 +169,7 @@ diffBehavior :: Config
              -> Maybe [String]
              -> ErrorLogger ()
 diffBehavior cfg repo gc info groundequiv useanalysis cmods = do
-  baseTmp <- liftIOErrorLogger getBaseTemp
+  baseTmp <- liftIOEL getBaseTemp
   (acyCache, loadpath, funcs, removed) <-
     findFunctionsToCompare cfg repo gc (infSourceDirA info) (infSourceDirB info)
                           useanalysis cmods
@@ -181,9 +181,9 @@ diffBehavior cfg repo gc info groundequiv useanalysis cmods = do
   debugMessage ("Filtered operations to be checked: " ++
                   showFuncNames filteredNames)
   case funcs of
-    [] -> liftIOErrorLogger (printRemoved removed >> return ())
+    [] -> liftIOEL (printRemoved removed >> return ())
     _  -> do
-      liftIOErrorLogger $ do
+      liftIOEL $ do
          putStrLn infoText
          printRemoved removed
          putStrLn $
@@ -217,14 +217,14 @@ renderRemoved rs =
 --- Runs CurryCheck on the generated program.
 callCurryCheck :: Config -> ComparisonInfo -> String -> ErrorLogger ()
 callCurryCheck cfg info baseTmp = do
-  oldPath <- liftIOErrorLogger $ getEnv "CURRYPATH"
+  oldPath <- liftIOEL $ getEnv "CURRYPATH"
   let currybin  = curryExec cfg
   let currypath = infDirA info ++ ":" ++ infDirB info
-  liftIOErrorLogger $ setEnv "CURRYPATH" currypath
+  liftIOEL $ setEnv "CURRYPATH" currypath
   debugMessage ("Run `curry check Compare' in `" ++ baseTmp ++ "' with")
   debugMessage ("CURRYPATH=" ++ currypath) >> return ()
   ecode <- inDirectoryEL baseTmp $ showExecCmd (currybin ++ " check Compare")
-  liftIOErrorLogger $ setEnv "CURRYPATH" oldPath
+  liftIOEL $ setEnv "CURRYPATH" oldPath
   debugMessage "CurryCheck finished" >> return ()
   if ecode==0
     then return ()
@@ -242,7 +242,7 @@ genCurryCheckProgram :: Config
                      -> ACYCache -> [String]
                      -> ErrorLogger ()
 genCurryCheckProgram cfg repo gc prodfuncs info groundequiv acyCache loadpath = do
-  baseTmp <- liftIOErrorLogger $ getBaseTemp
+  baseTmp <- liftIOEL $ getBaseTemp
   let translatorGenerator = uncurry $ genTranslatorFunction cfg repo gc info
   (_, transMap) <- foldM translatorGenerator (acyCache, emptyTrans)
                      translateTypes
@@ -261,10 +261,10 @@ genCurryCheckProgram cfg repo gc prodfuncs info groundequiv acyCache loadpath = 
                 (if groundequiv then limitFunctions else []))
                []
   let prodops = map snd (filter fst prodfuncs)
-  liftIOErrorLogger $ unless (null prodops) $ putStrLn $
+  liftIOEL $ unless (null prodops) $ putStrLn $
     "Productive operations (currently not fully supported for all types):\n" ++
     showFuncNames prodops ++ "\n"
-  liftIOErrorLogger $ writeFile (baseTmp </> "Compare.curry")
+  liftIOEL $ writeFile (baseTmp </> "Compare.curry")
             (progcmts ++ "\n" ++ showCProg prog ++ "\n")
   return ()
  where
@@ -879,7 +879,7 @@ terminationFilter pkgA dirA depsA True (acy, funcs, rm) = do
   ainfo <- analyzeModules "productivity" productivityAnalysis currypath mods
   -- compute functions which should be definitely compared (due to TERMINATE
   -- or PRODUCTIVE pragmas):
-  modscmts <- liftIOErrorLogger $ mapM (getCompare currypath) mods
+  modscmts <- liftIOEL $ mapM (getCompare currypath) mods
   let termfuns = concatMap (\md -> md ("TERMINATE"  `isInfixOf`)) modscmts
       prodfuns = concatMap (\md -> md ("PRODUCTIVE" `isInfixOf`)) modscmts
   debugMessage ("Functions marked with TERMINATE: " ++ showFuncNames termfuns)
@@ -916,7 +916,7 @@ analyzeModules ananame analysis currypath mods = do
   debugMessage ("Running " ++ ananame ++ " analysis on modules: " ++
              intercalate ", " mods)
   debugMessage ("CURRYPATH=" ++ joinSearchPath currypath)
-  anainfos <- liftIOErrorLogger $ mapM (analyzeModule analysis currypath) mods
+  anainfos <- liftIOEL $ mapM (analyzeModule analysis currypath) mods
   debugMessage "Analysis finished"
   return $ foldr combineProgInfo emptyProgInfo anainfos
 
@@ -1041,7 +1041,7 @@ filterFuncsDeep tpred dirA _ deps acy allFuncs =
 --- Filters out functions marked with the NOCOMPARE pragma.
 filterNoCompare :: String -> String -> [Package] -> ACYCache -> [CFuncDecl]
                 -> ErrorLogger (ACYCache, [CFuncDecl])
-filterNoCompare dirA dirB _ a fs = liftIOErrorLogger $ do
+filterNoCompare dirA dirB _ a fs = liftIOEL $ do
   allCommentsA <- mapM (readComments . modPath dirA) modules
   allCommentsB <- mapM (readComments . modPath dirB) modules
   let commentsA = funcsWithComments $ zip modules allCommentsA
@@ -1308,7 +1308,7 @@ preparePackageDirs :: Config
                    -> String
                    -> ErrorLogger ComparisonInfo
 preparePackageDirs cfg repo gc dirA dirB = do
-  baseTmp <- liftIOErrorLogger $ createBaseTemp
+  baseTmp <- liftIOEL $ createBaseTemp
   specA <- loadPackageSpec dirA
   specB <- loadPackageSpec dirB
   let versionPrefixA = versionPrefix specA
@@ -1363,8 +1363,8 @@ copyAndPrefixPackage :: Config
                      -> String
                      -> ErrorLogger [(String, String)]
 copyAndPrefixPackage cfg repo gc pkgDir prefix srcDir destDir = do
-  liftIOErrorLogger $ copyDirectory pkgDir srcDir
-  liftIOErrorLogger $ createDirectory destDir
+  liftIOEL $ copyDirectory pkgDir srcDir
+  liftIOEL $ createDirectory destDir
   prefixPackageAndDeps cfg repo gc srcDir (prefix ++ "_") destDir
 
 showVersion' :: Version -> String
@@ -1376,7 +1376,7 @@ showVersion' (maj, min, pat, Just pre) =
 --- Tries to find the package directory in the global package cache.
 findPackageDir :: Config -> Package -> ErrorLogger String
 findPackageDir cfg pkg = do
-  exists <- liftIOErrorLogger $ doesDirectoryExist srcDir
+  exists <- liftIOEL $ doesDirectoryExist srcDir
   if not exists
     then fail $ "Package " ++ (packageId pkg) ++ " not installed"
     else return srcDir

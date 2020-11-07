@@ -40,9 +40,9 @@ prefixPackageAndDeps :: Config -> Repository -> GC.GlobalCache -> String
                      -> String -> String -> ErrorLogger [(String, String)]
 prefixPackageAndDeps cfg repo gc dir prefix destDir = do
   deps <- resolveAndCopyDependencies cfg repo gc dir
-  depMods <- liftIOErrorLogger $ (mapM
+  depMods <- liftIOEL $ (mapM
                (findAllModulesInPackage . RuntimeCache.cacheDirectory dir) deps)
-  ownMods <- liftIOErrorLogger $ findAllModulesInPackage dir
+  ownMods <- liftIOEL $ findAllModulesInPackage dir
   let allMods = ownMods ++ concat depMods
   let modMap = zip (map fst allMods) (map ((prefix ++) . fst) allMods)
   mapM (copyMod dir deps destDir modMap) allMods
@@ -68,7 +68,7 @@ findAllModulesInPackage dir = findMods "" (dir </> "src")
 copyMod :: String -> [Package] -> String -> [(String, String)]
         -> (String, String) -> ErrorLogger ()
 copyMod origDir deps dest nameMap (name, _) = do
-  liftIOErrorLogger $ do
+  liftIOEL $ do
     dirExists <- doesDirectoryExist (takeDirectory destPath)
     if dirExists
       then return ()

@@ -106,10 +106,10 @@ packageInstalled cfg pkg =
 --- Copy a package version to a directory.
 copyPackage :: Config -> Package -> String -> ErrorLogger ()
 copyPackage cfg pkg dir = do
-  exists <- liftIOErrorLogger $ doesDirectoryExist srcDir
+  exists <- liftIOEL $ doesDirectoryExist srcDir
   if not exists
     then fail $ "Package '" ++ packageId pkg ++ "' not installed"
-    else liftIOErrorLogger (copyDirectory srcDir dir) >> return ()
+    else liftIOEL (copyDirectory srcDir dir) >> return ()
  where
   srcDir = installedPackageDir cfg pkg
 
@@ -118,7 +118,7 @@ copyPackage cfg pkg dir = do
 --- installs it to the global package cache.
 acquireAndInstallPackage :: Config -> Package -> ErrorLogger ()
 acquireAndInstallPackage cfg pkg = do
-  pkgDirExists <- liftIOErrorLogger $ doesDirectoryExist (installedPackageDir cfg pkg)
+  pkgDirExists <- liftIOEL $ doesDirectoryExist (installedPackageDir cfg pkg)
   if pkgDirExists
     then infoMessage $ "Package '" ++ packageId pkg ++
                        "' already installed, skipping"
@@ -128,7 +128,7 @@ acquireAndInstallPackage cfg pkg = do
   tryInstallFromURLs (url:urls) = do
     let stdurl = url ++ "/" ++ packageId pkg ++ ".tar.gz"
     infoMessage $ "Installing package from " ++ stdurl
-    err <- tryErrorLogger $ installPackageSourceTo pkg (Http stdurl) (packageInstallDir cfg)
+    err <- tryEL $ installPackageSourceTo pkg (Http stdurl) (packageInstallDir cfg)
     case err of
       Left  _ -> if null urls
                    then fail downloadError
@@ -153,7 +153,7 @@ acquireAndInstallPackageFromSource cfg reppkg =
 --- cache.
 installFromSource :: Config -> Package -> PackageSource -> ErrorLogger ()
 installFromSource cfg pkg pkgsource = do
-  pkgDirExists <- liftIOErrorLogger $ doesDirectoryExist pkgDir
+  pkgDirExists <- liftIOEL $ doesDirectoryExist pkgDir
   if pkgDirExists
     then
       infoMessage $ "Package '" ++ packageId pkg ++ "' already installed, skipping"
@@ -166,18 +166,18 @@ installFromSource cfg pkg pkgsource = do
 --- Installs a package from a ZIP file to the global package cache.
 installFromZip :: Config -> String -> ErrorLogger ()
 installFromZip cfg zip = do
-  t <- liftIOErrorLogger tempDir
-  liftIOErrorLogger $ recreateDirectory (t </> "installtmp")
-  absZip <- liftIOErrorLogger $ getAbsolutePath zip
+  t <- liftIOEL tempDir
+  liftIOEL $ recreateDirectory (t </> "installtmp")
+  absZip <- liftIOEL $ getAbsolutePath zip
   c <- inTempDirEL $ showExecCmd $ "unzip -qq -d installtmp " ++ quote absZip
   if c == 0
     then do
       pkgSpec <- loadPackageSpec (t </> "installtmp")
       debugMessage ("ZIP contains " ++ packageId pkgSpec)
-      liftIOErrorLogger cleanTempDir
+      liftIOEL cleanTempDir
       installFromSource cfg pkgSpec (FileSource zip)
     else do
-      liftIOErrorLogger cleanTempDir
+      liftIOEL cleanTempDir
       fail "failed to extract ZIP file"
 
 --- Installs a package's missing dependencies.
@@ -199,13 +199,13 @@ missingPackages gc = filter (not . isPackageInstalled gc)
 --- Checkout a package from the global package cache.
 checkoutPackage :: Config -> Package -> ErrorLogger ()
 checkoutPackage cfg pkg = do
-  sexists <- liftIOErrorLogger $ doesDirectoryExist pkgDir
-  texists <- liftIOErrorLogger $ doesDirectoryExist codir
+  sexists <- liftIOEL $ doesDirectoryExist pkgDir
+  texists <- liftIOEL $ doesDirectoryExist codir
   if texists
     then errorMessage $
            "Local package directory '" ++ codir ++ "' already exists."
     else if sexists
-           then do liftIOErrorLogger $ copyDirectory pkgDir codir
+           then do liftIOEL $ copyDirectory pkgDir codir
                    infoMessage logmsg
            else errorMessage $ "Package '" ++ pkgId ++ "' is not installed."
  where
@@ -220,7 +220,7 @@ uninstallPackage :: Config -> String -> Version -> ErrorLogger ()
 uninstallPackage cfg pkgname ver = do
   let pkgId  = pkgname ++ "-" ++ showVersion ver
       pkgDir = packageInstallDir cfg </> pkgId
-  exists <- liftIOErrorLogger $ doesDirectoryExist pkgDir
+  exists <- liftIOEL $ doesDirectoryExist pkgDir
   if exists
     then do showExecCmd ("rm -Rf " ++ quote pkgDir)
             infoMessage $ "Package '" ++ pkgId ++ "' uninstalled."
@@ -251,14 +251,14 @@ readInstalledPackagesFromDir :: Repository -> String
                              -> ErrorLogger (Either String GlobalCache)
 readInstalledPackagesFromDir repo path = do
   debugMessage $ "Reading global package cache from '" ++ path ++ "'..."
-  pkgPaths <- liftIOErrorLogger $ checkAndGetVisibleDirectoryContents path
+  pkgPaths <- liftIOEL $ checkAndGetVisibleDirectoryContents path
   specs <- mapM loadPackageSpecFromDir pkgPaths
   if null (lefts specs)
     then do debugMessage "Finished reading global package cache"
             return (Right $ GlobalCache (rights specs))
     else return (Left $ intercalate "; " (lefts specs))
  where
-  readPackageSpecIO = liftIOErrorLogger . fmap readPackageSpec
+  readPackageSpecIO = liftIOEL . fmap readPackageSpec
 
   loadPackageSpecFromDir pkgdir = case packageVersionFromFile pkgdir of
     Nothing -> readPackageSpecFromFile pkgdir

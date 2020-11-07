@@ -46,7 +46,7 @@ readRepository cfg large = do
       repo <- readRepositoryFrom (repositoryDir cfg)
       infoMessage $ "Writing " ++ (if large then "large" else "base") ++
                     " repository cache..."
-      liftIOErrorLogger $ writeRepositoryCache cfg large repo
+      liftIOEL $ writeRepositoryCache cfg large repo
       return repo
     Just repo -> return repo
 
@@ -90,7 +90,7 @@ writeRepositoryCache cfg large repo =
 readRepositoryCache :: Config -> Bool -> ErrorLogger (Maybe Repository)
 readRepositoryCache cfg large = do
   let cf = repositoryCache cfg large
-  excache <- liftIOErrorLogger $ doesFileExist cf
+  excache <- liftIOEL $ doesFileExist cf
   if excache
     then do debugMessage ("Reading repository cache from '" ++ cf ++ "'...")
             ((if large
@@ -125,10 +125,10 @@ readRepositoryCache cfg large = do
 readTermInCacheFile :: Config -> (String -> Package) -> String
                     -> ErrorLogger (Maybe Repository)
 readTermInCacheFile cfg trans cf = do
-  h <- liftIOErrorLogger $ openFile cf ReadMode
-  pv <- liftIOErrorLogger $ hGetLine h
+  h <- liftIOEL $ openFile cf ReadMode
+  pv <- liftIOEL $ hGetLine h
   if pv == repoCacheVersion
-    then liftIOErrorLogger (hGetContents h) >>= \t ->
+    then liftIOEL (hGetContents h) >>= \t ->
          return $!! Just (pkgsToRepository (map trans (lines  t)))
     else do infoMessage "Cleaning repository cache (wrong version)..."
             cleanRepositoryCache cfg

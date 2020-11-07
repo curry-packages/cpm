@@ -334,10 +334,10 @@ writePackageSpec pkg file = writeFile file $ ppJSON $ packageSpecToJSON pkg
 loadPackageSpec :: String -> ErrorLogger Package
 loadPackageSpec dir = do
   let packageFile = dir </> "package.json"
-  exfile <- liftIOErrorLogger $ doesFileExist packageFile
+  exfile <- liftIOEL $ doesFileExist packageFile
   if exfile
     then do debugMessage $ "Reading package specification '" ++ packageFile ++ "'..."
-            contents <- liftIOErrorLogger $ readCompleteFile packageFile
+            contents <- liftIOEL $ readCompleteFile packageFile
             case readPackageSpec contents of
                Left err -> fail err
                Right v  -> return v
