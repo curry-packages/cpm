@@ -23,11 +23,14 @@ import CPM.FileUtil
 import Debug.Profile -- for show run-time
 import Text.Pretty hiding (empty)
 
---- An error logger.
+-- A value or an error, along with logs.
+type ErrorLog a = ([LogEntry], Either LogEntry a)
+
+--- An error logging IO monad.
 newtype ErrorLogger a = ErrorLogger
   {
     runErrorLogger :: LogLevel -> Bool
-                   -> IO ((LogLevel, Bool), ([LogEntry], Either LogEntry a))
+                   -> IO ((LogLevel, Bool), ErrorLog a)
   }
 
 --- A log entry.
