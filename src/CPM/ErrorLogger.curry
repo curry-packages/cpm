@@ -10,7 +10,7 @@ module CPM.ErrorLogger
   , infoMessage, debugMessage, errorMessage, criticalMessage, showLogEntry, levelGte
   , putStrELM, putStrLnELM
   , fromErrorLogger
-  , showExecCmd, execQuietCmd, liftIOErrorLogger
+  , showExecCmd, execQuietCmd, liftIOErrorLogger, tryErrorLogger
   , inDirectoryEL, inTempDirEL
   ) where
 
@@ -97,7 +97,7 @@ showLogEntry minLevel (LogEntry lvl msg) = do
     else return ()
  where
   lvlText = case lvl of
-    Quiet    -> text "QUIET "  -- show not occur...
+    Quiet    -> text "QUIET "  -- should not occur...
     Info     -> text "INFO "
     Debug    -> green $ text "DEBUG "
     Critical -> red   $ text "CRITICAL "
@@ -200,6 +200,11 @@ setWithShowTime s = ErrorLogger $ \ l _ -> return ((l, s), ([], Right ()))
 liftIOErrorLogger :: IO a -> ErrorLogger a
 liftIOErrorLogger ma = ErrorLogger (\l s -> do a <- ma
                                                return ((l, s), ([], Right a)))
+
+--- Tries to execute an EL action and returns either an error that
+--- occurred or the value.
+tryErrorLogger :: ErrorLogger a -> ErrorLogger (Either LogEntry a)
+tryErrorLogger a = liftIOErrorLogger $ fmap (snd . snd) $ runErrorLogger a Quiet False
 
 --- Executes an EL action with the current directory set to a specific
 --- directory.
