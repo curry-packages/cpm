@@ -336,7 +336,7 @@ loadPackageSpec dir = do
   let packageFile = dir </> "package.json"
   exfile <- liftIOEL $ doesFileExist packageFile
   if exfile
-    then do debugMessage $ "Reading package specification '" ++ packageFile ++ "'..."
+    then do logDebug $ "Reading package specification '" ++ packageFile ++ "'..."
             contents <- liftIOEL $ readCompleteFile packageFile
             case readPackageSpec contents of
                Left err -> fail err

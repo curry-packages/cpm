@@ -106,7 +106,7 @@ compareModulesInDirs cfg repo gc dirA dirB onlyMods =
   resolveAndCopyDependencies cfg repo gc dirB >>= \depsB ->
   let cmpmods = nub (exportedModules pkgA ++ exportedModules pkgB) in
   if null cmpmods
-    then infoMessage "No exported modules to compare" >> return []
+    then logInfo "No exported modules to compare" >> return []
     else do diffs <- liftIOEL $ mapM (compareApiModule
                        pkgA dirA depsA pkgB dirB depsB) cmpmods
             let modsWithDiffs = zip cmpmods diffs

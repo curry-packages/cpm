@@ -7,7 +7,7 @@ module CPM.ErrorLogger
   , LogEntry
   , LogLevel (..), logLevelOf
   , log, getLogLevel, setLogLevel, getWithShowTime, setWithShowTime
-  , infoMessage, debugMessage, errorMessage, criticalMessage, showLogEntry, levelGte
+  , logInfo, logDebug, logError, logCritical, showLogEntry, levelGte
   , putStrELM, putStrLnELM
   , fromErrorLogger
   , showExecCmd, execQuietCmd, liftIOEL, tryEL
@@ -142,17 +142,17 @@ log lvl msg = ErrorLogger $ \l wst ->
  where
   showTime t = show (t `div` 1000) ++ "." ++ show ((t `mod` 1000) `div` 10)
 
-infoMessage :: String -> ErrorLogger ()
-infoMessage msg = log Info msg
+logInfo :: String -> ErrorLogger ()
+logInfo = log Info
 
-debugMessage :: String -> ErrorLogger ()
-debugMessage msg = log Debug msg
+logDebug :: String -> ErrorLogger ()
+logDebug = log Debug
 
-errorMessage :: String -> ErrorLogger ()
-errorMessage msg = log Error msg
+logError :: String -> ErrorLogger ()
+logError = log Error
 
-criticalMessage :: String -> ErrorLogger ()
-criticalMessage msg = log Critical msg
+logCritical :: String -> ErrorLogger ()
+logCritical = log Critical
 
 --- Prints a string in the `ErrorLogger` monad.
 putStrELM :: String -> ErrorLogger ()
@@ -175,13 +175,13 @@ fromErrorLogger l s a = do
 
 --- Executes a system command and show the command as debug message.
 showExecCmd :: String -> ErrorLogger Int
-showExecCmd cmd = debugMessage ("Executing: " ++ cmd) >>
+showExecCmd cmd = logDebug ("Executing: " ++ cmd) >>
   liftIOEL (system cmd)
 
 --- Executes a parameterized system command.
 --- The parameter is set to `-q` unless the LogLevel is Debug.
 execQuietCmd :: (String -> String) -> ErrorLogger Int
-execQuietCmd cmd = debugMessage ("Executing: " ++ cmd "") >>
+execQuietCmd cmd = logDebug ("Executing: " ++ cmd "") >>
   ErrorLogger (\l s -> do i <- system $ cmd (if l == Debug then "" else "-q")
                           return ((l, s), ([], Right i)))
 

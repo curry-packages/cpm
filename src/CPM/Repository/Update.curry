@@ -43,10 +43,10 @@ updateRepository :: Config -> Bool -> Bool -> Bool -> Bool -> ErrorLogger ()
 updateRepository cfg cleancache download usecache writecsv = do
   cleanRepositoryCache cfg
   when cleancache $ do
-    debugMessage $ "Deleting global package cache: '" ++
+    logDebug $ "Deleting global package cache: '" ++
                    packageInstallDir cfg ++ "'"
     liftIOEL $ removeDirectoryComplete $ packageInstallDir cfg
-  debugMessage $ "Recreating package index: '" ++ repositoryDir cfg ++ "'"
+  logDebug $ "Recreating package index: '" ++ repositoryDir cfg ++ "'"
   if download
     then do
       liftIOEL $ recreateDirectory $ repositoryDir cfg
@@ -78,13 +78,13 @@ updateRepository cfg cleancache download usecache writecsv = do
          liftIOEL $ removeFile tarfile
          return (c1+c2)
     | otherwise
-    = do errorMessage $ "Unknown kind of package index URL: " ++ piurl
+    = do logError $ "Unknown kind of package index URL: " ++ piurl
          return 1
 
   finishUpdate = do
     liftIOEL $ setLastUpdate cfg
     cleanRepositoryCache cfg
-    infoMessage "Successfully downloaded repository index"
+    logInfo "Successfully downloaded repository index"
     tryInstallRepositoryDB cfg usecache writecsv
 
 --- Sets the date of the last update by touching README.md.
@@ -103,9 +103,9 @@ addPackageToRepository cfg pkgdir force cpdir = do
   if dirExists
     then do pkgSpec <- loadPackageSpec pkgdir
             copyPackage pkgSpec
-            infoMessage $ "Package in directory '" ++ pkgdir ++
+            logInfo $ "Package in directory '" ++ pkgdir ++
                           "' installed into local repository"
-    else criticalMessage $ "Directory '" ++ pkgdir ++ "' does not exist."
+    else logCritical $ "Directory '" ++ pkgdir ++ "' does not exist."
  where
   copyPackage pkg = do
     let pkgIndexDir      = name pkg </> showVersion (version pkg)
@@ -120,7 +120,7 @@ addPackageToRepository cfg pkgdir force cpdir = do
       if force then liftIOEL $ removeDirectoryComplete pkgInstallDir
                else error $ "Package installation directory '" ++
                             pkgInstallDir ++ "' already exists!\n"
-    infoMessage $ "Create directory: " ++ pkgRepositoryDir
+    logInfo $ "Create directory: " ++ pkgRepositoryDir
     liftIOEL $ do
       createDirectoryIfMissing True pkgRepositoryDir
       copyFile (pkgdir </> "package.json")

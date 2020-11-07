@@ -44,7 +44,7 @@ readRepository cfg large = do
   case mbrepo of
     Nothing -> do
       repo <- readRepositoryFrom (repositoryDir cfg)
-      infoMessage $ "Writing " ++ (if large then "large" else "base") ++
+      logInfo $ "Writing " ++ (if large then "large" else "base") ++
                     " repository cache..."
       liftIOEL $ writeRepositoryCache cfg large repo
       return repo
@@ -92,14 +92,14 @@ readRepositoryCache cfg large = do
   let cf = repositoryCache cfg large
   excache <- liftIOEL $ doesFileExist cf
   if excache
-    then do debugMessage ("Reading repository cache from '" ++ cf ++ "'...")
+    then do logDebug ("Reading repository cache from '" ++ cf ++ "'...")
             ((if large
                   then readTermInCacheFile cfg (largetuple2package . uread) cf
                   else readTermInCacheFile cfg (smalltuple2package . uread) cf)
                   >>= \repo ->
-                debugMessage "Finished reading repository cache" >> return repo)
+                logDebug "Finished reading repository cache" >> return repo)
               <|>
-               (do infoMessage "Cleaning broken repository cache..."
+               (do logInfo "Cleaning broken repository cache..."
                    cleanRepositoryCache cfg
                    return Nothing )
     else return Nothing
@@ -130,7 +130,7 @@ readTermInCacheFile cfg trans cf = do
   if pv == repoCacheVersion
     then liftIOEL (hGetContents h) >>= \t ->
          return $!! Just (pkgsToRepository (map trans (lines  t)))
-    else do infoMessage "Cleaning repository cache (wrong version)..."
+    else do logInfo "Cleaning repository cache (wrong version)..."
             cleanRepositoryCache cfg
             return Nothing
 

@@ -48,8 +48,8 @@ installPackageSourceTo pkg (Git url rev) installdir = do
       Just (Ref ref)    -> checkoutGitRef pkgDir ref
       Just VersionAsTag ->
         let tag = "v" ++ (showVersion $ version pkg)
-        in checkoutGitRef pkgDir tag >>
-           infoMessage ("Package '" ++ packageId pkg ++ "' installed")
+        in do checkoutGitRef pkgDir tag
+              logInfo $ "Package '" ++ packageId pkg ++ "' installed"
     else liftIOEL (removeDirectoryComplete pkgDir) >>
          fail ("Failed to clone repository from '" ++ url ++
                  "', return code " ++ show c)
@@ -99,7 +99,7 @@ installPkgFromFile pkg pkgfile pkgDir rmfile = do
   when rmfile (showExecCmd ("rm -f " ++ absfile) >> return ())
   liftIOEL cleanTempDir
   if c == 0
-    then infoMessage $ "Installed " ++ packageId pkg
+    then logInfo $ "Installed " ++ packageId pkg
     else do liftIOEL $ removeDirectoryComplete pkgDir
             fail ("Failed to unzip package, return code " ++ show c)
 
@@ -296,7 +296,7 @@ getLocalPackageSpec cfg dir = do
                       , dependencies    = []
                       }
       liftIOEL $ writePackageSpec newpkg homepkgspec
-      infoMessage $ "New empty package specification '" ++ homepkgspec ++
+      logInfo $ "New empty package specification '" ++ homepkgspec ++
                     "' generated"
     return homepkgdir
 
@@ -305,7 +305,7 @@ getLocalPackageSpec cfg dir = do
     if existsLocal
       then return (Just sdir)
       else do
-        debugMessage ("No package.json in " ++ show sdir ++ ", trying " ++
+        logDebug ("No package.json in " ++ show sdir ++ ", trying " ++
                       show (sdir </> ".."))
         parentExists <- liftIOEL $ doesDirectoryExist $ sdir </> ".."
         if m>0 && parentExists

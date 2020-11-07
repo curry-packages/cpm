@@ -41,9 +41,9 @@ runQuery :: Config -> DBAction a -> ErrorLogger a
 runQuery cfg dbact = do
   warnIfRepositoryOld cfg
   let dbfile = repositoryCacheDB cfg
-  debugMessage $ "Reading repository database '" ++ dbfile ++ "'..."
+  logDebug $ "Reading repository database '" ++ dbfile ++ "'..."
   result <- liftIOEL $ runQueryOnDB dbfile dbact
-  debugMessage $ "Finished reading repository database"
+  logDebug $ "Finished reading repository database"
   return result
 
 --- Returns the packages of the repository containing a given string
@@ -204,9 +204,9 @@ getRepoForPackages cfg pkgnames = do
   if dbexists
     then do warnIfRepositoryOld cfg
             let dbfile = repositoryCacheDB cfg
-            debugMessage $ "Reading repository database '" ++ dbfile ++ "'..."
+            logDebug $ "Reading repository database '" ++ dbfile ++ "'..."
             repo <- queryPackagesFromDB pkgnames [] []
-            debugMessage $ "Finished reading repository database"
+            logDebug $ "Finished reading repository database"
             return repo
     else readRepository cfg False
  where
@@ -214,7 +214,7 @@ getRepoForPackages cfg pkgnames = do
   queryPackagesFromDB (pn:pns) lpns pkgs
    | pn `elem` lpns = queryPackagesFromDB pns lpns pkgs
    | otherwise      = do
-     debugMessage $ "Reading package versions of " ++ pn
+     logDebug $ "Reading package versions of " ++ pn
      pnpkgs <- liftIOEL $ queryPackage pn
      let newdeps = concatMap dependencyNames pnpkgs
      queryPackagesFromDB (newdeps++pns) (pn:lpns) (pnpkgs++pkgs)

@@ -173,8 +173,8 @@ setCompilerVersion cfg0 = do
                 cvers = strip svers
                 bvers = strip sbver
                 (majs:mins:revs:_) = split (=='.') cvers
-            debugMessage $ unwords ["Compiler version:",cname,cvers]
-            debugMessage $ "Base lib version: " ++ bvers
+            logDebug $ unwords ["Compiler version:",cname,cvers]
+            logDebug $ "Base lib version: " ++ bvers
             return cfg { compilerVersion = (cname, read majs,
                                             read mins, read revs)
                        , compilerBaseVersion = bvers
@@ -183,14 +183,14 @@ setCompilerVersion cfg0 = do
                                                  else initbase }
  where
   getCompilerVersion currybin = do
-    debugMessage $ "Getting version information from " ++ currybin
+    logDebug $ "Getting version information from " ++ currybin
     (r,s,e) <-  liftIOEL $ evalCmd currybin
                  ["--compiler-name","--numeric-version","--base-version"] ""
     if r>0
       then error $ "Cannot determine compiler version:\n" ++ e
       else case lines s of
         [sname,svers,sbver] -> return (sname,svers,sbver)
-        _ -> do debugMessage $ "Query version information again..."
+        _ -> do logDebug $ "Query version information again..."
                 (c1,sname,e1) <- liftIOEL $ evalCmd currybin ["--compiler-name"] ""
                 (c2,svers,e2) <- liftIOEL $ evalCmd currybin ["--numeric-version"] ""
                 (c3,sbver,e3) <- liftIOEL $ evalCmd currybin ["--base-version"] ""

@@ -145,9 +145,9 @@ warnIfRepositoryOld cfg = do
         -- we assume that clock time is measured in seconds
         let timediff = clockTimeToInt ctime - clockTimeToInt utime
             days = timediff `div` (60*60*24)
-        infoMessage $ "Warning: your repository index is older than " ++
+        logInfo $ "Warning: your repository index is older than " ++
                       show days ++ " days.\n" ++ useUpdateHelp
-    else infoMessage $ "Warning: your repository index is not up-to-date.\n" ++
+    else logInfo $ "Warning: your repository index is not up-to-date.\n" ++
                        useUpdateHelp
 
 useUpdateHelp :: String
@@ -163,8 +163,8 @@ readRepositoryFrom path = do
   (repo, repoErrors) <- tryReadRepositoryFrom path
   if null repoErrors
     then return repo
-    else do errorMessage "Problems while reading the package index:"
-            mapM_ errorMessage repoErrors
+    else do logError "Problems while reading the package index:"
+            mapM_ logError repoErrors
             liftIOEL $ exitWith 1
 
 --- Reads all package specifications from a repository.
@@ -173,16 +173,16 @@ readRepositoryFrom path = do
 --- @return repository and possible repository reading errors
 tryReadRepositoryFrom :: String -> ErrorLogger (Repository, [String])
 tryReadRepositoryFrom path = do
-  debugMessage $ "Reading repository index from '" ++ path ++ "'..."
+  logDebug $ "Reading repository index from '" ++ path ++ "'..."
   repos     <- liftIOEL $ checkAndGetVisibleDirectoryContents path
   pkgPaths  <- liftIOEL $ mapM getDir (map (path </>) repos) >>= return . concat
   verDirs   <- liftIOEL $ mapM checkAndGetVisibleDirectoryContents pkgPaths
   verPaths  <- return $ concatMap (\ (d, p) -> map (d </>) p)
                      $ zip pkgPaths verDirs
   specPaths <- return $ map (</> "package.json") verPaths
-  infoMessage "Reading repository index..."
+  logInfo "Reading repository index..."
   specs     <- liftIOEL $ mapM readPackageFile specPaths
-  when (null (lefts specs)) $ debugMessage "Finished reading repository"
+  when (null (lefts specs)) $ logDebug "Finished reading repository"
   return $ (Repository $ rights specs, lefts specs)
  where
   readPackageFile f = do
@@ -203,7 +203,7 @@ repositoryCacheFilePrefix cfg = repositoryDir cfg </> "REPOSITORY_CACHE"
 --- Cleans the repository cache.
 cleanRepositoryCache :: Config -> ErrorLogger ()
 cleanRepositoryCache cfg = do
-  debugMessage $ "Cleaning repository cache '" ++
+  logDebug $ "Cleaning repository cache '" ++
                  repositoryCacheFilePrefix cfg ++ "*'"
   liftIOEL $ system $
     "/bin/rm -f " ++ quote (repositoryCacheFilePrefix cfg) ++ "*"

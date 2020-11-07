@@ -45,7 +45,7 @@ tryInstallRepositoryDB cfg usecache writecsv = do
   withsqlite <- liftIOEL $ fileInPath "sqlite3"
   if withsqlite
     then installRepositoryDB cfg usecache writecsv
-    else infoMessage
+    else logInfo
       "Command 'sqlite3' not found: install package 'sqlite3' to speed up CPM"
 
 --- Writes the repository database with the current repository index.
@@ -102,17 +102,17 @@ writeRepositoryDB cfg usecache writecsv = do
   csvexists <- liftIOEL $ doesFileExist csvfile
   pkgentries <- if c == 0 && csvexists
                   then do
-                    debugMessage $ "Reading CSV file '" ++ csvfile ++ "'..."
+                    logDebug $ "Reading CSV file '" ++ csvfile ++ "'..."
                     (liftIOEL $ readCSVFile csvfile) >>= return . map Right
                   else do
-                    when usecache $ debugMessage $
+                    when usecache $ logDebug $
                       "Fetching repository cache CSV file failed"
                     repo <- readRepositoryFrom (repositoryDir cfg)
                     return $ map Left $ allPackages repo
   liftIOEL $ putStr "Writing repository cache DB"
   addPackagesToRepositoryDB cfg False pkgentries
   liftIOEL $ putChar '\n'
-  infoMessage "Repository cache DB written"
+  logInfo "Repository cache DB written"
   liftIOEL $ cleanTempDir
   if writecsv then saveDBAsCSV cfg 
               else return ()
@@ -128,7 +128,7 @@ addPackagesToRepositoryDB cfg quiet pkgs =
   runDBAction act = do
     result <- liftIOEL $ runWithDB (repositoryCacheDB cfg) act
     case result of
-      Left (DBError kind str) -> criticalMessage $ "Repository DB failure: " ++
+      Left (DBError kind str) -> logCritical $ "Repository DB failure: " ++
                                                    show kind ++ " " ++ str
       Right _ -> liftIOEL $ do
         unless quiet $ putChar '.'
@@ -156,11 +156,11 @@ saveDBAsCSV cfg = do
   result <- liftIOEL $ runWithDB (repositoryCacheDB cfg)
                                           (getAllEntries indexEntry_CDBI_Description)
   case result of
-    Left (DBError kind str) -> criticalMessage $ "Repository DB failure: " ++
+    Left (DBError kind str) -> logCritical $ "Repository DB failure: " ++
                                                  show kind ++ " " ++ str
     Right es -> do let csvfile = repositoryCacheCSV cfg
                    liftIOEL $ writeCSVFile csvfile $ map showIndexEntry es
-                   infoMessage ("CSV file '" ++ csvfile ++ "' written!")
+                   logInfo ("CSV file '" ++ csvfile ++ "' written!")
  where
   showIndexEntry (IndexEntry _ pn pv deps cc syn cat dirs mods exe) =
     [pn,pv,deps,cc,syn,cat,dirs,mods,exe]

@@ -120,4 +120,4 @@ writePackageConfig cfg pkgdir pkg loadpath =
             , "packageExecutable :: String"
             , "packageExecutable = \"" ++ binInstallDir cfg </> binname ++ "\""
             ]
-    debugMessage $ "Config module '" ++ configfile ++ "' written."
+    logDebug $ "Config module '" ++ configfile ++ "' written."

@@ -120,14 +120,14 @@ acquireAndInstallPackage :: Config -> Package -> ErrorLogger ()
 acquireAndInstallPackage cfg pkg = do
   pkgDirExists <- liftIOEL $ doesDirectoryExist (installedPackageDir cfg pkg)
   if pkgDirExists
-    then infoMessage $ "Package '" ++ packageId pkg ++
+    then logInfo $ "Package '" ++ packageId pkg ++
                        "' already installed, skipping"
     else tryInstallFromURLs (packageTarFilesURLs cfg)
  where
   tryInstallFromURLs []         = fail "No URLs for installations"
   tryInstallFromURLs (url:urls) = do
     let stdurl = url ++ "/" ++ packageId pkg ++ ".tar.gz"
-    infoMessage $ "Installing package from " ++ stdurl
+    logInfo $ "Installing package from " ++ stdurl
     err <- tryEL $ installPackageSourceTo pkg (Http stdurl) (packageInstallDir cfg)
     case err of
       Left  _ -> if null urls
@@ -145,7 +145,7 @@ acquireAndInstallPackageFromSource cfg reppkg =
   readPackageFromRepository cfg reppkg >>= \pkg ->
   case source pkg of
     Nothing -> fail $ "No source specified for " ++ packageId pkg
-    Just  s -> infoMessage ("Installing package '" ++ packageId pkg ++ "'...") >> 
+    Just  s -> logInfo ("Installing package '" ++ packageId pkg ++ "'...") >> 
                installFromSource cfg pkg s
 
 ------------------------------------------------------------------------------
@@ -156,9 +156,9 @@ installFromSource cfg pkg pkgsource = do
   pkgDirExists <- liftIOEL $ doesDirectoryExist pkgDir
   if pkgDirExists
     then
-      infoMessage $ "Package '" ++ packageId pkg ++ "' already installed, skipping"
+      logInfo $ "Package '" ++ packageId pkg ++ "' already installed, skipping"
     else
-      infoMessage ("Installing package from " ++ showSourceOfPackage pkg) >> 
+      logInfo ("Installing package from " ++ showSourceOfPackage pkg) >> 
       installPackageSourceTo pkg pkgsource (packageInstallDir cfg)
  where
   pkgDir = installedPackageDir cfg pkg
@@ -173,7 +173,7 @@ installFromZip cfg zip = do
   if c == 0
     then do
       pkgSpec <- loadPackageSpec (t </> "installtmp")
-      debugMessage ("ZIP contains " ++ packageId pkgSpec)
+      logDebug ("ZIP contains " ++ packageId pkgSpec)
       liftIOEL cleanTempDir
       installFromSource cfg pkgSpec (FileSource zip)
     else do
@@ -184,7 +184,7 @@ installFromZip cfg zip = do
 installMissingDependencies :: Config -> GlobalCache -> [Package] 
                            -> ErrorLogger ()
 installMissingDependencies cfg gc deps = when (length missing > 0) $ do
-  infoMessage logmsg
+  logInfo logmsg
   mapM_ (acquireAndInstallPackage cfg) missing
  where
    missing = filter (not . isPackageInstalled gc) deps
@@ -202,12 +202,12 @@ checkoutPackage cfg pkg = do
   sexists <- liftIOEL $ doesDirectoryExist pkgDir
   texists <- liftIOEL $ doesDirectoryExist codir
   if texists
-    then errorMessage $
+    then logError $
            "Local package directory '" ++ codir ++ "' already exists."
     else if sexists
            then do liftIOEL $ copyDirectory pkgDir codir
-                   infoMessage logmsg
-           else errorMessage $ "Package '" ++ pkgId ++ "' is not installed."
+                   logInfo logmsg
+           else logError $ "Package '" ++ pkgId ++ "' is not installed."
  where
   pkgId  = packageId pkg
   pkgDir = installedPackageDir cfg pkg
@@ -223,8 +223,8 @@ uninstallPackage cfg pkgname ver = do
   exists <- liftIOEL $ doesDirectoryExist pkgDir
   if exists
     then do showExecCmd ("rm -Rf " ++ quote pkgDir)
-            infoMessage $ "Package '" ++ pkgId ++ "' uninstalled."
-    else infoMessage $ "Package '" ++ pkgId ++ "' is not installed."
+            logInfo $ "Package '" ++ pkgId ++ "' uninstalled."
+    else logInfo $ "Package '" ++ pkgId ++ "' is not installed."
 
 --- Tries to find a package in the global package cache.
 tryFindPackage :: GlobalCache -> String -> Version -> ErrorLogger Package
@@ -250,11 +250,11 @@ readGlobalCache config repo = do
 readInstalledPackagesFromDir :: Repository -> String
                              -> ErrorLogger (Either String GlobalCache)
 readInstalledPackagesFromDir repo path = do
-  debugMessage $ "Reading global package cache from '" ++ path ++ "'..."
+  logDebug $ "Reading global package cache from '" ++ path ++ "'..."
   pkgPaths <- liftIOEL $ checkAndGetVisibleDirectoryContents path
   specs <- mapM loadPackageSpecFromDir pkgPaths
   if null (lefts specs)
-    then do debugMessage "Finished reading global package cache"
+    then do logDebug "Finished reading global package cache"
             return (Right $ GlobalCache (rights specs))
     else return (Left $ intercalate "; " (lefts specs))
  where
@@ -268,7 +268,7 @@ readInstalledPackagesFromDir repo path = do
 
   readPackageSpecFromFile pkgdir = do
     let f = path </> pkgdir </> "package.json"
-    debugMessage $ "Reading package spec from '" ++ f ++ "'..."
+    logDebug $ "Reading package spec from '" ++ f ++ "'..."
     spec <- readPackageSpecIO $ readCompleteFile f
     return $ case spec of
       Left err -> Left $ err ++ " for file '" ++ f ++ "'"

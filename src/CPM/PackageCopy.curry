@@ -49,7 +49,7 @@ lookupSetForPackageCopy cfg _ repo gc dir = do
   return lsLC
  where
   allRepoPackages = allPackages repo
-  logSymlinkedPackage p = log Debug $ "Using symlinked version of '" ++
+  logSymlinkedPackage p = logDebug $ "Using symlinked version of '" ++
                                       packageId p ++ "' from local cache."
   lsRepo = addPackagesWOBase cfg LS.emptySet allRepoPackages LS.FromRepository
   -- Find all packages that are in the global cache, but not in the repo
@@ -117,7 +117,7 @@ upgradeSinglePackage cfg dir pkgName = do
   result <- resolveDependenciesFromLookupSet cfg (setBaseDependency cfg pkgspec)
                         (LS.setLocallyIgnored originalLS transitiveDeps)
   GC.installMissingDependencies cfg gc (resolvedPackages result)
-  infoMessage (showDependencies result)
+  logInfo (showDependencies result)
   copyDependencies cfg pkgspec (resolvedPackages result) dir
   return ()
 
@@ -136,7 +136,7 @@ installLocalDependenciesWithRepo cfg repo dir pkgSpec = do
   gc <- GC.readGlobalCache cfg repo
   result <- resolveDependenciesForPackageCopy cfg pkgSpec repo gc dir
   GC.installMissingDependencies cfg gc (resolvedPackages result)
-  infoMessage (showDependencies result)
+  logInfo (showDependencies result)
   cpkgs <- copyDependencies cfg pkgSpec (resolvedPackages result) dir
   return (pkgSpec, cpkgs)
 
@@ -148,14 +148,14 @@ linkToLocalCache cfg src pkgDir = do
     then do
       pkgSpec <- loadPackageSpec src
       mbp <- getPackageVersion cfg (name pkgSpec) (version pkgSpec)
-      maybe (criticalMessage $
+      maybe (logCritical $
                "Package '" ++ packageId pkgSpec ++ "' not in repository!\n" ++
                "Note: you can only link copies of existing packages.")
             (\_ -> do LocalCache.createLink pkgDir src
                                 (packageId pkgSpec) True
                       return ())
             mbp
-    else criticalMessage $ "Directory '" ++ src ++ "' does not exist."
+    else logCritical $ "Directory '" ++ src ++ "' does not exist."
 
 --- Resolves the dependencies for a package copy and fills the package caches.
 resolveAndCopyDependencies :: Config -> Repository -> GC.GlobalCache -> String 
@@ -190,7 +190,7 @@ resolveAndCopyDependenciesForPackage' cfg repo gc dir pkgSpec = do
 resolveDependencies :: Config -> String -> ErrorLogger ResolutionResult
 resolveDependencies cfg dir = do
   pkgSpec <- loadPackageSpec dir
-  infoMessage $ "Read package spec from " ++ dir
+  logInfo $ "Read package spec from " ++ dir
   repo <- getRepoForPackageSpec cfg pkgSpec
   gc <- GC.readGlobalCache cfg repo
   resolveDependenciesForPackageCopy cfg pkgSpec repo gc dir

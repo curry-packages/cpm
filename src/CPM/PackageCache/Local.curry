@@ -51,7 +51,7 @@ allPackages pkgDir = do
   cacheExists <- liftIOEL $ doesDirectoryExist cdir
   if cacheExists
     then do
-      debugMessage $ "Reading local package cache from '" ++ cdir ++ "'..."
+      logDebug $ "Reading local package cache from '" ++ cdir ++ "'..."
       cdircont <- liftIOEL $ getDirectoryContents cdir
       let pkgDirs = filter (not . isPrefixOf ".") cdircont
       pkgPaths <- liftIOEL $ mapM removeIfIllegalSymLink $ map (cdir </>) pkgDirs

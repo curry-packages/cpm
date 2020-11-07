@@ -178,7 +178,7 @@ diffBehavior cfg repo gc info groundequiv useanalysis cmods = do
               (\mods -> filter ((`elem` mods) . fst . funcName . snd) funcs)
               cmods
       filteredNames = map snd filteredFuncs
-  debugMessage ("Filtered operations to be checked: " ++
+  logDebug ("Filtered operations to be checked: " ++
                   showFuncNames filteredNames)
   case funcs of
     [] -> liftIOEL (printRemoved removed >> return ())
@@ -221,14 +221,14 @@ callCurryCheck cfg info baseTmp = do
   let currybin  = curryExec cfg
   let currypath = infDirA info ++ ":" ++ infDirB info
   liftIOEL $ setEnv "CURRYPATH" currypath
-  debugMessage ("Run `curry check Compare' in `" ++ baseTmp ++ "' with")
-  debugMessage ("CURRYPATH=" ++ currypath) >> return ()
+  logDebug $ "Run `curry check Compare' in `" ++ baseTmp ++ "' with"
+  logDebug $ "CURRYPATH=" ++ currypath
   ecode <- inDirectoryEL baseTmp $ showExecCmd (currybin ++ " check Compare")
   liftIOEL $ setEnv "CURRYPATH" oldPath
-  debugMessage "CurryCheck finished" >> return ()
+  logDebug "CurryCheck finished"
   if ecode==0
     then return ()
-    else log Error "CurryCheck detected behavior error!"
+    else logError "CurryCheck detected behavior error!"
 
 --- Generates a program containing CurryCheck tests that will compare the
 --- behavior of the given functions. The program will be written to the
@@ -842,13 +842,13 @@ findFunctionsToCompare cfg repo gc dirA dirB useanalysis onlymods = do
   let cmods = intersect (exportedModules pkgA) (exportedModules pkgB)
   let mods = maybe cmods (intersect cmods) onlymods
   if null mods
-   then infoMessage "No exported modules to compare" >>
+   then logInfo "No exported modules to compare" >>
         return (emptyACYCache,[],[],[])
    else do
-    infoMessage ("Comparing modules: "++ intercalate " " mods)
+    logInfo ("Comparing modules: "++ intercalate " " mods)
     diffs <- APIDiff.compareModulesInDirs cfg repo gc dirA dirB (Just mods)
     (acy, allFuncs) <- findAllFunctions dirA dirB pkgA depsA emptyACYCache mods
-    debugMessage ("All public functions: " ++ showFuncNames allFuncs)
+    logDebug ("All public functions: " ++ showFuncNames allFuncs)
     let areDiffThenFilter        = thenFilter allFuncs Diffing
     let areHighArityThenFilter   = thenFilter allFuncs HighArity
     let areIOActionThenFilter    = thenFilter allFuncs IOAction
@@ -882,9 +882,9 @@ terminationFilter pkgA dirA depsA True (acy, funcs, rm) = do
   modscmts <- liftIOEL $ mapM (getCompare currypath) mods
   let termfuns = concatMap (\md -> md ("TERMINATE"  `isInfixOf`)) modscmts
       prodfuns = concatMap (\md -> md ("PRODUCTIVE" `isInfixOf`)) modscmts
-  debugMessage ("Functions marked with TERMINATE: " ++ showFuncNames termfuns)
+  logDebug ("Functions marked with TERMINATE: " ++ showFuncNames termfuns)
     >> return ()
-  debugMessage ("Functions marked with PRODUCTIVE: " ++ showFuncNames prodfuns)
+  logDebug ("Functions marked with PRODUCTIVE: " ++ showFuncNames prodfuns)
     >> return ()
   let infoOf f = fromMaybe Looping (lookupProgInfo (funcName f) ainfo)
       ntfuncs  = filter (\f -> infoOf f == Looping  &&
@@ -913,11 +913,11 @@ analyzeModules :: (Read a, Show a)
                => String -> Analysis a -> [String] -> [String]
                -> ErrorLogger (ProgInfo a)
 analyzeModules ananame analysis currypath mods = do
-  debugMessage ("Running " ++ ananame ++ " analysis on modules: " ++
+  logDebug ("Running " ++ ananame ++ " analysis on modules: " ++
              intercalate ", " mods)
-  debugMessage ("CURRYPATH=" ++ joinSearchPath currypath)
+  logDebug ("CURRYPATH=" ++ joinSearchPath currypath)
   anainfos <- liftIOEL $ mapM (analyzeModule analysis currypath) mods
-  debugMessage "Analysis finished"
+  logDebug "Analysis finished"
   return $ foldr combineProgInfo emptyProgInfo anainfos
 
 -- Analyze a module with some static program analysis in a given
@@ -1224,8 +1224,8 @@ readCached dir deps acyCache mod = case findModuleDir dir mod acyCache of
 findAllFunctions :: String -> String -> Package -> [Package] -> ACYCache
                  -> [String] -> ErrorLogger (ACYCache, [CFuncDecl])
 findAllFunctions dirA dirB _ deps acyCache mods =
-  debugMessage ("Finding public functions of modules: " ++ intercalate "," mods) >>
-  debugMessage ("in package directories " ++ dirA ++ " and " ++ dirB) >>
+  logDebug ("Finding public functions of modules: " ++ intercalate "," mods) >>
+  logDebug ("in package directories " ++ dirA ++ " and " ++ dirB) >>
   foldM findForMod (acyCache, []) mods >>=
   \(a, fs) -> return (a, nub fs)
  where
@@ -1317,12 +1317,12 @@ preparePackageDirs cfg repo gc dirA dirB = do
   let copyDirB       = baseTmp </> ("src_" ++ versionPrefixB)
   let destDirA       = baseTmp </> ("dest_" ++ versionPrefixA)
   let destDirB       = baseTmp </> ("dest_" ++ versionPrefixB)
-  debugMessage ("Copying " ++ packageId specA ++
+  logDebug ("Copying " ++ packageId specA ++
              " from " ++ dirA ++ " into " ++ copyDirA)
-  debugMessage ("and transforming it into " ++ destDirA)
-  debugMessage ("Copying " ++ packageId specB ++
+  logDebug ("and transforming it into " ++ destDirA)
+  logDebug ("Copying " ++ packageId specB ++
              " from " ++ dirB ++ " into " ++ copyDirB)
-  debugMessage ("and transforming it into " ++ destDirB)
+  logDebug ("and transforming it into " ++ destDirB)
   modMapA <- copyAndPrefixPackage cfg repo gc dirA versionPrefixA
                                         copyDirA destDirA
   modMapB <- copyAndPrefixPackage cfg repo gc dirB versionPrefixB
