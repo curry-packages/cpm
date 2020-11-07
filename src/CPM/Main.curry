@@ -5,29 +5,31 @@
 module CPM.Main ( main )
  where
 
-import Char         ( toLower )
-import Directory    ( doesFileExist, getAbsolutePath, doesDirectoryExist
-                    , copyFile, createDirectory, createDirectoryIfMissing
-                    , getCurrentDirectory, getDirectoryContents
-                    , getModificationTime
-                    , renameFile, removeFile, setCurrentDirectory )
-import Distribution ( installDir )
-import Either
-import FilePath     ( (</>), splitSearchPath, replaceExtension, takeExtension
-                    , pathSeparator, isPathSeparator )
-import IO           ( hFlush, stdout )
-import IOExts       ( evalCmd, readCompleteFile )
-import List         ( groupBy, intercalate, isPrefixOf, isSuffixOf, nub, split
-                    , splitOn )
-import Sort         ( sortBy )
-import System       ( getArgs, getEnviron, getPID, setEnviron, unsetEnviron
-                    , exitWith, system )
-import Time         ( calendarTimeToString, getLocalTime )
+import Data.Char           ( toLower )
+import Data.List           ( groupBy, intercalate, isPrefixOf, isSuffixOf
+                           , nub, split, sortBy, splitOn )
+import Data.Either
+import Data.Time           ( calendarTimeToString, getLocalTime )
+import System.Directory    ( doesFileExist, getAbsolutePath, doesDirectoryExist
+                           , copyFile, createDirectory, createDirectoryIfMissing
+                           , getCurrentDirectory, getDirectoryContents
+                           , getModificationTime
+                           , getFileWithSuffix
+                           , renameFile, removeFile, setCurrentDirectory )
+import System.FilePath     ( (</>), splitSearchPath, replaceExtension
+                           , takeExtension, pathSeparator, isPathSeparator )
+import System.IO           ( hFlush, stdout )
+import System.Environment  ( getArgs, getEnv, setEnv, unsetEnv )
+import System.Process      ( exitWith, system, getPID )
+import Control.Monad       ( when, unless, foldM )
+import System.IOExts       ( evalCmd, readCompleteFile )
+import Language.Curry.Distribution ( installDir )
+import Prelude hiding (log, (<|>))
 
 import Boxes            ( table, render )
 import OptParse
 import System.CurryPath ( addCurrySubdir, stripCurrySuffix )
-import System.Path      ( fileInPath, getFileInPath )
+import System.Path      ( fileInPath )
 import Text.CSV         ( readCSV, showCSV, writeCSVFile )
 
 import CPM.ErrorLogger
@@ -63,7 +65,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine, bannerText, bannerLine]
  where
   bannerText =
-    "Curry Package Manager <curry-lang.org/tools/cpm> (version of 04/11/2020)"
+    "Curry Package Manager <curry-lang.org/tools/cpm> (version of 05/11/2020)"
   bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -84,37 +86,44 @@ main = do
 
 runWithArgs :: Options -> IO ()
 runWithArgs opts = do
-  setLogLevel $ optLogLevel opts
-  setWithShowTime (optWithTime opts)
-  debugMessage "Reading CPM configuration..."
-  config <- readConfigurationWith (optDefConfig opts) >>= \c ->
-   case c of
-    Left err -> do errorMessage $ "Error reading .cpmrc settings: " ++ err
-                   exitWith 1
-    Right c' -> return c'
-  debugMessage ("Current configuration:\n" ++ showConfiguration config)
-  runELM $ case optCommand opts of
-    NoCommand   -> failELM "NoCommand"
-    Config    o -> configCmd    o config
-    Update    o -> updateCmd    o config
-    Compiler  o -> curryCmd     o config
-    Exec      o -> execCmd      o config
-    Doc       o -> docCmd       o config
-    Test      o -> testCmd      o config
-    Uninstall o -> uninstallCmd o config
-    Deps      o -> depsCmd      o config
-    PkgInfo   o -> infoCmd      o config
-    Link      o -> linkCmd      o config
-    Add       o -> addCmd       o config
-    New       o -> newCmd       o
-    List      o -> listCmd      o config
-    Search    o -> searchCmd    o config
-    Upgrade   o -> upgradeCmd   o config
-    Diff      o -> diffCmd      o config
-    Checkout  o -> checkoutCmd  o config
-    Install   o -> installCmd   o config
-    Upload    o -> uploadCmd    o config
-    Clean       -> cleanPackage config Info
+  ((ll, _), (msgs, result)) <-
+    runErrorLogger' (optLogLevel opts) (optWithTime opts) $ do
+      debugMessage "Reading CPM configuration..."
+      config <- readConfigurationWith (optDefConfig opts) >>= \c ->
+       case c of
+        Left err -> do errorMessage $ "Error reading .cpmrc settings: " ++ err
+                       liftIOErrorLogger $ exitWith 1
+        Right c' -> return c'
+      debugMessage ("Current configuration:\n" ++ showConfiguration config)
+      case optCommand opts of
+        NoCommand   -> fail "NoCommand"
+        Config o    -> configCmd   o config
+        Update o    -> updateCmd   o config
+        Compiler o  -> compiler    o config
+        Exec o      -> execCmd     o config
+        Doc  o      -> docCmd      o config
+        Test o      -> testCmd     o config
+        Uninstall o -> uninstall   o config
+        Deps o      -> depsCmd     o config
+        PkgInfo   o -> infoCmd     o config
+        Link o      -> linkCmd     o config
+        Add  o      -> addCmd      o config
+        New o       -> newPackage  o
+        List      o -> listCmd     o config
+        Search    o -> searchCmd   o config
+        Upgrade   o -> upgradeCmd  o config
+        Diff      o -> diffCmd     o config
+        Checkout  o -> checkoutCmd o config
+        Install   o -> installCmd  o config
+        Upload    o -> uploadCmd   o config
+        Clean       -> cleanPackage config Info
+  mapM (showLogEntry ll) msgs
+  let allOk =  all (levelGte Info) (map logLevelOf msgs) &&
+               either (\le -> levelGte Info (logLevelOf le))
+                      (const True)
+                      result
+  exitWith $ if allOk then 0 else 1
+ where runErrorLogger' a b c = runErrorLogger c a b
 
 -- The global options of CPM.
 data Options = Options
@@ -127,7 +136,7 @@ data Options = Options
 defaultOptions :: Options
 defaultOptions = Options Info [] False NoCommand
 
-data Command 
+data Command
   = NoCommand
   | Config     ConfigOptions
   | Deps       DepsOptions
@@ -379,12 +388,12 @@ applyParse :: [Options -> Either String Options] -> Either String Options
 applyParse fs = applyEither fs defaultOptions
 
 (>.>) :: Either String a -> (a -> b) -> Either String b
-a >.> f = case a of 
+a >.> f = case a of
   Left err -> Left err
   Right  v -> Right $ f v
 
 optionParser :: [String] -> ParseSpec (Options -> Either String Options)
-optionParser allargs = optParser 
+optionParser allargs = optParser
   (   option (\s a -> readLogLevel s >.> \ll -> a { optLogLevel = ll })
        (  long "verbosity"
        <> short "v"
@@ -609,7 +618,7 @@ optionParser allargs = optParser
           (  metavar "PACKAGE"
           <> help ("The package name. If no name is specified, CPM tries " ++
                    "to read a package specification in the current directory.")
-          <> optional) 
+          <> optional)
     <.> arg (\s a -> readVersion' s >.> \v -> a
                                  { optCommand = PkgInfo (infoOpts a)
                                                   { infoVersion = Just v } })
@@ -746,7 +755,7 @@ optionParser allargs = optParser
                                   List (listOpts a) { listVers = True } })
           (  short "v"
           <> long "versions"
-          <> help "Show all versions" ) 
+          <> help "Show all versions" )
     <.> flag (\a -> Right $ a { optCommand =
                                   List (listOpts a) { listCSV = True } })
           (  short "t"
@@ -770,7 +779,7 @@ optionParser allargs = optParser
              <> long "exec"
              <> help "Search for the name of an executable" )
     <.> arg (\s a -> Right $ a { optCommand = Search (searchOpts a)
-                                                { searchQuery = s } }) 
+                                                { searchQuery = s } })
             (  metavar "QUERY"
             <> help "The search term" )
 
@@ -778,7 +787,7 @@ optionParser allargs = optParser
     arg (\s a -> Right $ a { optCommand = Upgrade (upgradeOpts a)
                                             { upgrTarget = Just s } })
         (  metavar "PACKAGE"
-        <> help "The package to upgrade" 
+        <> help "The package to upgrade"
         <> optional )
 
   linkArgs =
@@ -810,21 +819,21 @@ optionParser allargs = optParser
 -- Check if operating system executables we depend on are present on the
 -- current system. Since this takes some time, it is only checked with
 -- the `update` command.
-checkRequiredExecutables :: IO ()
+checkRequiredExecutables :: ErrorLogger ()
 checkRequiredExecutables = do
   debugMessage "Checking whether all required executables can be found..."
-  missingExecutables <- checkExecutables listOfExecutables
+  missingExecutables <- liftIOErrorLogger $ checkExecutables listOfExecutables
   unless (null missingExecutables) $ do
     errorMessage $ "The following programs could not be found on the PATH " ++
                    "(they are required for CPM to work):\n" ++
                    intercalate ", " missingExecutables
-    exitWith 1
+    liftIOErrorLogger $ exitWith 1
   debugMessage "All required executables found."
  where
-  listOfExecutables = 
-    [ "curl"  
-    , "git"   
-    , "unzip" 
+  listOfExecutables =
+    [ "curl"
+    , "git"
+    , "unzip"
     , "tar"
     , "cp"
     , "rm"
@@ -838,36 +847,36 @@ checkExecutables executables = do
 
 ------------------------------------------------------------------------------
 -- `config` command: show current CPM configuration
-configCmd :: ConfigOptions -> Config -> ErrorLoggerIO ()
+configCmd :: ConfigOptions -> Config -> ErrorLogger ()
 configCmd opts cfg
-  | configAll opts
-  = do repo <- execIO $ getBaseRepository cfg
-       gc   <- readGlobalCache cfg repo
-       putStrLnELM configS
-       putStrLnELM "Installed packages:\n"
-       putStrLnELM $ unwords . sortBy (<=) . map packageId . allPackages $ gc
-  | otherwise
-  = putStrLnELM configS
+  | configAll opts = do
+      repo <- getBaseRepository cfg
+      gc <- readGlobalCache cfg repo
+      liftIOErrorLogger $ do
+        putStrLn configS
+        putStrLn "Installed packages:\n"
+        putStrLn $ unwords . sortBy (<=) . map packageId . allPackages $ gc
+  | otherwise = putStrLnELM configS
  where
   configS = unlines
              [cpmBanner, "Current configuration:", "", showConfiguration cfg]
 
 ------------------------------------------------------------------------------
 -- `update` command:
-updateCmd :: UpdateOptions -> Config -> ErrorLoggerIO ()
+updateCmd :: UpdateOptions -> Config -> ErrorLogger ()
 updateCmd opts cfg = do
   let cfg' = cfg { packageIndexURLs = indexURLs opts ++ packageIndexURLs cfg }
-  execIO checkRequiredExecutables
+  checkRequiredExecutables
   updateRepository cfg' (cleanCache opts) (downloadIndex opts)
                         (useRepoCache opts) (writeCSV opts)
 
 ------------------------------------------------------------------------------
 -- `deps` command:
-depsCmd :: DepsOptions -> Config -> ErrorLoggerIO ()
+depsCmd :: DepsOptions -> Config -> ErrorLogger ()
 depsCmd opts cfg = do
   specDir <- getLocalPackageSpec cfg "."
-  pkg     <- loadPackageSpecELM specDir
-  checkCompiler cfg pkg
+  pkg     <- loadPackageSpec specDir
+  liftIOErrorLogger $ checkCompiler cfg pkg
   if depsPath opts -- show CURRYPATH only?
     then do loadpath <- getCurryLoadPath cfg specDir
             putStrLnELM loadpath
@@ -876,15 +885,15 @@ depsCmd opts cfg = do
 
 ------------------------------------------------------------------------------
 -- `info` command:
-infoCmd :: InfoOptions -> Config -> ErrorLoggerIO ()
+infoCmd :: InfoOptions -> Config -> ErrorLogger ()
 infoCmd (InfoOptions Nothing (Just _) _ _) _ =
-  failELM "Must specify package name"
+  fail "Must specify package name"
 infoCmd (InfoOptions Nothing Nothing allinfos plain) cfg = do
   specDir <- getLocalPackageSpec cfg "."
-  p       <- loadPackageSpecELM specDir
-  printInfo cfg allinfos plain p
+  p       <- loadPackageSpec specDir
+  liftIOErrorLogger $ printInfo cfg allinfos plain p
 infoCmd (InfoOptions (Just pkgname) Nothing allinfos plain) cfg = do
-  pkgs <- execIO $ getAllPackageVersions cfg pkgname False
+  pkgs <- getAllPackageVersions cfg pkgname False
   case pkgs of
     [] -> packageNotFoundFailure pkgname
     ps -> case filter (isCompatibleToCompiler cfg) ps of
@@ -892,26 +901,26 @@ infoCmd (InfoOptions (Just pkgname) Nothing allinfos plain) cfg = do
                  in compatPackageNotFoundFailure cfg pkgname
                       ("Use 'info " ++ pkgname ++ " " ++ lvers ++
                        "' to print info about the latest version.")
-           (rp:_) -> do p <- toELM $ readPackageFromRepository cfg rp
-                        printInfo cfg allinfos plain p
+           (rp:_) -> do p <- readPackageFromRepository cfg rp
+                        liftIOErrorLogger $ printInfo cfg allinfos plain p
 infoCmd (InfoOptions (Just pkgname) (Just v) allinfos plain) cfg = do
-  mbpkg <- execIO $ getPackageVersion cfg pkgname v
+  mbpkg <- getPackageVersion cfg pkgname v
   case mbpkg of
     Nothing -> packageNotFoundFailure $ pkgname ++ "-" ++ showVersion v
-    Just rp -> do p <- toELM $ readPackageFromRepository cfg rp
-                  printInfo cfg allinfos plain p
+    Just rp -> do p <- readPackageFromRepository cfg rp
+                  liftIOErrorLogger $ printInfo cfg allinfos plain p
 
-printInfo :: Config -> Bool -> Bool -> Package -> ErrorLoggerIO ()
+printInfo :: Config -> Bool -> Bool -> Package -> IO ()
 printInfo cfg allinfos plain pkg = do
-  isinstalled <- execIO $ packageInstalled cfg pkg
-  putStrLnELM $ renderPackageInfo allinfos plain isinstalled pkg
+  isinstalled <- packageInstalled cfg pkg
+  putStrLn $ renderPackageInfo allinfos plain isinstalled pkg
 
 
 ------------------------------------------------------------------------------
 -- `checkout` command:
-checkoutCmd :: CheckoutOptions -> Config -> ErrorLoggerIO ()
+checkoutCmd :: CheckoutOptions -> Config -> ErrorLogger ()
 checkoutCmd (CheckoutOptions pkgname Nothing pre) cfg = do
- repo <- execIO $ getRepoForPackages cfg [pkgname]
+ repo <- getRepoForPackages cfg [pkgname]
  case findAllVersions repo pkgname pre of
   [] -> packageNotFoundFailure pkgname
   ps -> case filter (isCompatibleToCompiler cfg) ps of
@@ -919,33 +928,33 @@ checkoutCmd (CheckoutOptions pkgname Nothing pre) cfg = do
     (p:_) -> do acquireAndInstallPackageWithDependencies cfg repo p
                 checkoutPackage cfg p
 checkoutCmd (CheckoutOptions pkgname (Just ver) _) cfg = do
- repo <- execIO $ getRepoForPackages cfg [pkgname]
+ repo <- getRepoForPackages cfg [pkgname]
  case findVersion repo pkgname ver of
   Nothing -> packageNotFoundFailure $ pkgname ++ "-" ++ showVersion ver
   Just  p -> do acquireAndInstallPackage cfg p
                 checkoutPackage cfg p
 
-installCmd :: InstallOptions -> Config -> ErrorLoggerIO ()
+installCmd :: InstallOptions -> Config -> ErrorLogger ()
 installCmd (InstallOptions Nothing Nothing _ instexec False) cfg = do
   pkgdir <- getLocalPackageSpec cfg "."
   cleanCurryPathCache pkgdir
   (pkg,_) <- installLocalDependencies cfg pkgdir
-  execIO $ saveBaseVersionToCache cfg pkgdir
+  liftIOErrorLogger $ saveBaseVersionToCache cfg pkgdir
   currypath <- getCurryLoadPath cfg pkgdir
   writePackageConfig cfg pkgdir pkg currypath
-  whenM instexec $ installExecutable cfg pkg
+  when instexec $ installExecutable cfg pkg
 -- Install executable only:
 installCmd (InstallOptions Nothing Nothing _ _ True) cfg = do
   pkgdir <- getLocalPackageSpec cfg "."
-  pkg    <- loadPackageSpecELM pkgdir
+  pkg    <- loadPackageSpec pkgdir
   installExecutable cfg pkg
 installCmd (InstallOptions (Just pkg) vers pre _ _) cfg = do
-  fileExists <- execIO $ doesFileExist pkg
+  fileExists <- liftIOErrorLogger $ doesFileExist pkg
   if fileExists
-    then toELM $ installFromZip cfg pkg
+    then installFromZip cfg pkg
     else installApp (CheckoutOptions pkg vers pre) cfg
 installCmd (InstallOptions Nothing (Just _) _ _ _) _ =
-  failELM "Must specify package name"
+  fail "Must specify package name"
 
 --- Installs the application (i.e., binary) provided by a package.
 --- This is done by checking out the package into CPM's application packages
@@ -955,23 +964,23 @@ installCmd (InstallOptions Nothing (Just _) _ _ _) _ =
 --- Internal note: the installed package should not be cleaned or removed
 --- after the installation since its execution might refer (via the
 --- config module) to some data stored in the package.
-installApp :: CheckoutOptions -> Config -> ErrorLoggerIO ()
+installApp :: CheckoutOptions -> Config -> ErrorLogger ()
 installApp opts cfg = do
   let apppkgdir = appPackageDir cfg
       copname   = coPackage opts
       copkgdir  = apppkgdir </> coPackage opts
-  curdir <- execIO $ getCurrentDirectory
-  execIO $ removeDirectoryComplete copkgdir
-  logMsg Debug $ "Change into directory " ++ apppkgdir
-  inDirectoryELM apppkgdir $ do
+  curdir <- liftIOErrorLogger $ getCurrentDirectory
+  liftIOErrorLogger $ removeDirectoryComplete copkgdir
+  debugMessage $ "Change into directory " ++ apppkgdir
+  inDirectoryEL apppkgdir $ do
     checkoutCmd opts cfg
-    logMsg Debug ("Change into directory " ++ copkgdir)
-    execIO $ setCurrentDirectory copkgdir
+    debugMessage $ "Change into directory " ++ copkgdir
+    liftIOErrorLogger $ setCurrentDirectory copkgdir
     pkg <- loadPackageSpecELM "."
     maybe
-     (do execIO $ setCurrentDirectory curdir
-         execIO $ removeDirectoryComplete copkgdir
-         failELM $ "Package '" ++ name pkg ++
+     (do liftIOErrorLogger $ setCurrentDirectory curdir
+         liftIOErrorLogger $ removeDirectoryComplete copkgdir
+         fail $ "Package '" ++ name pkg ++
                    "' has no executable, nothing installed.\n" ++
                    "Hint: use 'cypm add " ++ copname ++
                    "' to add new dependency and install it.")
@@ -979,7 +988,7 @@ installApp opts cfg = do
      (executableSpec pkg)
 
 --- Checks the compiler compatibility.
-checkCompiler :: Config -> Package -> ErrorLoggerIO ()
+checkCompiler :: Config -> Package -> ErrorLogger ()
 checkCompiler cfg pkg =
   unlessM (isCompatibleToCompiler cfg pkg) $ error $
     "Current compiler '" ++ showCompilerVersion cfg ++
@@ -987,14 +996,14 @@ checkCompiler cfg pkg =
 
 --- Installs the executable specified in the package in the
 --- bin directory of CPM (compare .cpmrc).
-installExecutable :: Config -> Package -> ErrorLoggerIO ()
+installExecutable :: Config -> Package -> ErrorLogger ()
 installExecutable cfg pkg = do
-  checkCompiler cfg pkg
+  liftIOErrorLogger $ checkCompiler cfg pkg
   maybe (return ())
         (\ (PackageExecutable name mainmod eopts) -> do
-           lvl <- execIO getLogLevel
-           path <- execIO $ getEnviron "PATH"
-           logMsg Info ("Compiling main module: " ++ mainmod)
+           lvl <- getLogLevel
+           path <- liftIOErrorLogger $ getEnv "PATH"
+           infoMessage $ "Compiling main module: " ++ mainmod
            let (cmpname,_,_,_) = compilerVersion cfg
                cmd = unwords $
                        [":set", if levelGte Debug lvl then "v1" else "v0"
@@ -1003,10 +1012,10 @@ installExecutable cfg pkg = do
                bindir     = binInstallDir cfg
                binexec    = bindir </> name
            curryCmd (ExecOptions cmd) cfg
-           logMsg Info $ "Installing executable '" ++ name ++ "' into '" ++
+           infoMessage $ "Installing executable '" ++ name ++ "' into '" ++
                          bindir ++ "'"
            -- renaming might not work across file systems, hence we move:
-           execIO $ showExecCmd (unwords ["mv", mainmod, binexec])
+           showExecCmd (unwords ["mv", mainmod, binexec])
            checkPath path bindir
         )
         (executableSpec pkg)
@@ -1014,51 +1023,51 @@ installExecutable cfg pkg = do
   checkPath path bindir =
     if bindir `elem` splitSearchPath path
       then return ()
-      else logMsg Info $
+      else infoMessage $
              "It is recommended to add '" ++bindir++ "' to your path!"
 
 
-uninstallCmd :: UninstallOptions -> Config -> ErrorLoggerIO ()
+uninstallCmd :: UninstallOptions -> Config -> ErrorLogger ()
 uninstallCmd (UninstallOptions (Just pkgname) (Just ver)) cfg =
   uninstallPackage cfg pkgname ver
 --- uninstalls an application (i.e., binary) provided by a package:
 uninstallCmd (UninstallOptions (Just pkgname) Nothing) cfg = do
   let copkgdir  = appPackageDir cfg </> pkgname
-  codirexists <- execIO $ doesDirectoryExist copkgdir
+  codirexists <- liftIOErrorLogger $ doesDirectoryExist copkgdir
   if codirexists
     then do
-      pkg <- loadPackageSpecELM copkgdir
+      pkg <- loadPackageSpec copkgdir
       uninstallPackageExecutable cfg pkg
-      execIO $ removeDirectoryComplete copkgdir
-      logMsg Info ("Package '" ++ pkgname ++
+      liftIOErrorLogger $ removeDirectoryComplete copkgdir
+      infoMessage ("Package '" ++ pkgname ++
                    "' uninstalled from application package cache.")
-    else failELM $
+    else fail $
            "Cannot find executable installed for package '" ++ pkgname ++ "'."
 uninstallCmd (UninstallOptions Nothing (Just _)) _ =
-  logMsg Error "Please provide a package and version number!"
+  errorMessage "Please provide a package and version number!"
 uninstallCmd (UninstallOptions Nothing Nothing) cfg = do
   pkgdir <- getLocalPackageSpec cfg "."
-  pkg    <- loadPackageSpecELM pkgdir
+  pkg    <- loadPackageSpec pkgdir
   uninstallPackageExecutable cfg pkg
 
-uninstallPackageExecutable :: Config -> Package -> ErrorLoggerIO ()
+uninstallPackageExecutable :: Config -> Package -> ErrorLogger ()
 uninstallPackageExecutable cfg pkg =
   maybe (return ())
         (\ (PackageExecutable name _ _) -> do
            let binexec = binInstallDir cfg </> name
-           exf <- execIO $ doesFileExist binexec
+           exf <- liftIOErrorLogger $ doesFileExist binexec
            if exf
-             then do execIO $ removeFile binexec
-                     logMsg Info ("Executable '" ++ binexec ++ "' removed")
-             else logMsg Info $ "Executable '" ++ binexec ++ "' not installed")
+             then do liftIOErrorLogger $ removeFile binexec
+                     infoMessage $ "Executable '" ++ binexec ++ "' removed"
+             else infoMessage $ "Executable '" ++ binexec ++ "' not installed")
         (executableSpec pkg)
 
 --- Lists all (compiler-compatible if `lall` is false) packages
 --- in the given repository.
-listCmd :: ListOptions -> Config -> ErrorLoggerIO ()
+listCmd :: ListOptions -> Config -> ErrorLogger ()
 listCmd (ListOptions lv csv cat) cfg = do
-  repo <- execIO $ if cat then getRepositoryWithNameVersionCategory cfg
-                          else getRepositoryWithNameVersionSynopsis cfg
+  repo <- if cat then getRepositoryWithNameVersionCategory cfg
+                 else getRepositoryWithNameVersionSynopsis cfg
   let listresult = if cat then renderCats (catgroups repo)
                           else renderPkgs (allpkgs repo)
   putStrELM listresult
@@ -1090,7 +1099,7 @@ listCmd (ListOptions lv csv cat) cfg = do
                  , ["--------", "--------"]]
         rows   = header ++ map (\ (c,ns) -> [c, unwords ns]) catgrps
     in renderTable [namelen + 2, 78 - namelen] rows
-  
+
   renderTable colsizes rows =
     if csv then showCSV (head rows : drop 2 rows)
            else unlines [render (table rows colsizes), cpmInfo, useUpdateHelp]
@@ -1127,12 +1136,12 @@ cpmInfo = "Use 'cypm info PACKAGE' for more information about a package."
 
 
 --- Search in all (compiler-compatible) packages in the given repository.
-searchCmd :: SearchOptions -> Config -> ErrorLoggerIO ()
+searchCmd :: SearchOptions -> Config -> ErrorLogger ()
 searchCmd (SearchOptions q smod sexec) cfg = do
   let searchaction = if smod then searchExportedModules
                              else if sexec then searchExecutable
                                            else searchNameSynopsisModules
-  allpkgs <- execIO $ searchaction cfg q
+  allpkgs <- searchaction cfg q
   let results = sortBy (\p1 p2 -> name p1 <= name p2)
                        (map (filterCompatPkgs cfg)
                             (map (sortBy (\a b -> version a `vgt` version b))
@@ -1146,24 +1155,24 @@ searchCmd (SearchOptions q smod sexec) cfg = do
 
 
 --- `upgrade` command.
-upgradeCmd :: UpgradeOptions -> Config -> ErrorLoggerIO ()
+upgradeCmd :: UpgradeOptions -> Config -> ErrorLogger ()
 upgradeCmd (UpgradeOptions Nothing) cfg = do
   specDir <- getLocalPackageSpec cfg "."
   cleanCurryPathCache specDir
-  logMsg Info "Upgrading all packages"
+  infoMessage "Upgrading all packages"
   upgradeAllPackages cfg specDir
 upgradeCmd (UpgradeOptions (Just pkg)) cfg = do
   specDir <- getLocalPackageSpec cfg "."
-  logMsg Info ("Upgrade " ++ pkg)
+  infoMessage $ "Upgrade " ++ pkg
   upgradeSinglePackage cfg specDir pkg
 
 
 --- `link` command.
-linkCmd :: LinkOptions -> Config -> ErrorLoggerIO ()
+linkCmd :: LinkOptions -> Config -> ErrorLogger ()
 linkCmd (LinkOptions src) cfg = do
   specDir <- getLocalPackageSpec cfg "."
   cleanCurryPathCache specDir
-  logMsg Info ("Linking '" ++ src ++ "' into local package cache...")
+  infoMessage $ "Linking '" ++ src ++ "' into local package cache..."
   linkToLocalCache cfg src specDir
 
 --- `add` command:
@@ -1173,7 +1182,7 @@ linkCmd (LinkOptions src) cfg = do
 --- Option `--dependency`: add the package name as a dependency to the
 --- current package
 --- No option: like `--package` followed by `install` command
-addCmd :: AddOptions -> Config -> ErrorLoggerIO ()
+addCmd :: AddOptions -> Config -> ErrorLogger ()
 addCmd (AddOptions addpkg adddep pkg force) config
   | addpkg    = addPackageToRepository config pkg force True
   | adddep    = addDependencyCmd pkg force config
@@ -1185,9 +1194,9 @@ useForce = "Use option '-f' or '--force' to overwrite it."
 
 --- `add --dependency` command: add the given package as a new
 --- dependency to the current package.
-addDependencyCmd :: String -> Bool -> Config -> ErrorLoggerIO ()
+addDependencyCmd :: String -> Bool -> Config -> ErrorLogger ()
 addDependencyCmd pkgname force config = do
-  allpkgs <- execIO $ getAllPackageVersions config pkgname False
+  allpkgs <- getAllPackageVersions config pkgname False
   case allpkgs of
     [] -> packageNotFoundFailure pkgname
     ps -> case filter (isCompatibleToCompiler config) ps of
@@ -1196,18 +1205,18 @@ addDependencyCmd pkgname force config = do
                         addDepToLocalPackage (version p) pkgdir
  where
   addDepToLocalPackage vers pkgdir = do
-    pkgSpec <- loadPackageSpecELM pkgdir
+    pkgSpec <- loadPackageSpec pkgdir
     let depexists = pkgname `elem` dependencyNames pkgSpec
         newdeps   = addDep [[VGte vers, VLt (nextMajor vers)]]
                            (dependencies pkgSpec)
         newpkg    = pkgSpec { dependencies = newdeps }
     if force || not depexists
-      then do execIO $ writePackageSpec newpkg (pkgdir </> "package.json")
-              logMsg Info ("Dependency '" ++ pkgname ++ " >= " ++
-                           showVersion vers ++
-                           "' added to package '" ++ pkgdir ++ "'")
-      else logMsg Critical ("Dependency '" ++ pkgname ++
-                            "' already exists!\n" ++ useForce)
+      then do liftIOErrorLogger $ writePackageSpec newpkg (pkgdir </> "package.json")
+              infoMessage $ ("Dependency '" ++ pkgname ++ " >= " ++
+                             showVersion vers ++
+                             "' added to package '" ++ pkgdir ++ "'")
+      else criticalMessage $ "Dependency '" ++ pkgname ++
+                              "' already exists!\n" ++ useForce)
 
   addDep vcs [] = [Dependency pkgname vcs]
   addDep vcs (Dependency pn pvcs : deps) =
@@ -1219,60 +1228,60 @@ addDependencyCmd pkgname force config = do
 --- or, if they are not given, on exported modules (if specified in the
 --- package), on the main executable (if specified in the package),
 --- or on all source modules of the package.
-docCmd :: DocOptions -> Config -> ErrorLoggerIO ()
+docCmd :: DocOptions -> Config -> ErrorLogger ()
 docCmd opts cfg = do
   specDir <- getLocalPackageSpec cfg "."
-  pkg     <- loadPackageSpecELM specDir
+  pkg     <- loadPackageSpec specDir
   let docdir = maybe "cdoc" id (docDir opts) </> packageId pkg
-  absdocdir <- execIO $ getAbsolutePath docdir
-  execIO $ createDirectoryIfMissing True absdocdir
-  whenM (docReadme   opts) $ genPackageREADME pkg specDir absdocdir
-  whenM (docManual   opts) $ genPackageManual pkg specDir absdocdir
-  whenM (docPrograms opts) $ genDocForPrograms opts cfg absdocdir specDir pkg
+  absdocdir <- liftIOErrorLogger $ getAbsolutePath docdir
+  liftIOErrorLogger $ createDirectoryIfMissing True absdocdir
+  when (docReadme   opts) $ genPackageREADME pkg specDir absdocdir
+  when (docManual   opts) $ genPackageManual pkg specDir absdocdir
+  when (docPrograms opts) $ genDocForPrograms opts cfg absdocdir specDir pkg
 
 --- Translate package README file to HTML, if possible (i.e., some README
 --- file and `pandoc` exists). Two README files are produced:
 --- `README.html` (standalone document) and `README_I.html` (document
 --- fragment without header and footer).
-genPackageREADME :: Package -> String -> String -> ErrorLoggerIO ()
+genPackageREADME :: Package -> String -> String -> ErrorLogger ()
 genPackageREADME _ specDir outputdir = do
   rmfiles  <- getReadmeFiles
-  ispandoc <- execIO $ fileInPath "pandoc"
+  ispandoc <- liftIOErrorLogger $ fileInPath "pandoc"
   if null rmfiles || not ispandoc
     then do
-      logMsg Info $ "'README.html' not generated: " ++
+      infoMessage $ "'README.html' not generated: " ++
                     if ispandoc then "no README file found"
                                 else "executable 'pandoc' not found"
     else do
       let readmefile = head rmfiles
           formatcmd1 = formatCmd1 readmefile
           formatcmd2 = formatCmd2 readmefile
-      logMsg Debug $ "Executing command: " ++ formatcmd1
-      rc1 <- inDirectoryIO specDir $ system formatcmd1
-      logMsg Debug $ "Executing command: " ++ formatcmd2
-      rc2 <- inDirectoryIO specDir $ system formatcmd2
+      debugMessage $ "Executing command: " ++ formatcmd1
+      rc1 <- liftIOErrorLogger $ inDirectory specDir $ system formatcmd1
+      debugMessage $ "Executing command: " ++ formatcmd2
+      rc2 <- liftIOErrorLogger $ inDirectory specDir $ system formatcmd2
       if rc1 == 0 && rc2 == 0
         then do
           -- make them readable:
-          execIO $ system $
+          liftIOErrorLogger $ system $
             unwords ["chmod -f 644 ", quote outfile1, quote outfile2]
-          logMsg Info $
+          infoMessage $
             "'" ++ readmefile ++ "' translated to '" ++ outfile1 ++ "'."
-        else failELM $ "Error during execution of commands:\n" ++
+        else fail $ "Error during execution of commands:\n" ++
                        formatcmd1 ++ "\n" ++ formatcmd2
  where
   outfile1 = outputdir </> "README.html"
   outfile2 = outputdir </> "README_I.html"
 
   getReadmeFiles = do
-    entries <- execIO $ getDirectoryContents specDir
+    entries <- liftIOErrorLogger $ getDirectoryContents specDir
     return $ filter ("README" `isPrefixOf`) entries
 
   formatCmd1 readme = "pandoc -s -t html -o " ++ outfile1 ++ " " ++ readme
   formatCmd2 readme = "pandoc -t html -o " ++ outfile2 ++ " " ++ readme
 
 --- Generate manual according to  documentation specification of package.
-genPackageManual :: Package -> String -> String -> ErrorLoggerIO ()
+genPackageManual :: Package -> String -> String -> ErrorLogger ()
 genPackageManual pkg specDir outputdir = case documentation pkg of
     Nothing -> return ()
     Just (PackageDocumentation docdir docmain doccmd) -> do
@@ -1280,19 +1289,19 @@ genPackageManual pkg specDir outputdir = case documentation pkg of
                         if null doccmd then formatCmd docmain
                                        else doccmd
       if null formatcmd
-        then logMsg Info $ "Cannot format documentation file '" ++
+        then infoMessage $ "Cannot format documentation file '" ++
                            docmain ++ "' (unknown kind)"
         else do
-          logMsg Debug $ "Executing command: " ++ formatcmd
-          rc <- inDirectoryIO (specDir </> docdir) $ system formatcmd
+          debugMessage $ "Executing command: " ++ formatcmd
+          rc <- liftIOErrorLogger $ inDirectory (specDir </> docdir) $ system formatcmd
           if rc == 0
             then do
               let outfile = outputdir </> replaceExtension docmain ".pdf"
                -- make it readable:
-              execIO $ system ("chmod -f 644 " ++ quote outfile)
-              logMsg Info $
+              liftIOErrorLogger $ system ("chmod -f 644 " ++ quote outfile)
+              infoMessage $
                 "Package documentation written to '" ++ outfile ++ "'."
-            else failELM $ "Error during execution of command:\n" ++ formatcmd
+            else fail $ "Error during execution of command:\n" ++ formatcmd
  where
   formatCmd docmain
     | ".tex" `isSuffixOf` docmain
@@ -1322,17 +1331,17 @@ replaceSubString sub newsub s = replString s
 --- package), on the main executable (if specified in the package),
 --- or on all source modules of the package.
 genDocForPrograms :: DocOptions -> Config -> String -> String -> Package
-                  -> ErrorLoggerIO ()
+                  -> ErrorLogger ()
 genDocForPrograms opts cfg docdir specDir pkg = do
-  abspkgdir <- execIO $ getAbsolutePath specDir
-  checkCompiler cfg pkg
+  abspkgdir <- liftIOErrorLogger $ getAbsolutePath specDir
+  liftIOErrorLogger $ checkCompiler cfg pkg
   let exports = exportedModules pkg
       mainmod = maybe Nothing
                       (\ (PackageExecutable _ emain _) -> Just emain)
                       (executableSpec pkg)
   (docmods,apidoc) <-
      maybe (if null exports
-              then maybe (do ms <- execIO $ curryModulesInDir (specDir </>"src")
+              then maybe (do ms <- liftIOErrorLogger $ curryModulesInDir (specDir </>"src")
                              return (ms,True))
                          (\m -> return ([m],False))
                          mainmod
@@ -1340,7 +1349,7 @@ genDocForPrograms opts cfg docdir specDir pkg = do
            (\ms -> return (ms,True))
            (docModules opts)
   if null docmods
-    then logMsg Info "No modules to be documented!"
+    then infoMessage "No modules to be documented!"
     else do
       currypath <- getCurryLoadPath cfg specDir
       let pkgurls = path2packages abspkgdir currypath
@@ -1349,17 +1358,17 @@ genDocForPrograms opts cfg docdir specDir pkg = do
           mapM_ (docModule currypath pkgurls) docmods
           runDocCmd currypath pkgurls
             (["--title", apititle, "--onlyindexhtml", docdir] ++ docmods)
-          logMsg Info ("Documentation generated in '"++docdir++"'")
+          infoMessage ("Documentation generated in '"++docdir++"'")
         else runDocCmd currypath pkgurls [docdir, head docmods]
  where
   apititle = "\"API Documentation of Package '" ++ name pkg ++ "'\""
 
   getCurryDoc = do
-    mbf <- execIO $ getFileInPath cdbin
+    mbf <- liftIOErrorLogger $ getFileWithSuffix cdbin
     maybe (do let cpmcurrydoc = binInstallDir cfg </> cdbin
-              cdex <- execIO $ doesFileExist cpmcurrydoc
+              cdex <- liftIOErrorLogger $ doesFileExist cpmcurrydoc
               if cdex then return cpmcurrydoc
-                      else failELM $ "Executable '" ++ cdbin ++ "' not found!"
+                      else fail $ "Executable '" ++ cdbin ++ "' not found!"
           )
           return
           mbf
@@ -1374,7 +1383,7 @@ genDocForPrograms opts cfg docdir specDir pkg = do
                     then []
                     else map (\ (d,u) -> "--use "++d++"@"++u) uses
         cmd = unwords (currydoc : useopts ++ docparams)
-    logMsg Info $ "Running CurryDoc: " ++ cmd
+    infoMessage $ "Running CurryDoc: " ++ cmd
     execWithCurryPath (ExecOptions cmd) cfg currypath
 
   -- translates a path into a list of package paths and their doc URLs:
@@ -1395,27 +1404,26 @@ genDocForPrograms opts cfg docdir specDir pkg = do
 --- `test` command: run `curry-check` on the modules provided as an argument
 --- or, if they are not provided, on the exported (if specified)
 --- or all source modules of the package.
-testCmd :: TestOptions -> Config -> ErrorLoggerIO ()
+testCmd :: TestOptions -> Config -> ErrorLogger ()
 testCmd opts cfg = do
   specDir <- getLocalPackageSpec cfg "."
-  pkg     <- loadPackageSpecELM specDir
-  checkCompiler cfg pkg
-  aspecDir <- execIO $ getAbsolutePath specDir
-  mainprogs <- execIO $ curryModulesInDir (aspecDir </> "src")
+  pkg     <- loadPackageSpec specDir
+  liftIOErrorLogger $ checkCompiler cfg pkg
+  aspecDir <- liftIOErrorLogger $ getAbsolutePath specDir
+  mainprogs <- liftIOErrorLogger $ curryModulesInDir (aspecDir </> "src")
   let tests = testSuites pkg mainprogs
   stats <- if null tests
-             then do logMsg Info "No modules to be tested!"
-                     return []
+             then infoMessage "No modules to be tested!"
              else mapM (execTest aspecDir) tests
-  unlessM (null (testFile opts)) $ execIO $
+  unlessM (null (testFile opts)) $ liftIOErrorLogger $
     combineCSVStatsOfPkg (packageId pkg) (concat stats) (testFile opts)
  where
   getCurryCheck = do
-    mbf <- execIO $ getFileInPath ccbin
+    mbf <- liftIOErrorLogger $ getFileWithSuffix ccbin
     maybe (do let cpmcurrycheck = binInstallDir cfg </> ccbin
-              ccex <- execIO $ doesFileExist cpmcurrycheck
+              ccex <- liftIOErrorLogger $ doesFileExist cpmcurrycheck
               if ccex then return cpmcurrycheck
-                      else failELM $ "Executable '" ++ ccbin ++ "' not found!"
+                      else fail $ "Executable '" ++ ccbin ++ "' not found!"
           )
           return
           mbf
@@ -1423,7 +1431,7 @@ testCmd opts cfg = do
 
   execTest apkgdir (PackageTest dir mods pccopts script) = do
     currycheck <- getCurryCheck
-    pid <- execIO getPID
+    pid <- liftIOErrorLogger getPID
     let csvfile  = "TESTRESULT" ++ show pid ++ ".csv"
         statopts = if null (testFile opts) then [] else ["statfile=" ++ csvfile]
         tccopts  = unwords (map ("--" ++) (testCheckOpts opts ++ statopts) ++
@@ -1446,14 +1454,14 @@ testCmd opts cfg = do
         testcmd = if not (null mods)
                     then unwords (checkcmd : mods)
                     else scriptcmd
-    logMsg Debug $ "Removing directory: " ++ currysubdir
-    execIO $ showExecCmd (unwords ["rm", "-rf", currysubdir])
-    inDirectoryELM (apkgdir </> dir) $ do
+    debugMessage $ "Removing directory: " ++ currysubdir
+    showExecCmd (unwords ["rm", "-rf", currysubdir])
+    liftIOErrorLogger $ inDirectory (apkgdir </> dir) $ do
       execWithPkgDir (ExecOptions testcmd) cfg apkgdir
       if null (testFile opts) || null mods
         then return []
-        else do s <- execIO $ readCompleteFile csvfile
-                execIO $ removeFile csvfile
+        else do s <- liftIOErrorLogger $ readCompleteFile csvfile
+                liftIOErrorLogger $ removeFile csvfile
                 return [readCSV s]
 
   testSuites spec mainprogs = case testModules opts of
@@ -1505,18 +1513,18 @@ curryModulesInDir dir = getModules "" dir
     return $ map ((p ++) . stripCurrySuffix) newprogs ++ concat subdirentries
 
 
-diffCmd :: DiffOptions -> Config -> ErrorLoggerIO ()
+diffCmd :: DiffOptions -> Config -> ErrorLogger ()
 diffCmd opts cfg = do
   specDir   <- getLocalPackageSpec cfg "."
-  localSpec <- loadPackageSpecELM specDir
-  checkCompiler cfg localSpec
+  localSpec <- loadPackageSpec specDir
+  liftIOErrorLogger $ checkCompiler cfg localSpec
   let localname  = name localSpec
       localv     = version localSpec
       showlocalv = showVersion localv
-  repo <- execIO $ getRepoForPackageSpec cfg localSpec
+  repo <- getRepoForPackageSpec cfg localSpec
   diffv <- getDiffVersion repo localname
   if diffv == localv
-    then failELM $ "Cannot diff identical package versions " ++ showlocalv
+    then fail $ "Cannot diff identical package versions " ++ showlocalv
     else do
       putStrLnELM $ "Comparing local version " ++ showlocalv ++
                     " and repository version " ++ showVersion diffv ++ ":\n"
@@ -1525,11 +1533,11 @@ diffCmd opts cfg = do
       gc <- readGlobalCache cfg repo
       diffAPIIfEnabled      repo gc specDir localSpec diffv
       diffBehaviorIfEnabled repo gc specDir localSpec diffv
-      execIO $ cleanTempDir
+      liftIOErrorLogger $ cleanTempDir
  where
   getDiffVersion repo localname = case diffVersion opts of
     Nothing -> case findLatestVersion cfg repo localname False of
-      Nothing -> failELM $
+      Nothing -> fail $
         "No other version of local package '" ++ localname ++
         "' compatible to '" ++ showCompilerVersion cfg ++
         "' found in package repository."
@@ -1542,67 +1550,64 @@ diffCmd opts cfg = do
       Just  p -> acquireAndInstallPackageWithDependencies cfg repo p
 
   diffAPIIfEnabled repo gc specDir localSpec diffversion =
-    whenM (diffAPI opts) $ do
+    when (diffAPI opts) $ do
       putStrLnELM "Running API diff...\n"
-      diffResults <- toELM $
-        APIDiff.compareModulesFromPackageAndDir cfg repo gc specDir
+      diffResults <- APIDiff.compareModulesFromPackageAndDir cfg repo gc specDir
                             (name localSpec) diffversion (diffModules opts)
       let diffOut = APIDiff.showDifferences (map snd diffResults)
                                             (version localSpec) diffversion
       unlessM (null diffOut) (putStrLnELM diffOut >> putStrLnELM "")
 
   diffBehaviorIfEnabled repo gc specDir localSpec diffversion =
-    whenM (diffBehavior opts) $ do
+    when (diffBehavior opts) $ do
       putStrLnELM "Preparing behavior diff...\n"
-      i <- toELM $
-        BDiff.preparePackageAndDir cfg repo gc specDir (name localSpec)
+      i <- BDiff.preparePackageAndDir cfg repo gc specDir (name localSpec)
                                                           diffversion
       toELM $ BDiff.diffBehavior cfg repo gc i (diffGroundEqu opts)
                                  (diffUseAna opts) (diffModules opts)
 
 -- Implementation of the `curry` command.
-curryCmd :: ExecOptions -> Config -> ErrorLoggerIO ()
+curryCmd :: ExecOptions -> Config -> ErrorLogger ()
 curryCmd o cfg = do
   pkgdir <- getLocalPackageSpec cfg "."
-  pkg    <- loadPackageSpecELM pkgdir
-  checkCompiler cfg pkg
+  pkg    <- loadPackageSpec pkgdir
+  liftIOErrorLogger $ checkCompiler cfg pkg
   execWithPkgDir
     (ExecOptions $ unwords [curryExec cfg, "--nocypm", exeCommand o])
     cfg pkgdir
 
 -- Implementation of the `exec` command.
-execCmd :: ExecOptions -> Config -> ErrorLoggerIO ()
+execCmd :: ExecOptions -> Config -> ErrorLogger ()
 execCmd o cfg = do
   pkgdir <- getLocalPackageSpec cfg "."
   execWithPkgDir o cfg pkgdir
 
-execWithPkgDir :: ExecOptions -> Config -> String -> ErrorLoggerIO ()
+execWithPkgDir :: ExecOptions -> Config -> String -> ErrorLogger ()
 execWithPkgDir o cfg specDir = do
   cp <- getCurryLoadPath cfg specDir
   execWithCurryPath o cfg cp
 
-execWithCurryPath :: ExecOptions -> Config -> String -> ErrorLoggerIO ()
+execWithCurryPath :: ExecOptions -> Config -> String -> ErrorLogger ()
 execWithCurryPath o _ currypath = do
-  logMsg Debug ("Setting CURRYPATH to " ++ currypath)
-  execIO $ do
-    setEnviron "CURRYPATH" currypath
-    ecode <- showExecCmd (exeCommand o)
-    unsetEnviron "CURRYPATH"
-    unless (ecode==0) (exitWith ecode)
+  debugMessage $ "Setting CURRYPATH to " ++ currypath
+  liftIOErrorLogger $ setEnv "CURRYPATH" currypath
+  ecode <- showExecCmd (exeCommand o)
+  liftIOErrorLogger $ unsetEnv "CURRYPATH"
+  liftIOErrorLogger $ unless (ecode==0) (exitWith ecode)
 
-computePackageLoadPath :: Config -> String -> ErrorLoggerIO String
+computePackageLoadPath :: Config -> String -> ErrorLogger String
 computePackageLoadPath cfg pkgdir = do
-  execIO $ debugMessage "Computing load path for package..."
-  pkg <- loadPackageSpecELM pkgdir
-  cbv <- execIO $ loadBaseVersionFromCache pkgdir
+  debugMessage "Computing load path for package..."
+  pkg <- loadPackageSpec pkgdir
+  cbv <- loadBaseVersionFromCache pkgdir
   let cfg' = if null cbv then cfg else cfg { baseVersion = cbv }
   allpkgs <- resolveAndCopyDependenciesForPackage cfg' pkgdir pkg
-  abs <- execIO $ getAbsolutePath pkgdir
+  abs <- liftIOErrorLogger $ getAbsolutePath pkgdir
   let srcdirs = map (abs </>) (sourceDirsOf pkg)
       -- remove 'base' package if it is the same as in current config:
       pkgs = filter notCurrentBase allpkgs
       currypath = joinSearchPath (srcdirs ++ dependencyPathsSeparate pkgs abs)
-  execIO $ saveCurryPathToCache cfg' pkgdir currypath
+  liftIOErrorLogger $ saveCurryPathToCache cfg' pkgdir currypath
   return currypath
  where
   notCurrentBase pkg = name pkg /= "base" ||
@@ -1610,33 +1615,34 @@ computePackageLoadPath cfg pkgdir = do
 
 
 --- Implementation of the `new` command: create a new package.
-newCmd :: NewOptions -> ErrorLoggerIO ()
-newCmd (NewOptions pname) = execIO $ do
-  exists <- doesDirectoryExist pname
+newCmd :: NewOptions -> ErrorLogger ()
+newCmd (NewOptions pname) = do
+  exists <- liftIOErrorLogger $ doesDirectoryExist pname
   when exists $ do
     errorMessage $ "There is already a directory with the new project name.\n"
                 ++ "I cannot create new project!"
-    exitWith 1
-  let emptyAuthor   = "YOUR NAME <YOUR EMAIL ADDRESS>"
-      emptySynopsis = "PLEASE PROVIDE A ONE-LINE SUMMARY ABOUT THE PACKAGE"
-  createDirectory pname
-  let pkgSpec = emptyPackage { name            = pname
-                             , version         = initialVersion
-                             , author          = [emptyAuthor]
-                             , synopsis        = emptySynopsis
-                             , category        = ["Programming"]
-                             , dependencies    = [] 
-                             , exportedModules = []
-                             , license         = Just "BSD-3-Clause"
-                             , licenseFile     = Just "LICENSE"
-                             }
-  writePackageSpec pkgSpec (pname </> "package.json")
-  copyFile (packagePath </> "templates" </> "LICENSE") (pname </> "LICENSE")
-  createDirectory (pname </> "src")
-  let cmain = "Main.curry"
-  copyFile (packagePath </> "templates" </> cmain) (pname </> "src" </> cmain)
-  writeFile (pname </> "README.md") readme
-  putStr $ unlines todo
+    liftIOErrorLogger $ exitWith 1
+  liftIOErrorLogger $ do
+    let emptyAuthor   = "YOUR NAME <YOUR EMAIL ADDRESS>"
+        emptySynopsis = "PLEASE PROVIDE A ONE-LINE SUMMARY ABOUT THE PACKAGE"
+    createDirectory pname
+    let pkgSpec = emptyPackage { name            = pname
+                              , version         = initialVersion
+                              , author          = [emptyAuthor]
+                              , synopsis        = emptySynopsis
+                              , category        = ["Programming"]
+                              , dependencies    = [] 
+                              , exportedModules = []
+                              , license         = Just "BSD-3-Clause"
+                              , licenseFile     = Just "LICENSE"
+                              }
+    writePackageSpec pkgSpec (pname </> "package.json")
+    copyFile (packagePath </> "templates" </> "LICENSE") (pname </> "LICENSE")
+    createDirectory (pname </> "src")
+    let cmain = "Main.curry"
+    copyFile (packagePath </> "templates" </> cmain) (pname </> "src" </> cmain)
+    writeFile (pname </> "README.md") readme
+    putStr $ unlines todo
  where
   readme = unlines [pname, take (length pname) (repeat '=')]
 
@@ -1669,36 +1675,36 @@ newCmd (NewOptions pname) = execIO $ do
 --- is removed, the package is added to the local copy of the repository,
 --- and the `package.json` is uploaded via the script specified
 --- in `uploadURL`.
-uploadCmd :: UploadOptions -> Config -> ErrorLoggerIO ()
+uploadCmd :: UploadOptions -> Config -> ErrorLogger ()
 uploadCmd opts cfg = do
   specDir <- getLocalPackageSpec cfg "."
-  lpkg    <- loadPackageSpecELM specDir
+  lpkg    <- loadPackageSpec  specDir
   let pkgrepodir = repositoryDir cfg </>
                    name lpkg </> showVersion (version lpkg)
-  exrepodir <- execIO $ doesDirectoryExist pkgrepodir
+  exrepodir <- liftIOErrorLogger $ doesDirectoryExist pkgrepodir
   if exrepodir && not (forceUpdate opts)
-    then failELM $ "Package version already exists in repository!"
+    then fail "Package version already exists in repository!"
     else return ()
-  inDirectoryELM specDir $ setTagInGitIfNecessary opts lpkg
-  instdir <- execIO tempDir
-  execIO $ recreateDirectory instdir
+  liftIOErrorLogger $ inDirectory specDir $ setTagInGitIfNecessary opts lpkg
+  instdir <- liftIOErrorLogger tempDir
+  liftIOErrorLogger $ recreateDirectory instdir
   installPkg lpkg instdir
   let pkgid = packageId lpkg
-  pkg <- loadPackageSpecELM (instdir </> pkgid)
+  pkg <- loadPackageSpec (instdir </> pkgid)
   -- Test package if CurryCheck is installed:
-  mbccfile <- execIO $ getFileInPath "curry-check"
+  mbccfile <- liftIOErrorLogger $ getFileWithSuffix "curry-check"
   ecode <- maybe (return 0) (\_ -> testPackage pkgid instdir) mbccfile
   if ecode > 0
-    then do execIO cleanTempDir
-            logMsg Critical "ERROR in package, package not uploaded!"
+    then do liftIOErrorLogger cleanTempDir
+            criticalMessage "ERROR in package, package not uploaded!"
     else do
-      logMsg Info "Uploading package to global repository..."
+      infoMessage "Uploading package to global repository..."
       -- remove package possibly existing in global package cache:
-      execIO $ removeDirectoryComplete (installedPackageDir cfg pkg)
+      liftIOErrorLogger $ removeDirectoryComplete (installedPackageDir cfg pkg)
       uploadPackageSpec (instdir </> pkgid </> "package.json")
-      execIO $ addPackageToRepo pkgrepodir (instdir </> pkgid) pkg
-      execIO $ cleanTempDir
-      logMsg Info ("Package '" ++ pkgid ++ "' uploaded")
+      liftIOErrorLogger $ addPackageToRepo pkgrepodir (instdir </> pkgid) pkg
+      liftIOErrorLogger $ cleanTempDir
+      infoMessage $ "Package '" ++ pkgid ++ "' uploaded"
  where
   -- add package to local copy of repository:
   addPackageToRepo pkgrepodir pkgdir pkg = do
@@ -1711,15 +1717,14 @@ uploadCmd opts cfg = do
 
   -- TODO: check url
   installPkg pkg instdir = case source pkg of
-    Nothing            -> failELM $ "No source specified for package"
-    Just (Git url rev) -> toELM $
-                            installPackageSourceTo pkg (Git url rev) instdir
-    _                  -> failELM $ "No git source with version tag"
+    Nothing            -> fail $ "No source specified for package"
+    Just (Git url rev) -> installPackageSourceTo pkg (Git url rev) instdir
+    _                  -> fail $ "No git source with version tag"
 
   testPackage pkgid instdir = do
-    curdir <- inDirectoryIO instdir getCurrentDirectory
+    curdir <- liftIOErrorLogger $ inDirectory instdir getCurrentDirectory
     let bindir = curdir </> "pkgbin"
-    execIO $ recreateDirectory bindir
+    liftIOErrorLogger $ recreateDirectory bindir
     let cmd = unwords
                 [ -- install possible binaries in bindir:
                   "cypm", "-d bin_install_path="++bindir, "install", "&&"
@@ -1728,43 +1733,43 @@ uploadCmd opts cfg = do
                 , "cypm", "-d bin_install_path="++bindir, "uninstall"
                 ]
     putStrLnELM $ "Testing package: '" ++ pkgid ++ "' with command:\n" ++ cmd
-    inDirectoryIO (instdir </> pkgid) $ system cmd
+    liftIOErrorLogger $ inDirectory (instdir </> pkgid) $ system cmd
 
 --- Set the package version as a tag in the local GIT repository and push it,
 --- if the package source is a GIT with tag `$version`.
-setTagInGitIfNecessary :: UploadOptions -> Package -> ErrorLoggerIO ()
+setTagInGitIfNecessary :: UploadOptions -> Package -> ErrorLogger ()
 setTagInGitIfNecessary opts pkg
   | not (setTag opts) = return ()
   | otherwise = case source pkg of
                   Just (Git _ (Just VersionAsTag)) -> setTagInGit pkg
                   _                                -> return ()
 
-setTagInGit :: Package -> ErrorLoggerIO ()
+setTagInGit :: Package -> ErrorLogger ()
 setTagInGit pkg = do
   let ts = 'v' : showVersion (version pkg)
-  logMsg Info $ "Tagging current git repository with tag '" ++ ts++ "'"
-  (_,gittag,_) <- execIO $ evalCmd "git" ["tag","-l",ts] ""
+  infoMessage $ "Tagging current git repository with tag '" ++ ts++ "'"
+  (_,gittag,_) <- liftIOErrorLogger $ evalCmd "git" ["tag","-l",ts] ""
   let deltag = if null gittag then [] else ["git tag -d",ts,"&&"]
       cmd    = unwords $ deltag ++ ["git tag -a",ts,"-m",ts,"&&",
                                     "git push --tags -f"]
-  logMsg Info $ "Execute: " ++ cmd
-  ecode <- execIO $ system cmd
+  infoMessage $ "Execute: " ++ cmd
+  ecode <- liftIOErrorLogger $ system cmd
   if ecode == 0 then return ()
-                else failELM $ "ERROR in setting the git tag"
+                else fail $ "ERROR in setting the git tag"
 
 -- Uploads a package specification stored in a file (first argument,
 -- like `.../package.json`) with the web script specified by `uploadURL`.
-uploadPackageSpec :: String -> ErrorLoggerIO ()
+uploadPackageSpec :: String -> ErrorLogger ()
 uploadPackageSpec pkgspecfname = do
-  pkgspec <- execIO $ readFile pkgspecfname
+  pkgspec <- liftIOErrorLogger $ readFile pkgspecfname
   let curlopts = ["--data-binary", "@-", uploadURL ]
-  logMsg Debug $ unwords ("curl" : curlopts) ++ "\n" ++ pkgspec
-  (rc,out,err) <- execIO $ evalCmd "curl" curlopts pkgspec
-  unlessM (null out) $ logMsg Info out
+  debugMessage $ unwords ("curl" : curlopts) ++ "\n" ++ pkgspec
+  (rc,out,err) <- liftIOErrorLogger $ evalCmd "curl" curlopts pkgspec
+  unlessM (null out) $ infoMessage out
   if rc == 0
     then return ()
-    else do logMsg Info err
-            failELM "Adding to global repository failed!"
+    else do infoMessage err
+            fail "Adding to global repository failed!"
 
 -- URL of cpm-upload script.
 uploadURL :: String
@@ -1772,15 +1777,15 @@ uploadURL = "https://www-ps.informatik.uni-kiel.de/~cpm/cpm-upload.cgi"
 
 ------------------------------------------------------------------------------
 --- Fail with a "package not found" message.
-packageNotFoundFailure :: String -> ErrorLoggerIO _
+packageNotFoundFailure :: String -> ErrorLogger _
 packageNotFoundFailure pkgname =
-  failELM $ "Package '" ++ pkgname ++ "' not found in package repository.\n" ++
+  fail $ "Package '" ++ pkgname ++ "' not found in package repository.\n" ++
             useUpdateHelp
 
 --- Fail with a "compatible package not found" message and a comment
-compatPackageNotFoundFailure :: Config -> String -> String -> ErrorLoggerIO _
+compatPackageNotFoundFailure :: Config -> String -> String -> ErrorLogger _
 compatPackageNotFoundFailure cfg pkgname helpcmt =
-  failELM $ "No version of package '" ++ pkgname ++ "' compatible to '" ++
+  fail $ "No version of package '" ++ pkgname ++ "' compatible to '" ++
             showCompilerVersion cfg ++ "' found!\n" ++
             helpcmt
 
@@ -1807,12 +1812,13 @@ saveBaseVersionToCache cfg pkgdir = do
   writeFile (baseVersionCacheFile pkgdir) (baseVersion cfg ++ "\n")
 
 --- Loads baseVersion from local cache file in the given package dir.
-loadBaseVersionFromCache :: String -> IO String
+loadBaseVersionFromCache :: String -> ErrorLogger String
 loadBaseVersionFromCache pkgdir = do
   let cachefile = baseVersionCacheFile pkgdir
-  excache <- doesFileExist cachefile
+  excache <- liftIOErrorLogger $ doesFileExist cachefile
   if excache
-    then do bv <- safeReadFile cachefile >>= return . either (const "") id
+    then do bv <- liftIOErrorLogger $
+                    safeReadFile cachefile >>= return . either (const "") id
             debugMessage $ "Base version loaded from cache: " ++ bv
             return bv
     else return ""
@@ -1827,7 +1833,7 @@ saveCurryPathToCache cfg pkgdir path = do
 
 --- Gets CURRYPATH of the given package (either from the local cache file
 --- in the package dir or compute it).
-getCurryLoadPath :: Config -> String -> ErrorLoggerIO String
+getCurryLoadPath :: Config -> String -> ErrorLogger String
 getCurryLoadPath cfg pkgdir = do
   mbp <- loadCurryPathFromCache cfg pkgdir
   maybe (computePackageLoadPath cfg pkgdir) return mbp
@@ -1835,16 +1841,16 @@ getCurryLoadPath cfg pkgdir = do
 --- Restores package CURRYPATH from local cache file in the given package dir,
 --- if it is still up-to-date, i.e., it exists and is newer than the package
 --- specification.
-loadCurryPathFromCache :: Config -> String -> ErrorLoggerIO (Maybe String)
+loadCurryPathFromCache :: Config -> String -> ErrorLogger (Maybe String)
 loadCurryPathFromCache cfg pkgdir = do
   let cachefile = curryPathCacheFile pkgdir
-  excache <- execIO $ doesFileExist cachefile
+  excache <- liftIOErrorLogger $ doesFileExist cachefile
   if excache
     then do
-      cftime <- execIO $ getModificationTime cachefile
-      pftime <- execIO $ getModificationTime (pkgdir </> "package.json")
+      cftime <- liftIOErrorLogger $ getModificationTime cachefile
+      pftime <- liftIOErrorLogger $ getModificationTime (pkgdir </> "package.json")
       if cftime > pftime
-        then do cnt <- execIO $ safeReadFile cachefile
+        then do cnt <- liftIOErrorLogger $ safeReadFile cachefile
                 let ls = either (const []) lines cnt
                 return $ if consistentCache ls then Just (head ls)
                                                else Nothing
@@ -1857,24 +1863,10 @@ loadCurryPathFromCache cfg pkgdir = do
 
 --- Cleans the local cache file for CURRYPATH. This might be necessary
 --- for upgrade/install/link commands.
-cleanCurryPathCache :: String -> ErrorLoggerIO ()
-cleanCurryPathCache pkgdir = execIO $ do
+cleanCurryPathCache :: String -> ErrorLogger ()
+cleanCurryPathCache pkgdir = liftIOErrorLogger $ do
   let pathcachefile = curryPathCacheFile pkgdir
       basecachefile = baseVersionCacheFile pkgdir
   whenFileExists pathcachefile $ removeFile pathcachefile
   whenFileExists basecachefile $ removeFile basecachefile
-
----------------------------------------------------------------------------
--- Auxiliaries:
-
---- Executes an `ErrorLoggerIO` action with the current directory set
---- to a given directory.
-inDirectoryELM :: String -> ErrorLoggerIO a -> ErrorLoggerIO a
-inDirectoryELM dir = toELM . inDirectory dir . fromELM
-
---- Executes an IO action with the current directory set
---- to a given directory in the `ErrorLoggerIO` monad.
-inDirectoryIO :: String -> IO a -> ErrorLoggerIO a
-inDirectoryIO dir = execIO . inDirectory dir
-
----------------------------------------------------------------------------
+  return ()

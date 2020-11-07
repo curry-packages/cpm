@@ -2,8 +2,7 @@
 
 module CPM.Helpers ( strip ) where
 
-import Char ( isSpace )
+import Data.Char ( isSpace )
 
 strip :: String -> String
 strip = reverse . dropWhile isSpace . reverse . dropWhile isSpace
-

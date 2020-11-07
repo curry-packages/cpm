@@ -9,10 +9,12 @@ module CPM.Repository.Update
   )
  where
 
-import Directory
-import FilePath
-import List              ( isSuffixOf )
-import System            ( system )
+import System.Directory
+import System.FilePath
+import System.Process   ( system )
+import Data.List        ( isSuffixOf )
+import Control.Monad
+import Prelude hiding (log)
 
 import CPM.Config        ( Config, packageInstallDir, packageIndexURLs
                          , repositoryDir )
@@ -37,21 +39,21 @@ import CPM.Repository.Select  ( addPackageToRepositoryCache
 --- the tar files URL, otherwise by reading all package specifications.
 --- If the fifth argument is `True`, also a CSV file containing the
 --- database entries is written.
-updateRepository :: Config -> Bool -> Bool -> Bool -> Bool -> ErrorLoggerIO ()
+updateRepository :: Config -> Bool -> Bool -> Bool -> Bool -> ErrorLogger ()
 updateRepository cfg cleancache download usecache writecsv = toELM $ do
   cleanRepositoryCache cfg
   when cleancache $ do
     debugMessage $ "Deleting global package cache: '" ++
                    packageInstallDir cfg ++ "'"
-    removeDirectoryComplete (packageInstallDir cfg)
+    liftIOErrorLogger $ removeDirectoryComplete (packageInstallDir cfg)
   debugMessage $ "Recreating package index: '" ++ repositoryDir cfg ++ "'"
   if download
     then do
-      recreateDirectory (repositoryDir cfg)
-      c <- inDirectory (repositoryDir cfg) (tryDownload (packageIndexURLs cfg))
+      liftIOErrorMessage $ recreateDirectory (repositoryDir cfg)
+      c <- liftIOErrorMessage $ inDirectory (repositoryDir cfg) (tryDownload (packageIndexURLs cfg))
       if c == 0
         then finishUpdate
-        else failIO $ "Failed to update package index, return code " ++ show c
+        else fail $ "Failed to update package index, return code " ++ show c
     else tryInstallRepositoryDB cfg usecache writecsv
  where
   tryDownload []         = return 1
@@ -67,20 +69,20 @@ updateRepository cfg cleancache download usecache writecsv = toELM $ do
     = do let tarfile = "INDEX.tar"
          c1 <- showExecCmd $ unwords ["curl", "-s", "-o", tarfile, quote piurl]
          c2 <- showExecCmd $ unwords ["tar", "-xf", tarfile]
-         removeFile tarfile
+         liftIOErrorLogger $ removeFile tarfile
          return (c1+c2)
     | ".tar.gz" `isSuffixOf` piurl
     = do let tarfile = "INDEX.tar.gz"
          c1 <- showExecCmd $ unwords ["curl", "-s", "-o", tarfile, quote piurl]
          c2 <- showExecCmd $ unwords ["tar", "-xzf", tarfile]
-         removeFile tarfile
+         liftIOErrorLogger $ removeFile tarfile
          return (c1+c2)
     | otherwise
     = do errorMessage $ "Unknown kind of package index URL: " ++ piurl
          return 1
 
   finishUpdate = do
-    setLastUpdate cfg
+    liftIOErrorLogger $ setLastUpdate cfg
     cleanRepositoryCache cfg
     infoMessage "Successfully downloaded repository index"
     tryInstallRepositoryDB cfg usecache writecsv
@@ -88,42 +90,44 @@ updateRepository cfg cleancache download usecache writecsv = toELM $ do
 --- Sets the date of the last update by touching README.md.
 setLastUpdate :: Config -> IO ()
 setLastUpdate cfg =
-  system (unwords ["touch", repositoryDir cfg </> "README.md"]) >> done
+  system (unwords ["touch", repositoryDir cfg </> "README.md"]) >> return ()
 
 ------------------------------------------------------------------------------
 --- Adds a package stored in the given directory to the repository index.
 --- If the argument `force` is true, overwrite an already existing package.
 --- If the argument `cpdir` is true, copy also the complete directory
 --- into the local package installation store.
-addPackageToRepository :: Config -> String -> Bool -> Bool -> ErrorLoggerIO ()
+addPackageToRepository :: Config -> String -> Bool -> Bool -> ErrorLogger ()
 addPackageToRepository cfg pkgdir force cpdir = do
-  dirExists <- execIO $ doesDirectoryExist pkgdir
+  dirExists <- liftIOErrorLogger $ doesDirectoryExist pkgdir
   if dirExists
     then do pkgSpec <- loadPackageSpecELM pkgdir
-            execIO $ copyPackage pkgSpec
-            logMsg Info $ "Package in directory '" ++ pkgdir ++
+            copyPackage pkgSpec
+            infoMessage $ "Package in directory '" ++ pkgdir ++
                           "' installed into local repository"
-    else logMsg Critical $ "Directory '" ++ pkgdir ++ "' does not exist."
+    else criticalMessage $ "Directory '" ++ pkgdir ++ "' does not exist."
  where
   copyPackage pkg = do
     let pkgIndexDir      = name pkg </> showVersion (version pkg)
         pkgRepositoryDir = repositoryDir cfg </> pkgIndexDir
         pkgInstallDir    = packageInstallDir cfg </> packageId pkg
-    exrepodir <- doesDirectoryExist pkgRepositoryDir
+    exrepodir <- liftIOErrorLogger $ doesDirectoryExist pkgRepositoryDir
     when (exrepodir && not force) $ error $
       "Package repository directory '" ++
       pkgRepositoryDir ++ "' already exists!\n"
-    expkgdir <- doesDirectoryExist pkgInstallDir
+    expkgdir <- liftIOErrorLogger $ doesDirectoryExist pkgInstallDir
     when expkgdir $
-      if force then removeDirectoryComplete pkgInstallDir
+      if force then liftIOErrorLogger $ removeDirectoryComplete pkgInstallDir
                else error $ "Package installation directory '" ++
                             pkgInstallDir ++ "' already exists!\n"
     infoMessage $ "Create directory: " ++ pkgRepositoryDir
-    createDirectoryIfMissing True pkgRepositoryDir
-    copyFile (pkgdir </> "package.json") (pkgRepositoryDir </> "package.json")
-    when cpdir $ do
-      copyDirectory pkgdir pkgInstallDir
-      inDirectory pkgInstallDir $ runELM $ cleanPackage cfg Debug
+    liftIOErrorLogger $ do $
+      createDirectoryIfMissing True pkgRepositoryDir
+      copyFile (pkgdir </> "package.json")
+               (pkgRepositoryDir </> "package.json")
+      when cpdir $ do
+        copyDirectory pkgdir pkgInstallDir
+        inDirectory pkgInstallDir $ runELM $ cleanPackage cfg Debug
     if exrepodir then updatePackageInRepositoryCache cfg pkg
                  else addPackageToRepositoryCache    cfg pkg
 

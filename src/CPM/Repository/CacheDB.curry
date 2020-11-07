@@ -9,12 +9,14 @@ module CPM.Repository.CacheDB
   ( repositoryCacheDB, tryInstallRepositoryDB, addPackagesToRepositoryDB )
  where
 
-import Directory    ( doesFileExist, removeFile )
-import FilePath     ( (</>) )
-import IO           ( hFlush, stdout )
+import System.Directory    ( doesFileExist, removeFile )
+import System.FilePath     ( (</>) )
+import System.IO           ( hFlush, stdout )
+import Control.Monad
+import Prelude hiding (log)
 import ReadShowTerm
 
-import Database.CDBI.ER 
+import Database.CDBI.ER
 import Database.CDBI.Connection
 import System.Path  ( fileInPath )
 import Text.CSV
@@ -38,9 +40,9 @@ repositoryCacheCSV cfg = repositoryCacheFilePrefix cfg ++ ".csv"
 
 --- Installs the repository database with the current repository index
 --- if the command `sqlite3` is in the path.
-tryInstallRepositoryDB :: Config -> Bool -> Bool -> IO (ErrorLogger ())
+tryInstallRepositoryDB :: Config -> Bool -> Bool -> ErrorLogger ()
 tryInstallRepositoryDB cfg usecache writecsv = do
-  withsqlite <- fileInPath "sqlite3"
+  withsqlite <- liftIOErrorLogger $ fileInPath "sqlite3"
   if withsqlite
     then installRepositoryDB cfg usecache writecsv
     else log Info
@@ -52,7 +54,7 @@ tryInstallRepositoryDB cfg usecache writecsv = do
 --- Otherwise, `writeRepositoryDB` is called.
 --- If the second argument is `True`, also a CSV file containing the
 --- database entries is written.
-installRepositoryDB :: Config -> Bool -> Bool -> IO (ErrorLogger ())
+installRepositoryDB :: Config -> Bool -> Bool -> ErrorLogger ()
 installRepositoryDB cfg False writecsv = writeRepositoryDB cfg False writecsv
 installRepositoryDB cfg True  writecsv = do
   let sqlitefile = repositoryCacheDB cfg
@@ -62,7 +64,7 @@ installRepositoryDB cfg True  writecsv = do
   dbexists <- doesFileExist sqlitefile
   if c == 0 && dbexists
     then if writecsv then saveDBAsCSV cfg
-                     else succeedIO ()
+                     else return ()
     else writeRepositoryDB cfg True writecsv
 
 --- Tries to download some target file (first argument) from a list of
@@ -84,7 +86,7 @@ tryDownloadFromURLs target (baseurl:baseurls) file = do
 --- or from reading all package specs.
 --- If the third argument is `True`, also a CSV file containing the
 --- database entries is written.
-writeRepositoryDB :: Config -> Bool -> Bool -> IO (ErrorLogger ())
+writeRepositoryDB :: Config -> Bool -> Bool -> ErrorLogger ()
 writeRepositoryDB cfg usecache writecsv = do
   let sqlitefile = repositoryCacheDB cfg
   whenFileExists sqlitefile (removeFile sqlitefile)
@@ -112,22 +114,22 @@ writeRepositoryDB cfg usecache writecsv = do
   log Info "Repository cache DB written"
   cleanTempDir
   if writecsv then saveDBAsCSV cfg
-              else succeedIO ()
+              else return ()
 
 --- Add a list of package descriptions to the database.
 --- Here, a package description is either a (reduced) package specification
 --- or a list of string (a row from a CSV file) containing the required infos.
 addPackagesToRepositoryDB :: Config -> Bool
-                          -> [Either Package [String]] -> IO (ErrorLogger ())
+                          -> [Either Package [String]] -> ErrorLogger ()
 addPackagesToRepositoryDB cfg quiet pkgs =
-  mapEL (runDBAction . newEntry) pkgs |> succeedIO ()
+  mapM (runDBAction . newEntry) pkgs >> return ()
  where
   runDBAction act = do
-    result <- runWithDB (repositoryCacheDB cfg) act
+    result <- liftIOErrorLogger $ runWithDB (repositoryCacheDB cfg) act
     case result of
       Left (DBError kind str) -> log Critical $ "Repository DB failure: " ++
                                                 show kind ++ " " ++ str
-      Right _ -> (unless quiet $ putChar '.' >> hFlush stdout) >> succeedIO ()
+      Right _ -> (unless quiet $ putChar '.' >> hFlush stdout) >> return ()
   
   newEntry (Left p) = newIndexEntry
     (name p)
@@ -145,7 +147,7 @@ addPackagesToRepositoryDB cfg quiet pkgs =
 
 --- Saves complete database as term files into an existing directory
 --- provided as a parameter.
-saveDBAsCSV :: Config -> IO (ErrorLogger ())
+saveDBAsCSV :: Config -> ErrorLogger ()
 saveDBAsCSV cfg = do
   result <- runWithDB (repositoryCacheDB cfg)
                       (getAllEntries indexEntry_CDBI_Description)

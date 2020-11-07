@@ -1,13 +1,13 @@
 ------------------------------------------------------------------------------
 --- This module implements functionality surrounding the package *repository*.
 --- The repository is the index of all packages known to the package manager.
---- It contains metadata about the packages, such as their names, versions 
+--- It contains metadata about the packages, such as their names, versions
 --- dependencies and where they can be acquired. The repository does not contain
---- the actual packages. For a list of packages that are currently installed 
+--- the actual packages. For a list of packages that are currently installed
 --- locally, you can consult the *database*.
 ------------------------------------------------------------------------------
 
-module CPM.Repository 
+module CPM.Repository
   ( Repository
   , emptyRepository, allPackages, pkgsToRepository
   , warnIfRepositoryOld, readRepositoryFrom
@@ -18,16 +18,17 @@ module CPM.Repository
   , repositoryCacheFilePrefix
   ) where
 
-import Char         ( toLower )
-import Directory
-import Either
-import FilePath
-import IO
-import IOExts       ( readCompleteFile )
-import List
-import ReadShowTerm ( showQTerm, readQTerm, showTerm, readUnqualifiedTerm )
-import System       ( exitWith, system )
-import Time
+import Data.Char        ( toLower )
+import Data.Either
+import Data.List
+import Data.Time
+import Control.Monad
+import System.Directory
+import System.FilePath
+import System.IO
+import System.IOExts    ( readCompleteFile )
+import System.Process   ( exitWith, system )
+import ReadShowTerm     ( showQTerm, readQTerm, showTerm, readUnqualifiedTerm )
 
 import CPM.Config        ( Config, repositoryDir )
 import CPM.ConfigPackage ( packageVersion )
@@ -55,7 +56,7 @@ pkgsToRepository :: [Package] -> Repository
 pkgsToRepository ps = Repository ps
 
 ------------------------------------------------------------------------------
---- Finds all versions of a package known to the repository. Returns the 
+--- Finds all versions of a package known to the repository. Returns the
 --- packages sorted from newest to oldest.
 ---
 --- @param r the repository
@@ -64,10 +65,10 @@ pkgsToRepository ps = Repository ps
 findAllVersions :: Repository -> String -> Bool -> [Package]
 findAllVersions (Repository ps) p pre =
   sortedByVersion $ preFiltered $ sameName ps
- where 
+ where
   sortedByVersion = sortBy (\a b -> (version a) `vgt` (version b))
   preFiltered = filter filterPre
-  sameName = filter ((== p) . name) 
+  sameName = filter ((== p) . name)
   filterPre p' = pre || (not . isPreRelease . version) p'
 
 --- Search the names and synopses of all compiler-compatbile packages
@@ -131,14 +132,14 @@ findVersion repo pn v =
        maybeHead (x:_) = Just x
 
 --- Prints a warning if the repository index is older than 10 days.
-warnIfRepositoryOld :: Config -> IO ()
+warnIfRepositoryOld :: Config -> ErrorLogger ()
 warnIfRepositoryOld cfg = do
   let updatefile = repositoryDir cfg </> "README.md"
-  updexists <- doesFileExist updatefile
+  updexists <- liftIOErrorLogger $ doesFileExist updatefile
   if updexists
     then do
-      utime <- getModificationTime updatefile
-      ctime <- getClockTime
+      utime <- liftIOErrorLogger $ getModificationTime updatefile
+      ctime <- liftIOErrorLogger $ getClockTime
       let warntime = addDays 10 utime
       when (compareClockTime ctime warntime == GT) $ do
         -- we assume that clock time is measured in seconds
@@ -157,35 +158,35 @@ useUpdateHelp = "Use 'cypm update' to download the newest package index."
 ---
 --- @param path the location of the repository
 --- @return repository
-readRepositoryFrom :: String -> IO Repository
+readRepositoryFrom :: String -> ErrorLogger Repository
 readRepositoryFrom path = do
   (repo, repoErrors) <- tryReadRepositoryFrom path
   if null repoErrors
     then return repo
     else do errorMessage "Problems while reading the package index:"
             mapM_ errorMessage repoErrors
-            exitWith 1
+            liftIOErrorLogger $ exitWith 1
 
 --- Reads all package specifications from a repository.
 ---
 --- @param path the location of the repository
 --- @return repository and possible repository reading errors
-tryReadRepositoryFrom :: String -> IO (Repository, [String])
+tryReadRepositoryFrom :: String -> ErrorLogger (Repository, [String])
 tryReadRepositoryFrom path = do
   debugMessage $ "Reading repository index from '" ++ path ++ "'..."
-  repos     <- checkAndGetVisibleDirectoryContents path
-  pkgPaths  <- mapIO getDir (map (path </>) repos) >>= return . concat
-  verDirs   <- mapIO checkAndGetVisibleDirectoryContents pkgPaths
+  repos     <- liftIOErrorLogger $ checkAndGetVisibleDirectoryContents path
+  pkgPaths  <- liftIOErrorLogger (mapM getDir (map (path </>) repos) >>= return . concat)
+  verDirs   <- liftIOErrorLogger $ mapM checkAndGetVisibleDirectoryContents pkgPaths
   verPaths  <- return $ concatMap (\ (d, p) -> map (d </>) p)
                      $ zip pkgPaths verDirs
   specPaths <- return $ map (</> "package.json") verPaths
   infoMessage "Reading repository index..."
-  specs     <- mapIO readPackageFile specPaths
+  specs     <- liftIOErrorLogger $ mapM readPackageFile specPaths
   when (null (lefts specs)) $ debugMessage "Finished reading repository"
   return $ (Repository $ rights specs, lefts specs)
  where
   readPackageFile f = do
-    spec <- liftM readPackageSpec $ readCompleteFile f
+    spec <- readPackageSpec <$> readCompleteFile f
     seq (id $!! spec) (putChar '.' >> hFlush stdout)
     return $ case spec of
       Left err -> Left $ "Problem reading '" ++ f ++ "': " ++ err
@@ -200,18 +201,19 @@ repositoryCacheFilePrefix :: Config -> String
 repositoryCacheFilePrefix cfg = repositoryDir cfg </> "REPOSITORY_CACHE"
 
 --- Cleans the repository cache.
-cleanRepositoryCache :: Config -> IO ()
+cleanRepositoryCache :: Config -> ErrorLogger ()
 cleanRepositoryCache cfg = do
   debugMessage $ "Cleaning repository cache '" ++
                  repositoryCacheFilePrefix cfg ++ "*'"
-  system $ "/bin/rm -f " ++ quote (repositoryCacheFilePrefix cfg) ++ "*"
-  done
+  liftIOErrorLogger $ system $
+    "/bin/rm -f " ++ quote (repositoryCacheFilePrefix cfg) ++ "*"
+  return ()
 
 ------------------------------------------------------------------------------
 --- Reads a given package from the default repository directory.
 --- This is useful to obtain the complete package specification
 --- from a possibly incomplete package specification.
-readPackageFromRepository :: Config -> Package -> IO (ErrorLogger Package)
+readPackageFromRepository :: Config -> Package -> ErrorLogger Package
 readPackageFromRepository cfg pkg =
   let pkgdir = repositoryDir cfg </> name pkg </> showVersion (version pkg)
   in loadPackageSpec pkgdir

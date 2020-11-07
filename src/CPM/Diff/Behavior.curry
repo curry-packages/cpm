@@ -7,7 +7,7 @@
 --- directory `/tmp/CPM/bdiff` and then CurryCheck is executed on `Compare`.
 --------------------------------------------------------------------------------
 
-module CPM.Diff.Behavior 
+module CPM.Diff.Behavior
   ( ComparisonInfo (..)
   , getBaseTemp
   , genCurryCheckProgram
@@ -18,14 +18,15 @@ module CPM.Diff.Behavior
   , findFunctionsToCompare
   ) where
 
-import Char      ( isAlphaNum )
-import Directory ( createDirectory, doesDirectoryExist )
-import FilePath  ( (</>), joinPath )
-import Function  ( both )
-import List      ( intercalate, intersect, nub, splitOn, isPrefixOf, isInfixOf
-                 , find, delete, (\\), nubBy )
-import Maybe     ( isJust, fromJust, fromMaybe, listToMaybe )
-import System    ( getEnviron, setEnviron, unsetEnviron )
+import System.Directory   ( createDirectory, doesDirectoryExist )
+import System.FilePath    ( (</>), joinPath )
+import System.Environment ( getEnv, setEnv, unsetEnv )
+import Data.Char          ( isAlphaNum )
+import Data.List          ( intercalate, intersect, nub, splitOn, isPrefixOf
+                          , isInfixOf, find, delete, (\\), nubBy )
+import Data.Maybe         ( isJust, fromJust, fromMaybe, listToMaybe )
+import Control.Monad
+import Prelude hiding (log)
 
 import AbstractCurry.Build
 import AbstractCurry.Pretty ( defaultOptions, ppCTypeExpr, showCProg )
@@ -56,7 +57,7 @@ import CPM.ErrorLogger
 import CPM.FileUtil ( copyDirectory, recreateDirectory, inDirectory
                     , joinSearchPath, tempDir )
 import CPM.Package ( Package, Version, name, version, showVersion, packageId
-                   , exportedModules, loadPackageSpec) 
+                   , exportedModules, loadPackageSpec)
 import CPM.PackageCache.Global as GC
 import CPM.PackageCopy (resolveAndCopyDependencies)
 import CPM.Repository (Repository)
@@ -64,7 +65,7 @@ import CPM.Repository (Repository)
 -- What this module does (and how)
 -- ===============================
 --
--- This module compares two package versions using CurryCheck/EasyCheck. Each 
+-- This module compares two package versions using CurryCheck/EasyCheck. Each
 -- function that can be tested (the criteria for what makes a function testable
 -- are listed below), is compared using a EasyCheck property test equating both
 -- versions of the function. A function is considered testable, if
@@ -73,24 +74,24 @@ import CPM.Repository (Repository)
 -- - its type is unchanged between both versions of the module AND
 -- - it is public AND
 -- - its argument types are either all types from the Curry standard library or
---   they are the same in both versions of the module (including types in 
+--   they are the same in both versions of the module (including types in
 --   package dependencies) AND
 -- - the function is not marked with a do-not-checked pragma
 --
 -- To test a function, we have to generate a new Curry program containing a test
--- that calls both versions of the function (from the old and from the new 
+-- that calls both versions of the function (from the old and from the new
 -- version of the package) and compares the results. Since we have to use both
 -- versions of the package from within the same Curry program, we have to rename
 -- their modules to be able to import both into the same program. Renaming the
--- modules also means renaming all references to the modules. And since the 
+-- modules also means renaming all references to the modules. And since the
 -- package's dependencies can also change between different versions, we have to
 -- rename all modules in all transitive dependencies as well. When renaming the
 -- modules, we simply prefix them with the version of the original package (i.e.
 -- the transitive dependencies get the same prefix as the original package). If
--- we have package versions 1.0.0 and 1.1.0 and our module is called 
--- `Test.Functions`, then we will rename the from version 1.0.0 to 
--- `V_1_0_0_Test.Functions` and the one from version 1.1.0 to 
--- `V_1_1_0_Test.Functions`. 
+-- we have package versions 1.0.0 and 1.1.0 and our module is called
+-- `Test.Functions`, then we will rename the from version 1.0.0 to
+-- `V_1_0_0_Test.Functions` and the one from version 1.1.0 to
+-- `V_1_1_0_Test.Functions`.
 --
 -- We can now import both module versions and call functions from both versions
 -- in the same Curry program. We still have a problem with property tests that
@@ -107,11 +108,11 @@ import CPM.Repository (Repository)
 -- of the type, `V_1_0_0_SayHello.MyType` and `V_1_1_0_SayHello.MyType`. If we
 -- choose one of the renamed types, we cannot give it to the function from the
 -- other version of the module as-is. So we generate translator functions that
--- can translate one version of the data type into the other, using 
+-- can translate one version of the data type into the other, using
 -- `genTranslatorFunction`.
 --
--- The comments in this module refer to version A and version B of the module 
--- and/or package. Which version is which (e.g. whether A is the smaller 
+-- The comments in this module refer to version A and version B of the module
+-- and/or package. Which version is which (e.g. whether A is the smaller
 -- version) is irrelevant.
 
 --- Contains information from the package preparation (moving to temp directory
@@ -129,16 +130,19 @@ data ComparisonInfo = ComparisonInfo
   , infModMapB :: [(String, String)] --- Map from old to new module names, ver B
   }
 
---- Get temporary directory for the behavior diff.
-getBaseTemp :: IO (ErrorLogger String)
-getBaseTemp = do
-  tmpdir <- tempDir
-  succeedIO $ tmpdir </> "bdiff"
-
 --- Create temporary directory for the behavior diff.
-createBaseTemp :: IO (ErrorLogger String)
-createBaseTemp =
-  getBaseTemp |>= \tmp -> recreateDirectory tmp >> succeedIO tmp
+createBaseTemp :: IO String
+createBaseTemp = do
+  tmpDir <- getTemporaryDirectory
+  let tmp = tmpDir </> "CPM" </> "bdiff"
+  recreateDirectory tmp
+  return tmp
+
+--- Get temporary directory for the behavior diff.
+getBaseTemp :: IO String
+getBaseTemp = do
+  tmpDir <- getTemporaryDirectory
+  return $ tmpDir </> "CPM" </> "bdiff"
 
 --- This message is printed before CurryCheck is executed.
 infoText :: String
@@ -148,7 +152,7 @@ infoText = unlines
   , "If a test fails, their implementations semantically differ." ]
 
 --- Compare the behavior of two package versions using CurryCheck.
---- 
+---
 --- @param cfg - the CPM configuration
 --- @param repo - the central package index
 --- @param gc - the global package cache
@@ -156,40 +160,40 @@ infoText = unlines
 --- @param groundequiv - test ground equivalence only?
 --- @param useanalysis - use program analysis to filter non-term. operations?
 --- @param mods - a list of modules to compare
-diffBehavior :: Config 
-             -> Repository 
-             -> GC.GlobalCache 
+diffBehavior :: Config
+             -> Repository
+             -> GC.GlobalCache
              -> ComparisonInfo
              -> Bool
              -> Bool
              -> Maybe [String]
-             -> IO (ErrorLogger ())
-diffBehavior cfg repo gc info groundequiv useanalysis cmods =
-  getBaseTemp |>= \baseTmp ->
-  findFunctionsToCompare cfg repo gc (infSourceDirA info) (infSourceDirB info)
-                         useanalysis cmods |>=
-  \(acyCache, loadpath, funcs, removed) ->
-    let
-      filteredFuncs =
+             -> ErrorLogger ()
+diffBehavior cfg repo gc info groundequiv useanalysis cmods = do
+  getBaseTemp <- liftIOErrorLogger $ baseTmp
+  (acyCache, loadpath, funcs, removed) <-
+    findFunctionsToCompare cfg repo gc (infSourceDirA info) (infSourceDirB info)
+                          useanalysis cmods
+  let filteredFuncs =
         maybe funcs
               (\mods -> filter ((`elem` mods) . fst . funcName . snd) funcs)
               cmods
       filteredNames = map snd filteredFuncs
-    in log Debug ("Filtered operations to be checked: " ++
-                  showFuncNames filteredNames) |>
-       case funcs of
-         [] -> printRemoved removed >> succeedIO () 
-         _  -> do
-           putStrLn infoText
-           printRemoved removed
-           putStrLn $
-             "Comparing operations " ++ showFuncNames filteredNames ++ "\n"
-           genCurryCheckProgram cfg repo gc filteredFuncs info groundequiv
-                                acyCache loadpath
-            |> callCurryCheck cfg info baseTmp
+  debugMessage ("Filtered operations to be checked: " ++
+                  showFuncNames filteredNames)
+  case funcs of
+    [] -> liftIOErrorLogger (printRemoved removed >> return ())
+    _  -> do
+      liftIOErrorLogger $ do
+         putStrLn infoText
+         printRemoved removed
+         putStrLn $
+           "Comparing operations " ++ showFuncNames filteredNames ++ "\n"
+      genCurryCheckProgram cfg repo gc filteredFuncs info groundequiv
+                            acyCache loadpath
+      callCurryCheck cfg info baseTmp
  where
    printRemoved removed =
-     if null removed then done
+     if null removed then return ()
                      else putStrLn (renderRemoved removed) >> putStrLn ""
 
 --- Renders the list of functions that were excluded from the comparison along
@@ -211,45 +215,44 @@ renderRemoved rs =
   reasonText NonTerm   = text "Possibly non-terminating"
 
 --- Runs CurryCheck on the generated program.
-callCurryCheck :: Config -> ComparisonInfo -> String -> IO (ErrorLogger ())
+callCurryCheck :: Config -> ComparisonInfo -> String -> ErrorLogger ()
 callCurryCheck cfg info baseTmp = do
-  oldPath <- getEnviron "CURRYPATH"
+  oldPath <- liftIOErrorLogger $ getEnv "CURRYPATH"
   let currybin  = curryExec cfg
-      currypath = infDirA info ++ ":" ++ infDirB info
-  setEnviron "CURRYPATH" currypath
-  log Debug ("Run `curry check Compare' in `" ++ baseTmp ++ "' with") |>
-   log Debug ("CURRYPATH=" ++ currypath) |> succeedIO ()
-  ecode <- inDirectory baseTmp $ showExecCmd (currybin ++ " check Compare")
-  setEnviron "CURRYPATH" oldPath
-  log Debug "CurryCheck finished" |> succeedIO ()
+  let currypath = infDirA info ++ ":" ++ infDirB info
+  liftIOErrorLogger $ setEnv "CURRYPATH" currypath
+  debugMessage ("Run `curry check Compare' in `" ++ baseTmp ++ "' with")
+  debugMessage ("CURRYPATH=" ++ currypath) >> return ()
+  ecode <- inDirectoryEL baseTmp $ showExecCmd (currybin ++ " check Compare")
+  liftIOErrorLogger $ setEnv "CURRYPATH" oldPath
+  debugMessage "CurryCheck finished" >> return ()
   if ecode==0
-    then succeedIO ()
+    then return ()
     else log Error "CurryCheck detected behavior error!"
 
---- Generates a program containing CurryCheck tests that will compare the 
+--- Generates a program containing CurryCheck tests that will compare the
 --- behavior of the given functions. The program will be written to the
 --- `Compare.curry` file in the behavior diff temp directory.
-genCurryCheckProgram :: Config 
-                     -> Repository 
-                     -> GC.GlobalCache 
-                     -> [(Bool,CFuncDecl)] 
+genCurryCheckProgram :: Config
+                     -> Repository
+                     -> GC.GlobalCache
+                     -> [(Bool,CFuncDecl)]
                      -> ComparisonInfo
                      -> Bool
                      -> ACYCache -> [String]
-                     -> IO (ErrorLogger ())
-genCurryCheckProgram cfg repo gc prodfuncs info groundequiv acyCache loadpath =
-  getBaseTemp |>= \baseTmp ->
-  let translatorGenerator = uncurry $ genTranslatorFunction cfg repo gc info in
-  foldEL translatorGenerator (acyCache, emptyTrans)
-                                     translateTypes |>= \(_, transMap) -> 
+                     -> ErrorLogger ()
+genCurryCheckProgram cfg repo gc prodfuncs info groundequiv acyCache loadpath = do
+  baseTmp <- liftIOErrorLogger $ getBaseTemp
+  let translatorGenerator = uncurry $ genTranslatorFunction cfg repo gc info
+  (_, transMap) <- foldM translatorGenerator (acyCache, emptyTrans)
+                     translateTypes
   let (limittypes,testFunctions) =
          unzip (map (genTestFunction info groundequiv transMap) prodfuncs)
-      transFunctions = transFuncs transMap
-      limittconss    = nub (concatMap tconsOfType (concat limittypes))
-      limittcmods    = nub (map fst limittconss)
-  in
+  let transFunctions = transFuncs transMap
+  let limittconss    = nub (concatMap tconsOfType (concat limittypes))
+  let limittcmods    = nub (map fst limittconss)
   -- get the declarations of all types which require limit functions:
-  foldEL addLimitType (acyCache,[]) limittconss |>= \ (_,limittdecls) -> do
+  (_, limittdecls) <- foldM addLimitType (acyCache,[]) limittconss
   typeinfos <- analyzeModules "recursive type" typesInValuesAnalysis loadpath
                               limittcmods
   let limitFunctions = concatMap (genLimitFunction typeinfos) limittdecls
@@ -258,16 +261,16 @@ genCurryCheckProgram cfg repo gc prodfuncs info groundequiv acyCache loadpath =
                 (if groundequiv then limitFunctions else []))
                []
   let prodops = map snd (filter fst prodfuncs)
-  unless (null prodops) $ putStrLn $
+  liftIOErrorLogger $ unless (null prodops) $ putStrLn $
     "Productive operations (currently not fully supported for all types):\n" ++
     showFuncNames prodops ++ "\n"
-  writeFile (baseTmp </> "Compare.curry")
+  liftIOErrorLogger $ writeFile (baseTmp </> "Compare.curry")
             (progcmts ++ "\n" ++ showCProg prog ++ "\n")
-  succeedIO ()
+  return ()
  where
   addLimitType (acy,tdecls) qn =
-    findTypeInModules cfg repo gc info acy qn |>= \ (acy',tdecl) ->
-    succeedIO (acy', tdecl:tdecls)
+    findTypeInModules cfg repo gc info acy qn >>= \ (acy',tdecl) ->
+    return (acy', tdecl:tdecls)
 
   progcmts = unlines $ map ("-- "++)
     [ "This file contains properties to compare packages"
@@ -277,7 +280,7 @@ genCurryCheckProgram cfg repo gc prodfuncs info groundequiv acyCache loadpath =
     , "It should be processed by 'curry check Compare' with setting"
     , "export CURRYPATH=" ++ infDirA info ++ ":" ++ infDirB info
     ]
-      
+
   allReferencedTypes =
     nub ((concat $ map (argTypes . typeOfQualType . funcType . snd) prodfuncs)
          ++ map (resultType . typeOfQualType . funcType . snd) prodfuncs)
@@ -387,6 +390,7 @@ genTestFunction info groundequiv tm (isprod,f) =
  where
   (fmod,fname) = funcName f
   modName = "Compare"
+  both fun (a, b) = (fun a, fun b)
   testName = "test_" ++
        combineTuple (both (replace' '.' '_') $ (fmod, encodeCurryId fname)) "_"
   testName1 = (modName, testName++"_1")
@@ -398,10 +402,10 @@ genTestFunction info groundequiv tm (isprod,f) =
 
   newResultTypeA = mapTypes (infModMapA info)
                     (instantiateBool (resultType (typeOfQualType (funcType f))))
-  
+
   newResultTypeB = mapTypes (infModMapB info)
                     (instantiateBool (resultType (typeOfQualType (funcType f))))
-  
+
   newType = let ftype = mapTypes (infModMapA info) $ genTestFuncType f
             in if isprod then baseType ("Nat","Nat") ~> ftype
                          else ftype
@@ -410,12 +414,12 @@ genTestFunction info groundequiv tm (isprod,f) =
     Nothing -> id
     Just tr -> \t -> applyF (modName, tr) [t]
 
-  -- Since we use the data types from the A version in type of the generated 
+  -- Since we use the data types from the A version in type of the generated
   -- test function, we transform the parameters in the call of the B version of
   -- the tested function using the translator functions from the TransMap. As we
-  -- already have translator functions from data type version A to B, we will 
-  -- translate the result of the A function using these functions. The 
-  -- comparison of function results will thus be done on the B version of the 
+  -- already have translator functions from data type version A to B, we will
+  -- translate the result of the A function using these functions. The
+  -- comparison of function results will thus be done on the B version of the
   -- types, while the parameter generation will be done on the A version.
   callA = returnTransform $ applyF (modA, fname)
                                    $ map (\(CPVar v) -> CVar v) vars
@@ -444,7 +448,7 @@ encodeCurryId (c:cs)
    int2hex i = if i<10 then chr (ord '0' + i)
                        else chr (ord 'A' + i - 10)
 
---- Checks if any part of the given type needs to be translated using a 
+--- Checks if any part of the given type needs to be translated using a
 --- translator function.
 needToTranslatePart :: ComparisonInfo -> CTypeExpr -> Bool
 needToTranslatePart _    (CTVar _) = False
@@ -460,7 +464,7 @@ needToTranslatePart info (CTCons n) =
 isMappedType :: ComparisonInfo -> (String, String) -> Bool
 isMappedType info (mod, _) = isJust $ lookup mod (infModMapA info)
 
---- The TransMap contains a map of type expressions to translator function 
+--- The TransMap contains a map of type expressions to translator function
 --- names, as well as the next translator function number and a list of the
 --- translator functions themselves.
 data TransMap = TransMap [(CTypeExpr, String)] Int [CFuncDecl]
@@ -469,17 +473,17 @@ data TransMap = TransMap [(CTypeExpr, String)] Int [CFuncDecl]
 emptyTrans :: TransMap
 emptyTrans = TransMap [] 0 []
 
---- Adds an entry to the TransMap. Note that this does not add the 
+--- Adds an entry to the TransMap. Note that this does not add the
 --- function itself. Use `addFunc` to add the function.
 addEntry :: TransMap -> CTypeExpr -> (TransMap, String)
-addEntry (TransMap m n fs) e = 
+addEntry (TransMap m n fs) e =
   (TransMap ((e, "tt_" ++ show n) : m) (n + 1) fs, "tt_" ++ show n)
 
 --- Adds a translator function to the list of functions in the TransMap.
 addFunc :: TransMap -> CFuncDecl -> TransMap
 addFunc (TransMap m n fs) f = TransMap m n (f:fs)
 
---- Finds the name of the translator function for a type expression, if it 
+--- Finds the name of the translator function for a type expression, if it
 --- exists.
 findTrans :: TransMap -> CTypeExpr -> Maybe String
 findTrans (TransMap m _ _) e = lookup e m
@@ -538,7 +542,7 @@ addModuleDir dir mod p (ACYCache ps) = case lookup mod ps of
   Just ms -> case lookup dir ms of
     Just  _ -> ACYCache ps
     Nothing -> ACYCache $ (mod, (dir, p):ms):(delete (mod, ms) ps)
-  Nothing -> ACYCache $ (mod, [(dir, p)]):ps 
+  Nothing -> ACYCache $ (mod, [(dir, p)]):ps
 
 --- Generate a translator function for a type expression. Expects a CTCons.
 ---
@@ -548,14 +552,14 @@ addModuleDir dir mod p (ACYCache ps) = case lookup mod ps of
 --- @param info information about the current comparison
 --- @param tm the map of translator functions
 --- @param e the type expression to generate a translator for
-genTranslatorFunction :: Config 
-                      -> Repository 
-                      -> GC.GlobalCache 
-                      -> ComparisonInfo 
+genTranslatorFunction :: Config
+                      -> Repository
+                      -> GC.GlobalCache
+                      -> ComparisonInfo
                       -> ACYCache
-                      -> TransMap 
-                      -> CTypeExpr 
-                      -> IO (ErrorLogger (ACYCache, TransMap))
+                      -> TransMap
+                      -> CTypeExpr
+                      -> ErrorLogger (ACYCache, TransMap)
 genTranslatorFunction cfg repo gc info acy tm texp =
 -- TODO: generate also translation functions for functional types.
 -- This requires type translator in both directions but currently
@@ -572,18 +576,18 @@ genTranslatorFunction cfg repo gc info acy tm texp =
   -- Don't generate another translator if there already is one for the current
   -- type.
   if isJust $ findTrans tm t'
-    then succeedIO (acy, tm)
-    else findTypeInModules cfg repo gc info acy (mod,n) |>=
+    then return (acy, tm)
+    else findTypeInModules cfg repo gc info acy (mod,n) >>=
   -- We want to work on the constructors with all type variables instantiated
   -- with the types from the type that we're supposed to build a translator for.
-  \(acy', typeDecl) -> (succeedIO $ instantiate typeDecl t') |>=
-  -- Add the entry at this point to make sure that it's available when we 
+  \(acy', typeDecl) -> (return $ instantiate typeDecl t') >>=
+  -- Add the entry at this point to make sure that it's available when we
   -- generate the other translators and if we need to call it recursively later
   -- on.
-  \instTypeDecl -> (succeedIO $ addEntry tm t') |>=
-  \(tm', name) -> foldEL (uncurry $ genTranslatorFunction cfg repo gc info)
-                         (acy', tm') (transExprs instTypeDecl) |>= 
-  \(acy'', tm'') -> 
+  \instTypeDecl -> (return $ addEntry tm t') >>=
+  \(tm', name) -> foldM (uncurry $ genTranslatorFunction cfg repo gc info)
+                         (acy', tm') (transExprs instTypeDecl) >>=
+  \(acy'', tm'') ->
     let
       aType = prefixMappedTypes (infPrefixA info) t'
       bType = prefixMappedTypes (infPrefixB info) t'
@@ -618,18 +622,18 @@ genTranslatorFunction cfg repo gc info acy tm texp =
        where
         call = transformer (0, e)
     in case instTypeDecl of
-      CType _ _ _ cs _ -> succeedIO $
+      CType _ _ _ cs _ -> return $
         (acy'', addFunc tm'' (stFunc fName 1 Public fType (map ruleForCons cs)))
-      CTypeSyn _ _ _ e -> succeedIO $
+      CTypeSyn _ _ _ e -> return $
         (acy'', addFunc tm'' (stFunc fName 1 Public fType [synRule e]))
-      CNewType _ _ _ c _ -> succeedIO $
+      CNewType _ _ _ c _ -> return $
         (acy'', addFunc tm'' (stFunc fName 1 Public fType [ruleForCons c]))
  where
   -- Since our test functions always use polymorphic types instantiated to Bool,
   -- we generate our translator functions for Bool-instantiated types as well.
   t' = instantiateBool texp
 
-  -- Finds all type expressions in the instantiated constructors that contain 
+  -- Finds all type expressions in the instantiated constructors that contain
   -- types that need to be translated.
   transExprs cs = filter (needToTranslatePart info) $ nub $ extractExprs cs
   extractExprs (CType _ _ _ es _) = concat $ map extractExprsCons es
@@ -652,21 +656,21 @@ genTranslatorFunction cfg repo gc info acy tm texp =
 -- Finds the type declaration for a given qualified type constructor.
 -- If the module is not in the ACYCache, it is read and added to the cache.
 findTypeInModules :: Config -> Repository -> GC.GlobalCache -> ComparisonInfo
-                  -> ACYCache -> QName -> IO (ErrorLogger (ACYCache, CTypeDecl))
+                  -> ACYCache -> QName -> ErrorLogger (ACYCache, CTypeDecl)
 findTypeInModules cfg repo gc info acy (mod,n) =
   case predefinedType (mod, n) of
-    Just ty -> succeedIO (acy, ty)
+    Just ty -> return (acy, ty)
     Nothing ->
      (case findModule mod acy of
-       Just  p -> succeedIO $ p
-       Nothing -> fromELM (resolveAndCopyDependencies cfg repo gc
-                                          (infSourceDirA info)) |>= \deps ->
+       Just  p -> return $ p
+       Nothing -> resolveAndCopyDependencies cfg repo gc
+                                          (infSourceDirA info) >>= \deps ->
                   readAbstractCurryFromDeps (infSourceDirA info) deps mod >>=
-                                                       succeedIO) |>= \prog ->
+                                                       return) >>= \prog ->
                   case filter ((== n) . snd . typeName) (types prog) of
-                    [] -> failIO $ "No type defined '" ++ n ++ "' in module '"
+                    [] -> fail $ "No type defined '" ++ n ++ "' in module '"
                                    ++ mod ++ "'"
-                    (x:_) -> succeedIO (addModule mod prog acy, x)
+                    (x:_) -> return (addModule mod prog acy, x)
 
 --- Replaces type variables with their expression in the map if there is one,
 --- leaves them alone otherwise.
@@ -681,7 +685,7 @@ maybeReplaceVar vm (CTApply e1 e2) =
   CTApply (maybeReplaceVar vm e1) (maybeReplaceVar vm e2)
 
 --- Instantiates all constructors of a type declaration with the types from a
---- constructor type expression. Type variables that are not used in the 
+--- constructor type expression. Type variables that are not used in the
 --- constructor referenced by the type expression remain as they are.
 instantiate :: CTypeDecl -> CTypeExpr -> CTypeDecl
 instantiate tdecl texp = case texp of
@@ -765,7 +769,7 @@ transCTCon2Limit (_,tcn) = ("Compare", "limit" ++ trans tcn)
 easyCheckMod :: String -> QName
 easyCheckMod n = ("Test.Prop", n)
 
---- Generates a function type for the test function by replacing the result 
+--- Generates a function type for the test function by replacing the result
 --- type with `Test.Prop.Prop`. Also instantiates polymorphic types to
 --- Bool.
 genTestFuncType :: CFuncDecl -> CTypeExpr
@@ -808,13 +812,13 @@ replace' o n (x:xs) | x == o = n : replace' o n xs
 ------------------------------------------------------------------------------
 --- Finds a list of functions that can be compared. At the moment, this uses the
 --- functionality from `CPM.Diff.API` to compare the public interfaces of both
---- module versions and find the functions that have not changed between 
+--- module versions and find the functions that have not changed between
 --- versions.
---- 
+---
 --- @param cfg the CPM configuration
 --- @param repo the current repository
 --- @param gc the global package cache
---- @param dirA the directory of the A version of the package 
+--- @param dirA the directory of the A version of the package
 --- @param dirB the directory of the B version of the package
 --- @param useanalysis - use program analysis to filter non-term. operations?
 --- @param mods - the modules to compare (if Nothing, compare exported modules)
@@ -822,73 +826,71 @@ replace' o n (x:xs) | x == o = n : replace' o n xs
 ---         be compared (with a flag which is true if they are productive,
 ---         might be non-terminating but can be compared level-wise),
 ---         and a list of non-comparable functions with a reason
-findFunctionsToCompare :: Config 
-                       -> Repository 
-                       -> GC.GlobalCache 
-                       -> String 
+findFunctionsToCompare :: Config
+                       -> Repository
+                       -> GC.GlobalCache
+                       -> String
                        -> String
                        -> Bool
                        -> Maybe [String]
-                       -> IO (ErrorLogger (ACYCache, [String],
-                              [(Bool,CFuncDecl)], [(CFuncDecl, FilterReason)]))
-findFunctionsToCompare cfg repo gc dirA dirB useanalysis onlymods =
-  loadPackageSpec dirA |>= \pkgA ->
-  loadPackageSpec dirB |>= \pkgB ->
-  fromELM (resolveAndCopyDependencies cfg repo gc dirA) |>= \depsA ->
-  succeedIO (let cmods = intersect (exportedModules pkgA) (exportedModules pkgB)
-             in maybe cmods (intersect cmods) onlymods) |>= \mods ->
+                       -> ErrorLogger (ACYCache, [String],
+                              [(Bool,CFuncDecl)], [(CFuncDecl, FilterReason)])
+findFunctionsToCompare cfg repo gc dirA dirB useanalysis onlymods = do
+  pkgA <- loadPackageSpec dirA
+  pkgB <- loadPackageSpec dirB
+  depsA <- resolveAndCopyDependencies cfg repo gc dirA
+  let cmods = intersect (exportedModules pkgA) (exportedModules pkgB)
+  let mods = maybe cmods (intersect cmods) onlymods
   if null mods
-   then log Info "No exported modules to compare" |>
-        succeedIO (emptyACYCache,[],[],[])
-   else
-    log Info ("Comparing modules: "++ intercalate " " mods) |>
-    APIDiff.compareModulesInDirs cfg repo gc dirA dirB (Just mods) |>= \diffs ->
-    findAllFunctions dirA dirB pkgA depsA emptyACYCache mods |>=
-    \(acy, allFuncs) ->
-      log Debug ("All public functions: " ++ showFuncNames allFuncs) |>
-      let areDiffThenFilter        = thenFilter allFuncs Diffing
-          areHighArityThenFilter   = thenFilter allFuncs HighArity
-          areIOActionThenFilter    = thenFilter allFuncs IOAction
-          areNoCompareThenFilter   = thenFilter allFuncs NoCompare
-          areNonMatchingThenFilter = thenFilter allFuncs NonMatchingTypes
-          haveFuncArgThenFilter    = thenFilter allFuncs FuncArg 
-      in
-       (emptyFilter ((liftFilter $ filterDiffingFunctions diffs) acy allFuncs)
+   then infoMessage "No exported modules to compare" >>
+        return (emptyACYCache,[],[],[])
+   else do
+    infoMessage ("Comparing modules: "++ intercalate " " mods)
+    diffs <- APIDiff.compareModulesInDirs cfg repo gc dirA dirB (Just mods)
+    (acy, allFuncs) <- findAllFunctions dirA dirB pkgA depsA emptyACYCache mods
+    debugMessage ("All public functions: " ++ showFuncNames allFuncs)
+    let areDiffThenFilter        = thenFilter allFuncs Diffing
+    let areHighArityThenFilter   = thenFilter allFuncs HighArity
+    let areIOActionThenFilter    = thenFilter allFuncs IOAction
+    let areNoCompareThenFilter   = thenFilter allFuncs NoCompare
+    let areNonMatchingThenFilter = thenFilter allFuncs NonMatchingTypes
+    let haveFuncArgThenFilter    = thenFilter allFuncs FuncArg
+    (emptyFilter ((liftFilter $ filterDiffingFunctions diffs) acy allFuncs)
                             `areDiffThenFilter`
         liftFilter filterHighArity `areHighArityThenFilter`
         liftFilter filterIOAction  `areIOActionThenFilter`
         filterNoCompare        dirA dirB depsA `areNoCompareThenFilter`
         filterNonMatchingTypes dirA dirB depsA `areNonMatchingThenFilter`
         filterFuncArg          dirA dirB depsA `haveFuncArgThenFilter`
-        liftFilter id ) |>= terminationFilter pkgA dirA depsA useanalysis
+        liftFilter id ) >>= terminationFilter pkgA dirA depsA useanalysis
 
 --- Filters out functions which are possibly non-terminating and
 --- non-productive, and mark productive functions so that they are
 --- tested not by standard equality.
 terminationFilter :: Package -> String -> [Package] -> Bool
                   -> (ACYCache, [CFuncDecl], [(CFuncDecl, FilterReason)])
-                  -> IO (ErrorLogger (ACYCache, [String], [(Bool,CFuncDecl)],
-                                      [(CFuncDecl, FilterReason)]))
+                  -> ErrorLogger (ACYCache, [String], [(Bool,CFuncDecl)],
+                                  [(CFuncDecl, FilterReason)])
 terminationFilter _ _ _ False (a,fs,rm) =
-  succeedIO (a, [], map (\f->(False,f)) fs, rm)
+  return (a, [], map (\f->(False,f)) fs, rm)
 terminationFilter pkgA dirA depsA True (acy, funcs, rm) = do
   let currypath = loadPathForPackage pkgA dirA depsA
       mods = nub (map (fst . funcName) funcs)
   ainfo <- analyzeModules "productivity" productivityAnalysis currypath mods
   -- compute functions which should be definitely compared (due to TERMINATE
   -- or PRODUCTIVE pragmas):
-  modscmts <- mapIO (getCompare currypath) mods
+  modscmts <- liftIOErrorLogger $ mapM (getCompare currypath) mods
   let termfuns = concatMap (\md -> md ("TERMINATE"  `isInfixOf`)) modscmts
       prodfuns = concatMap (\md -> md ("PRODUCTIVE" `isInfixOf`)) modscmts
-  log Debug ("Functions marked with TERMINATE: " ++ showFuncNames termfuns)
-    |> succeedIO ()
-  log Debug ("Functions marked with PRODUCTIVE: " ++ showFuncNames prodfuns)
-    |> succeedIO ()
+  debugMessage ("Functions marked with TERMINATE: " ++ showFuncNames termfuns)
+    >> return ()
+  debugMessage ("Functions marked with PRODUCTIVE: " ++ showFuncNames prodfuns)
+    >> return ()
   let infoOf f = fromMaybe Looping (lookupProgInfo (funcName f) ainfo)
       ntfuncs  = filter (\f -> infoOf f == Looping  &&
                                f `notElem` termfuns && f `notElem` prodfuns)
                         funcs
-  succeedIO (acy, currypath,
+  return (acy, currypath,
              map (\f -> (not (infoOf f == Terminating || f `elem` termfuns), f))
                  (funcs \\ ntfuncs),
              rm ++ map (\f -> (f,NonTerm)) ntfuncs)
@@ -907,23 +909,25 @@ terminationFilter pkgA dirA depsA True (acy, funcs, rm) = do
 -- Analyze a list of modules with some static program analysis in a given
 -- load path. Returns the combined analysis information.
 -- Raises an error if something goes wrong.
-analyzeModules :: String -> Analysis a -> [String] -> [String]
-               -> IO (ProgInfo a)
+analyzeModules :: (Read a, Show a)
+               => String -> Analysis a -> [String] -> [String]
+               -> ErrorLogger (ProgInfo a)
 analyzeModules ananame analysis currypath mods = do
-  log Debug ("Running " ++ ananame ++ " analysis on modules: " ++
-             intercalate ", " mods) |>
-   log Debug ("CURRYPATH=" ++ joinSearchPath currypath) |> succeedIO ()
-  anainfos <- mapIO (analyzeModule analysis currypath) mods
-  log Debug "Analysis finished" |> succeedIO ()
+  debugMessage ("Running " ++ ananame ++ " analysis on modules: " ++
+             intercalate ", " mods)
+  debugMessage ("CURRYPATH=" ++ joinSearchPath currypath)
+  anainfos <- liftIOErrorLogger $ mapM (analyzeModule analysis currypath) mods
+  debugMessage "Analysis finished"
   return $ foldr combineProgInfo emptyProgInfo anainfos
 
 -- Analyze a module with some static program analysis in a given
 -- load path. Raises an error if something goes wrong.
-analyzeModule :: Analysis a -> [String] -> String -> IO (ProgInfo a)
+analyzeModule :: (Read a, Show a)
+              => Analysis a -> [String] -> String -> IO (ProgInfo a)
 analyzeModule analysis currypath mod = do
-  setEnviron "CURRYPATH" (joinSearchPath currypath)
+  setEnv "CURRYPATH" (joinSearchPath currypath)
   aresult <- analyzeGeneric analysis mod
-  unsetEnviron "CURRYPATH"
+  unsetEnv "CURRYPATH"
   either return
          (\e -> do putStrLn "WARNING: error occurred during analysis:"
                    putStrLn e
@@ -932,11 +936,11 @@ analyzeModule analysis currypath mod = do
          aresult
 
 
-emptyFilter :: IO (ErrorLogger (ACYCache, [CFuncDecl])) 
-      -> IO (ErrorLogger (ACYCache, [CFuncDecl], [(CFuncDecl, FilterReason)]))
-emptyFilter st = st |>= \(a, fs) -> succeedIO (a, fs, [])
+emptyFilter :: ErrorLogger (ACYCache, [CFuncDecl])
+      -> ErrorLogger (ACYCache, [CFuncDecl], [(CFuncDecl, FilterReason)])
+emptyFilter st = st >>= \(a, fs) -> return (a, fs, [])
 
---- Reasons why a function can be excluded from the list of functions to be 
+--- Reasons why a function can be excluded from the list of functions to be
 --- compared.
 data FilterReason = NoReason
                   | HighArity
@@ -947,30 +951,30 @@ data FilterReason = NoReason
                   | FuncArg
                   | NonTerm
 
---- Chain filter functions and mark the ones removed by the previous filter 
+--- Chain filter functions and mark the ones removed by the previous filter
 --- with a given reason.
 thenFilter :: [CFuncDecl]
-       -> FilterReason 
-       -> IO (ErrorLogger (ACYCache, [CFuncDecl], [(CFuncDecl, FilterReason)]))
-       -> (ACYCache -> [CFuncDecl] -> IO (ErrorLogger (ACYCache, [CFuncDecl]))) 
-       -> IO (ErrorLogger (ACYCache, [CFuncDecl], [(CFuncDecl, FilterReason)]))
-thenFilter allFuncs r st f = 
-  st |>= 
-  \(a, fs, rm) -> f a fs |>= 
-  \(a', fs') -> succeedIO (a', fs', rm ++ zip (findMissing rm fs) (repeat r))
+       -> FilterReason
+       -> ErrorLogger (ACYCache, [CFuncDecl], [(CFuncDecl, FilterReason)])
+       -> (ACYCache -> [CFuncDecl] -> ErrorLogger (ACYCache, [CFuncDecl]))
+       -> ErrorLogger (ACYCache, [CFuncDecl], [(CFuncDecl, FilterReason)])
+thenFilter allFuncs r st f =
+  st >>=
+  \(a, fs, rm) -> f a fs >>=
+  \(a', fs') -> return (a', fs', rm ++ zip (findMissing rm fs) (repeat r))
  where
   findMissing rm fs = (allFuncs \\ (map fst rm)) \\ fs
 
---- Lifts a simple filter to a filter that executes inside the IO monad and 
+--- Lifts a simple filter to a filter that executes inside the IO monad and
 --- takes an ACYCache.
-liftFilter :: ([CFuncDecl] -> [CFuncDecl]) 
-       -> (ACYCache -> [CFuncDecl] -> IO (ErrorLogger (ACYCache, [CFuncDecl])))
-liftFilter f = \a fs -> succeedIO (a, f fs)
+liftFilter :: ([CFuncDecl] -> [CFuncDecl])
+       -> (ACYCache -> [CFuncDecl] -> ErrorLogger (ACYCache, [CFuncDecl]))
+liftFilter f = \a fs -> return (a, f fs)
 
---- Excludes those functions which take a functional argument, either directly 
+--- Excludes those functions which take a functional argument, either directly
 --- or via a nested type.
-filterFuncArg :: String -> String -> [Package] -> ACYCache -> [CFuncDecl] 
-              -> IO (ErrorLogger (ACYCache, [CFuncDecl]))
+filterFuncArg :: String -> String -> [Package] -> ACYCache -> [CFuncDecl]
+              -> ErrorLogger (ACYCache, [CFuncDecl])
 filterFuncArg = filterFuncsDeep checkFunc
  where
   checkFunc (CFuncType _ _) = True
@@ -978,78 +982,78 @@ filterFuncArg = filterFuncsDeep checkFunc
   checkFunc (CTCons _)      = False
   checkFunc (CTApply _ _)   = False
 
---- Filters functions via a predicate on their argument types. Checks the 
+--- Filters functions via a predicate on their argument types. Checks the
 --- predicates on nested types as well.
-filterFuncsDeep :: (CTypeExpr -> Bool) -> String -> String -> [Package] 
-                -> ACYCache -> [CFuncDecl] 
-                -> IO (ErrorLogger (ACYCache, [CFuncDecl]))
+filterFuncsDeep :: (CTypeExpr -> Bool) -> String -> String -> [Package]
+                -> ACYCache -> [CFuncDecl]
+                -> ErrorLogger (ACYCache, [CFuncDecl])
 filterFuncsDeep tpred dirA _ deps acy allFuncs =
-  foldEL checkFunc (acy, [], []) allFuncs |>=
-  \(acy', _, fns) -> succeedIO (acy', fns)
+  foldM checkFunc (acy, [], []) allFuncs >>=
+  \(acy', _, fns) -> return (acy', fns)
  where
   findType n m = case predefinedType n of
     Nothing -> find ((== n) . typeName) $ filter isTypePublic $ types m
     Just ty -> Just ty
 
   checkFunc (a, c, fs) f =
-    (foldEL checkTypeExpr (a, c, False) $ argTypes $ typeOfQualType $ funcType f) |>=
-    \(a', c', r) -> if r then succeedIO (a', c', fs)
-                         else succeedIO (a', c', f:fs)
+    (foldM checkTypeExpr (a, c, False) $ argTypes $ typeOfQualType $ funcType f) >>=
+    \(a', c', r) -> if r then return (a', c', fs)
+                         else return (a', c', f:fs)
 
   checkTypeExpr (a, c, r) t@(CFuncType e1 e2) =
     if t `elem` c
-      then succeedIO (a, c, r)
+      then return (a, c, r)
       else if tpred t
-             then succeedIO (a, c, True)
-             else checkTypeExpr (a, c, r) e1 |>=
-                  \ (a', c', r') -> checkTypeExpr (a', e1:c', r') e2 |>=
-                  \ (a'', c'', r'') -> succeedIO (a'', e2:c'', r || r' || r'')
+             then return (a, c, True)
+             else checkTypeExpr (a, c, r) e1 >>=
+                  \ (a', c', r') -> checkTypeExpr (a', e1:c', r') e2 >>=
+                  \ (a'', c'', r'') -> return (a'', e2:c'', r || r' || r'')
   checkTypeExpr (a, c, r) t@(CTApply e1 e2) =
     if t `elem` c
-      then succeedIO (a, c, r)
+      then return (a, c, r)
       else if tpred t
-             then succeedIO (a, c, True)
-             else checkTypeExpr (a, c, r) e1 |>=
-                  \ (a', c', r') -> checkTypeExpr (a', e1:c', r') e2 |>=
-                  \ (a'', c'', r'') -> succeedIO (a'', e2:c'', r || r' || r'')
-  checkTypeExpr (a, c, r) (CTVar _) = succeedIO (a, c, r)
+             then return (a, c, True)
+             else checkTypeExpr (a, c, r) e1 >>=
+                  \ (a', c', r') -> checkTypeExpr (a', e1:c', r') e2 >>=
+                  \ (a'', c'', r'') -> return (a'', e2:c'', r || r' || r'')
+  checkTypeExpr (a, c, r) (CTVar _) = return (a, c, r)
   checkTypeExpr (a, c, r) t@(CTCons n@(mod, _)) =
     if t `elem` c
-      then succeedIO (a, c, r)
+      then return (a, c, r)
       else if tpred t
-             then succeedIO (a, c, True)
-             else succeedIO (a, c, r) |>=
-                  \(a', c', _) -> readCached dirA deps a' mod |>=
+             then return (a, c, True)
+             else return (a, c, r) >>=
+                  \(a', c', _) -> readCached dirA deps a' mod >>=
                   \(a'', prog) -> case findType n prog of
-                    Nothing -> failIO $ "Type '" ++ show n ++ "' not found."
-                    Just t' -> checkType a'' (t:c') t' |>=
-                           \(a''', c'', r'') -> succeedIO (a''', c'', r || r'')
+                    Nothing -> fail $ "Type '" ++ show n ++ "' not found."
+                    Just t' -> checkType a'' (t:c') t' >>=
+                           \(a''', c'', r'') -> return (a''', c'', r || r'')
 
-  checkType a ts (CType _ _ _ cs _)   = foldEL checkCons (a, ts, False) cs
+  checkType a ts (CType _ _ _ cs _)   = foldM checkCons (a, ts, False) cs
   checkType a ts (CTypeSyn _ _ _ e)   = checkTypeExpr (a, ts, False) e
   checkType a ts (CNewType _ _ _ c _) = checkCons (a, ts, False) c
 
-  checkCons (a, ts, r) (CCons _ _ _ _ es) = foldEL checkTypeExpr (a, ts, r) es
+  checkCons (a, ts, r) (CCons _ _ _ _ es) = foldM checkTypeExpr (a, ts, r) es
   checkCons (a, ts, r) (CRecord _ _ _ _ fs) =
     let es = map (\(CField _ _ e) -> e) fs
-    in foldEL checkTypeExpr (a, ts, r) es
+    in foldM checkTypeExpr (a, ts, r) es
 
---- Filters out functions marked with the NOCOMPARE pragma. 
+--- Filters out functions marked with the NOCOMPARE pragma.
 filterNoCompare :: String -> String -> [Package] -> ACYCache -> [CFuncDecl]
-                -> IO (ErrorLogger (ACYCache, [CFuncDecl]))
-filterNoCompare dirA dirB _ a fs =
-  mapIO (readComments . modPath dirA) modules >>= \allCommentsA ->
-  mapIO (readComments . modPath dirB) modules >>= \allCommentsB -> 
+                -> ErrorLogger (ACYCache, [CFuncDecl])
+filterNoCompare dirA dirB _ a fs = liftIOErrorLogger $ do
+  allCommentsA <- mapM (readComments . modPath dirA) modules
+  allCommentsB <- mapM (readComments . modPath dirB) modules
   let commentsA = funcsWithComments $ zip modules allCommentsA
-      commentsB = funcsWithComments $ zip modules allCommentsB
-  in succeedIO $ (a, filter (not . noCompare commentsA commentsB) fs)
+  let commentsB = funcsWithComments $ zip modules allCommentsB
+  return (a, filter (not . noCompare commentsA commentsB) fs)
  where
   modules = nub $ map (fst . funcName) fs
   modPath dir mod = dir </> "src" </> joinPath (splitOn "." mod) ++ ".curry"
   -- Zip up all functions with their respective comments.
   funcsWithComments cmts = zip fs (map (getFuncComment' cmts) fs)
-  getFuncComment' cmts f = 
-    let 
+  getFuncComment' cmts f =
+    let
       mname = fst $ funcName f
       lname = snd $ funcName f
     in case lookup mname cmts of
@@ -1062,19 +1066,19 @@ filterNoCompare dirA dirB _ a fs =
     Just  c -> "NOCOMPARE" `isInfixOf` c
 
 
---- Removes all functions that have more than five arguments (currently the 
+--- Removes all functions that have more than five arguments (currently the
 --- maximum number of parameters that CurryCheck supports in property tests).
 filterHighArity :: [CFuncDecl] -> [CFuncDecl]
-filterHighArity = filter ((<= 5) . length . argTypes . typeOfQualType . funcType) 
+filterHighArity = filter ((<= 5) . length . argTypes . typeOfQualType . funcType)
 
 --- Removes all IO actions since they cannot be compared as
 --- properties in CurryCheck.
 filterIOAction :: [CFuncDecl] -> [CFuncDecl]
-filterIOAction = filter (not . isIOType . resultType . typeOfQualType . funcType) 
+filterIOAction = filter (not . isIOType . resultType . typeOfQualType . funcType)
 
 --- Removes all functions that have a diff associated with their name from the
 --- given list of functions.
---- 
+---
 --- @param fs the functions to filter
 --- @param ds a list of pairs of module names and diffs
 filterDiffingFunctions :: [(String, Differences)] -> [CFuncDecl] -> [CFuncDecl]
@@ -1093,37 +1097,37 @@ filterDiffingFunctions diffs allFuncs = nub $ concatMap filterModule modules
 
 --- Excludes those functions whose types do not match in both versions. Checks
 --- nested types.
-filterNonMatchingTypes :: String -> String -> [Package] -> ACYCache 
-                      -> [CFuncDecl] -> IO (ErrorLogger (ACYCache, [CFuncDecl]))
+filterNonMatchingTypes :: String -> String -> [Package] -> ACYCache
+                      -> [CFuncDecl] -> ErrorLogger (ACYCache, [CFuncDecl])
 filterNonMatchingTypes dirA dirB deps acyCache allFuncs =
-  foldEL funcTypesCompatible (acyCache, [], []) allFuncs |>=
-  \(acy, _, fns) -> succeedIO (acy, fns)
+  foldM funcTypesCompatible (acyCache, [], []) allFuncs >>=
+  \(acy, _, fns) -> return (acy, fns)
  where
   allTypes f = let ft = typeOfQualType (funcType f)
                in (resultType ft) : (argTypes ft)
   onlyCons = filter isConsType
   funcTypesCompatible (a, seen, fs) f =
-    (foldEL typesCompatible (a, seen, True) $ onlyCons $ allTypes f) |>=
+    (foldM typesCompatible (a, seen, True) $ onlyCons $ allTypes f) >>=
     \(a', seen', c) -> if c
-      then succeedIO (a', seen', f:fs)
-      else succeedIO (a', seen', fs)
+      then return (a', seen', f:fs)
+      else return (a', seen', fs)
   typesCompatible (a, seen, r) t = case lookup t seen of
-    Just b  -> succeedIO (a, seen, b && r)
-    Nothing -> typesEqual t dirA dirB deps a [] |>=
-      \(a', r') -> succeedIO (a', ((t, r'):seen), r' && r)
+    Just b  -> return (a, seen, b && r)
+    Nothing -> typesEqual t dirA dirB deps a [] >>=
+      \(a', r') -> return (a', ((t, r'):seen), r' && r)
 
---- Compares the declarations of types mentioned in a type expression 
+--- Compares the declarations of types mentioned in a type expression
 --- recursively. Returns False if the types are different.
 typesEqual :: CTypeExpr -> String -> String -> [Package] -> ACYCache
-           -> [CTypeExpr] -> IO (ErrorLogger (ACYCache, Bool))
+           -> [CTypeExpr] -> ErrorLogger (ACYCache, Bool)
 typesEqual texp dirA dirB deps acyCache checked =
-  maybe (failIO $ "typesEqual not called on type constructor: " ++ show texp)
-        (succeedIO . fst)
-        (tconsArgsOfType texp) |>= \n -> let (mod,_) = n in
+  maybe (fail $ "typesEqual not called on type constructor: " ++ show texp)
+        (return . fst)
+        (tconsArgsOfType texp) >>= \n -> let (mod,_) = n in
   if texp `elem` checked
-    then succeedIO (acyCache, True)
-    else readCached dirA deps acyCache mod |>= \(acy',modA) ->
-         readCached dirB deps acy' mod |>= \(acy'', modB) -> 
+    then return (acyCache, True)
+    else readCached dirA deps acyCache mod >>= \(acy',modA) ->
+         readCached dirB deps acy' mod >>= \(acy'', modB) ->
          let typeA = findType n modA
              typeB = findType n modB
          in typesEqual' typeA typeB acy''
@@ -1133,61 +1137,61 @@ typesEqual texp dirA dirB deps acyCache checked =
     Just ty -> Just ty
 
   typesEqual' :: Maybe CTypeDecl -> Maybe CTypeDecl -> ACYCache
-              -> IO (ErrorLogger (ACYCache, Bool))
+              -> ErrorLogger (ACYCache, Bool)
   typesEqual' (Just (CType n1 v1 tvs1 cs1 _)) (Just (CType n2 v2 tvs2 cs2 _))
-              acy = 
+              acy =
     if n1 == n2 && v1 == v2 && tvs1 == tvs2 && cs1 == cs2
-      then foldEL (\(a, r) (c1, c2) -> consEqual a c1 c2 |>= \(a', r') ->
-           succeedIO (a', r && r')) (acy, True) (zip cs1 cs2)
-      else succeedIO (acy, False)
+      then foldM (\(a, r) (c1, c2) -> consEqual a c1 c2 >>= \(a', r') ->
+           return (a', r && r')) (acy, True) (zip cs1 cs2)
+      else return (acy, False)
   typesEqual' (Just (CTypeSyn n1 v1 tvs1 e1))
-              (Just (CTypeSyn n2 v2 tvs2 e2)) acy = 
+              (Just (CTypeSyn n2 v2 tvs2 e2)) acy =
     if n1 == n2 && v1 == v2 && tvs1 == tvs2 && e1 == e2
       then if isConsType e1
         then typesEqual e1 dirA dirB deps acy (texp:checked)
-        else succeedIO (acy, True)
-      else succeedIO (acy, False)
+        else return (acy, True)
+      else return (acy, False)
   typesEqual' (Just (CNewType n1 v1 tvs1 c1 _))
-              (Just (CNewType n2 v2 tvs2 c2 _)) acy = 
+              (Just (CNewType n2 v2 tvs2 c2 _)) acy =
     if n1 == n2 && v1 == v2 && tvs1 == tvs2 && c1 == c2
       then consEqual acy c1 c2
-      else succeedIO (acy, False)
+      else return (acy, False)
   typesEqual' (Just (CType _ _ _ _ _)) (Just (CTypeSyn _ _ _ _)) acy =
-    succeedIO (acy, False)
+    return (acy, False)
   typesEqual' (Just (CType _ _ _ _ _)) (Just (CNewType _ _ _ _ _)) acy =
-    succeedIO (acy, False) 
+    return (acy, False)
   typesEqual' (Just (CTypeSyn _ _ _ _)) (Just (CType _ _ _ _ _)) acy =
-    succeedIO (acy, False)
+    return (acy, False)
   typesEqual' (Just (CTypeSyn _ _ _ _)) (Just (CNewType _ _ _ _ _)) acy =
-    succeedIO (acy, False)
+    return (acy, False)
   typesEqual' (Just (CNewType _ _ _ _ _)) (Just (CType _ _ _ _ _)) acy =
-    succeedIO (acy, False)
+    return (acy, False)
   typesEqual' (Just (CNewType _ _ _ _ _)) (Just (CTypeSyn _ _ _ _)) acy =
-    succeedIO (acy, False)
-  typesEqual' Nothing (Just _) acy = succeedIO (acy, False)
-  typesEqual' (Just _) Nothing acy = succeedIO (acy, False)
-  typesEqual' Nothing  Nothing acy = succeedIO (acy, False)
-  
+    return (acy, False)
+  typesEqual' Nothing (Just _) acy = return (acy, False)
+  typesEqual' (Just _) Nothing acy = return (acy, False)
+  typesEqual' Nothing  Nothing acy = return (acy, False)
+
   consEqual :: ACYCache -> CConsDecl -> CConsDecl
-            -> IO (ErrorLogger (ACYCache, Bool))
-  consEqual acy (CCons _ _ _ _ es1) (CCons _ _ _ _ es2) = 
-    foldEL esEqual (acy, True) (zip es1 es2)
+            -> ErrorLogger (ACYCache, Bool)
+  consEqual acy (CCons _ _ _ _ es1) (CCons _ _ _ _ es2) =
+    foldM esEqual (acy, True) (zip es1 es2)
    where
     esEqual (a, r) (e1, e2) = if e1 == e2
       then if isConsType e1
         then typesEqual e1 dirA dirB deps a (texp:checked)
-        else succeedIO (acy, r)
-      else succeedIO (acy, False)
-  consEqual acy (CRecord _ _ _ _ fs1) (CRecord _ _ _ _ fs2) = 
-    foldEL fEqual (acy, True) (zip fs1 fs2)
+        else return (acy, r)
+      else return (acy, False)
+  consEqual acy (CRecord _ _ _ _ fs1) (CRecord _ _ _ _ fs2) =
+    foldM fEqual (acy, True) (zip fs1 fs2)
    where
     fEqual (a, r) (f1@(CField _ _ e1), f2@(CField _ _ _)) = if f1 == f2
       then if isConsType e1
         then typesEqual e1 dirA dirB deps a (texp:checked)
-        else succeedIO (acy, r)
-      else succeedIO (acy, False)
-  consEqual acy (CCons _ _ _ _ _) (CRecord _ _ _ _ _) = succeedIO (acy, False)
-  consEqual acy (CRecord _ _ _ _ _) (CCons _ _ _ _ _) = succeedIO (acy, False)
+        else return (acy, r)
+      else return (acy, False)
+  consEqual acy (CCons _ _ _ _ _) (CRecord _ _ _ _ _) = return (acy, False)
+  consEqual acy (CRecord _ _ _ _ _) (CCons _ _ _ _ _) = return (acy, False)
 
 isTypePublic :: CTypeDecl -> Bool
 isTypePublic (CType _ v _ _ _)    = v == Public
@@ -1202,12 +1206,12 @@ isConsType (CTApply t _) = isConsType t
 
 ------------------------------------------------------------------------------
 --- Reads a module in AbstractCurry form.
-readCached :: String -> [Package] -> ACYCache -> String 
-           -> IO (ErrorLogger (ACYCache, CurryProg))
+readCached :: String -> [Package] -> ACYCache -> String
+           -> ErrorLogger (ACYCache, CurryProg)
 readCached dir deps acyCache mod = case findModuleDir dir mod acyCache of
-  Just  p -> succeedIO (acyCache, p)
+  Just  p -> return (acyCache, p)
   Nothing -> do prog <- readAbstractCurryFromDeps dir deps mod
-                succeedIO (addModuleDir dir mod prog acyCache, prog)
+                return (addModuleDir dir mod prog acyCache, prog)
 
 --- Reads all modules of the given package and finds all public functions
 --- in all of those modules.
@@ -1218,19 +1222,19 @@ readCached dir deps acyCache mod = case findModuleDir dir mod acyCache of
 --- @param deps a list of package dependencies
 --- @param mods the list of modules to search for public functions
 findAllFunctions :: String -> String -> Package -> [Package] -> ACYCache
-                 -> [String] -> IO (ErrorLogger (ACYCache, [CFuncDecl]))
+                 -> [String] -> ErrorLogger (ACYCache, [CFuncDecl])
 findAllFunctions dirA dirB _ deps acyCache mods =
-  log Debug ("Finding public functions of modules: " ++ intercalate "," mods) |>
-  log Debug ("in package directories " ++ dirA ++ " and " ++ dirB) |>
-  foldEL findForMod (acyCache, []) mods |>=
-  \(a, fs) -> succeedIO (a, nub fs)
+  debugMessage ("Finding public functions of modules: " ++ intercalate "," mods) >>
+  debugMessage ("in package directories " ++ dirA ++ " and " ++ dirB) >>
+  foldM findForMod (acyCache, []) mods >>=
+  \(a, fs) -> return (a, nub fs)
  where
   findForMod (acy,fdecls) mod =
-    readCached dirA deps acy mod |>= \(_, progA) ->
-    readCached dirB deps acy mod |>= \(acy'', progB) -> 
+    readCached dirA deps acy mod >>= \(_, progA) ->
+    readCached dirB deps acy mod >>= \(acy'', progB) ->
     let funcsA = filter isPublic $ functions progA
         funcsB = filter isPublic $ functions progB
-    in succeedIO (acy'', fdecls ++ nubBy (\a b -> funcName a == funcName b)
+    in return (acy'', fdecls ++ nubBy (\a b -> funcName a == funcName b)
                                          (funcsA ++ funcsB))
 
 --- Checks whether a function is public.
@@ -1240,9 +1244,9 @@ isPublic (CFunc _ _ Private _ _) = False
 isPublic (CmtFunc _ _ _ Public _ _) = True
 isPublic (CmtFunc _ _ _ Private _ _) = False
 
---- Prepares two packages from the global package cache in two versions for 
+--- Prepares two packages from the global package cache in two versions for
 --- comparison by copying them to the temporary directory and building renamed
---- versions. 
+--- versions.
 ---
 --- @param cfg the CPM configuration
 --- @param repo the package repository
@@ -1251,25 +1255,25 @@ isPublic (CmtFunc _ _ _ Private _ _) = False
 --- @param verA the version of the first package
 --- @param nameB the name of the second package
 --- @param verB the version of the second package
-preparePackages :: Config 
-                -> Repository 
-                -> GC.GlobalCache 
-                -> String 
-                -> Version 
-                -> String 
-                -> Version 
-                -> IO (ErrorLogger ComparisonInfo)
+preparePackages :: Config
+                -> Repository
+                -> GC.GlobalCache
+                -> String
+                -> Version
+                -> String
+                -> Version
+                -> ErrorLogger ComparisonInfo
 preparePackages cfg repo gc nameA verA nameB verB =
-  GC.tryFindPackage gc nameA verA |>= \pkgA ->
-  findPackageDir cfg pkgA |>= \dirA ->
-  GC.tryFindPackage gc nameB verB |>= \pkgB ->
-  findPackageDir cfg pkgB |>= \dirB ->
+  GC.tryFindPackage gc nameA verA >>= \pkgA ->
+  findPackageDir cfg pkgA >>= \dirA ->
+  GC.tryFindPackage gc nameB verB >>= \pkgB ->
+  findPackageDir cfg pkgB >>= \dirB ->
   preparePackageDirs cfg repo gc dirA dirB
 
 --- Prepares two package, one from a directory and one from the global package
 --- cache. Copies them to a temporary directory and builds renamed versions of
 --- the packages and all dependencies.
---- 
+---
 --- @param cfg the CPM configuration
 --- @param repo the package repository
 --- @param gc the global package cache
@@ -1282,49 +1286,48 @@ preparePackageAndDir :: Config
                      -> String 
                      -> String 
                      -> Version 
-                     -> IO (ErrorLogger ComparisonInfo)
+                     -> ErrorLogger ComparisonInfo
 preparePackageAndDir cfg repo gc dirA nameB verB =
-  GC.tryFindPackage gc nameB verB |>= \pkgB ->
-  findPackageDir cfg pkgB |>= \dirB ->
+  GC.tryFindPackage gc nameB verB >>= \pkgB ->
+  findPackageDir cfg pkgB >>= \dirB ->
   preparePackageDirs cfg repo gc dirA dirB
 
 --- Prepares two packages from two directories for comparison. Copies the 
 --- package files to a temporary directory and creates renamed version of the
 --- packages and their dependencies.
---- 
+---
 --- @param cfg the CPM configuration
 --- @param repo the package repository
 --- @param gc the global package cache
 --- @param dirA the directory containing the first package
 --- @param dirB the directory containing the second package
-preparePackageDirs :: Config 
-                   -> Repository 
-                   -> GC.GlobalCache 
-                   -> String 
-                   -> String 
-                   -> IO (ErrorLogger ComparisonInfo)
-preparePackageDirs cfg repo gc dirA dirB =
-  createBaseTemp |>= \baseTmp ->
-  loadPackageSpec dirA |>= \specA ->
-  loadPackageSpec dirB |>= \specB ->
+preparePackageDirs :: Config
+                   -> Repository
+                   -> GC.GlobalCache
+                   -> String
+                   -> String
+                   -> ErrorLogger ComparisonInfo
+preparePackageDirs cfg repo gc dirA dirB = do
+  baseTmp <- liftIOErrorLogger $ createBaseTemp
+  specA <- loadPackageSpec dirA
+  specB <- loadPackageSpec dirB
   let versionPrefixA = versionPrefix specA
-      versionPrefixB = versionPrefix specB
-      copyDirA       = baseTmp </> ("src_" ++ versionPrefixA)
-      copyDirB       = baseTmp </> ("src_" ++ versionPrefixB)
-      destDirA       = baseTmp </> ("dest_" ++ versionPrefixA)
-      destDirB       = baseTmp </> ("dest_" ++ versionPrefixB)
-  in
-  log Debug ("Copying " ++ packageId specA ++
-             " from " ++ dirA ++ " into " ++ copyDirA) |>
-  log Debug ("and transforming it into " ++ destDirA) |>
-  log Debug ("Copying " ++ packageId specB ++
-             " from " ++ dirB ++ " into " ++ copyDirB) |>
-  log Debug ("and transforming it into " ++ destDirB) |>
-  copyAndPrefixPackage cfg repo gc dirA versionPrefixA
-                                        copyDirA destDirA |>= \modMapA ->
-  copyAndPrefixPackage cfg repo gc dirB versionPrefixB
-                                        copyDirB destDirB |>= \modMapB ->
-  succeedIO $ ComparisonInfo 
+  let versionPrefixB = versionPrefix specB
+  let copyDirA       = baseTmp </> ("src_" ++ versionPrefixA)
+  let copyDirB       = baseTmp </> ("src_" ++ versionPrefixB)
+  let destDirA       = baseTmp </> ("dest_" ++ versionPrefixA)
+  let destDirB       = baseTmp </> ("dest_" ++ versionPrefixB)
+  debugMessage ("Copying " ++ packageId specA ++
+             " from " ++ dirA ++ " into " ++ copyDirA)
+  debugMessage ("and transforming it into " ++ destDirA)
+  debugMessage ("Copying " ++ packageId specB ++
+             " from " ++ dirB ++ " into " ++ copyDirB)
+  debugMessage ("and transforming it into " ++ destDirB)
+  modMapA <- copyAndPrefixPackage cfg repo gc dirA versionPrefixA
+                                        copyDirA destDirA
+  modMapB <- copyAndPrefixPackage cfg repo gc dirB versionPrefixB
+                                        copyDirB destDirB
+  return $ ComparisonInfo
     { infPackageA   = specA
     , infPackageB   = specB
     , infDirA       = destDirA
@@ -1339,8 +1342,8 @@ preparePackageDirs cfg repo gc dirA dirB =
 versionPrefix :: Package -> String
 versionPrefix pkg = "V_" ++ (showVersion' $ version pkg)
 
---- Copies a package from a directory to the temporary directory and creates 
---- another copy of the package with all its modules and the modules of its 
+--- Copies a package from a directory to the temporary directory and creates
+--- another copy of the package with all its modules and the modules of its
 --- dependencies prefixed with the given string.
 ---
 --- @param cfg the CPM configuration
@@ -1348,33 +1351,34 @@ versionPrefix pkg = "V_" ++ (showVersion' $ version pkg)
 --- @param gc the global package cache
 --- @param pkgDir the package directory to copy from
 --- @param prefix the prefix for the modules
---- @param tmpDir the temporary directory to copy the files to 
+--- @param tmpDir the temporary directory to copy the files to
 --- @param srcDir the temporary directory where the source package is copied
 --- @param destDir the temporary directory where the prefixed copy is written
-copyAndPrefixPackage :: Config 
-                     -> Repository 
-                     -> GC.GlobalCache 
-                     -> String 
-                     -> String 
-                     -> String 
-                     -> String 
-                     -> IO (ErrorLogger [(String, String)])
-copyAndPrefixPackage cfg repo gc pkgDir prefix srcDir destDir = 
-  copyDirectory pkgDir srcDir >> createDirectory destDir >> succeedIO () |>
-  prefixPackageAndDeps cfg repo gc srcDir (prefix ++ "_") destDir 
+copyAndPrefixPackage :: Config
+                     -> Repository
+                     -> GC.GlobalCache
+                     -> String
+                     -> String
+                     -> String
+                     -> String
+                     -> ErrorLogger [(String, String)]
+copyAndPrefixPackage cfg repo gc pkgDir prefix srcDir destDir = do
+  liftIOErrorLogger $ copyDirectory pkgDir srcDir
+  liftIOErrorLogger $ createDirectory destDir
+  prefixPackageAndDeps cfg repo gc srcDir (prefix ++ "_") destDir
 
 showVersion' :: Version -> String
-showVersion' (maj, min, pat, Nothing) = 
+showVersion' (maj, min, pat, Nothing) =
   intercalate "_" [show maj, show min, show pat]
-showVersion' (maj, min, pat, Just pre) = 
+showVersion' (maj, min, pat, Just pre) =
   intercalate "_" [show maj, show min, show pat, pre]
 
 --- Tries to find the package directory in the global package cache.
-findPackageDir :: Config -> Package -> IO (ErrorLogger String)
+findPackageDir :: Config -> Package -> ErrorLogger String
 findPackageDir cfg pkg = do
-  exists <- doesDirectoryExist srcDir
+  exists <- liftIOErrorLogger $ doesDirectoryExist srcDir
   if not exists
-    then failIO $ "Package " ++ (packageId pkg) ++ " not installed"
-    else succeedIO srcDir
+    then fail $ "Package " ++ (packageId pkg) ++ " not installed"
+    else return srcDir
  where
   srcDir = GC.installedPackageDir cfg pkg

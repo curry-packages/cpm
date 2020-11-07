@@ -4,17 +4,17 @@
 --- its dependencies with all dependencies available to the Curry frontend.
 --------------------------------------------------------------------------------
 
-module CPM.AbstractCurry 
+module CPM.AbstractCurry
   ( loadPathForPackage
   , readAbstractCurryFromPackagePath
   , readAbstractCurryFromDeps
-  , transformAbstractCurryInDeps 
+  , transformAbstractCurryInDeps
   , applyModuleRenames
   ) where
 
-import List         ( intercalate, nub )
-import FilePath     ( (</>), (<.>), takeFileName, replaceExtension )
-import System
+import Data.List           ( intercalate, nub )
+import System.FilePath     ( (</>), (<.>), takeFileName, replaceExtension )
+import System.Process
 
 import AbstractCurry.Files  ( readAbstractCurryFile, writeAbstractCurryFile )
 import AbstractCurry.Pretty ( showCProg )
@@ -63,12 +63,12 @@ readAbstractCurryFromPackagePath :: Package -> String -> [Package] -> String
                                  -> IO CurryProg
 readAbstractCurryFromPackagePath pkg pkgDir deps modname = do
   let loadPath = fullLoadPathForPackage pkg pkgDir deps
-  params <- return $ setQuiet True (setFullPath loadPath defaultParams)
+  let params = setQuiet True (setFullPath loadPath defaultParams)
   callFrontendWithParams ACY params modname
   src <- lookupModuleSource loadPath modname
-  acyName <- return $ case src of
-    Nothing -> error $ "Module not found: " ++ modname
-    Just (_, file) -> replaceExtension (inCurrySubdirModule modname file) ".acy"
+  let acyName = case src of
+        Nothing -> error $ "Module not found: " ++ modname
+        Just (_, file) -> replaceExtension (inCurrySubdirModule modname file) ".acy"
   readAbstractCurryFile acyName >>= return . addPrimTypes
  where
   -- work-around for missing Prelude.Char|Int|Float declarations:
@@ -87,10 +87,10 @@ readAbstractCurryFromPackagePath pkg pkgDir deps modname = do
 --- @param dir - the package's directory
 --- @param deps - the resolved dependencies of the package
 --- @param mod - the module to read
-readAbstractCurryFromDeps :: String -> [Package] -> String -> IO CurryProg
+readAbstractCurryFromDeps :: String -> [Package] -> String -> ErrorLogger CurryProg
 readAbstractCurryFromDeps pkgDir deps modname = do
-  pkg <- fromErrorLogger (loadPackageSpec pkgDir)
-  readAbstractCurryFromPackagePath pkg pkgDir deps modname
+  pkg <- loadPackageSpec pkgDir
+  liftIOErrorLogger $ readAbstractCurryFromPackagePath pkg pkgDir deps modname
 
 --- Applies a transformation function to a module from a package or one of its
 --- dependencies and writes the modified module to a file in Curry form.
@@ -101,13 +101,13 @@ readAbstractCurryFromDeps pkgDir deps modname = do
 --- @param mod - the module to transform
 --- @param dest - the destination file for the transformed module
 transformAbstractCurryInDeps :: String -> [Package] -> (CurryProg -> CurryProg)
-                             -> String -> String -> IO ()
+                             -> String -> String -> ErrorLogger ()
 transformAbstractCurryInDeps pkgDir deps transform modname destFile = do
   acy <- readAbstractCurryFromDeps pkgDir deps modname
-  writeFile destFile $ showCProg (transform acy)
+  liftIOErrorLogger $ writeFile destFile $ showCProg (transform acy)
 
 --- Renames all references to some modules in a Curry program.
---- 
+---
 --- @param mods - a map from old to new module names
 --- @param prog - the program to modify
 applyModuleRenames :: [(String, String)] -> CurryProg -> CurryProg
@@ -121,4 +121,3 @@ applyModuleRenames names prog =
   rnm mn@(mod, n) = case lookup mod names of
     Just mod' -> (mod', n)
     Nothing   -> mn
-

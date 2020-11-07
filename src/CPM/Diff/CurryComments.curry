@@ -4,8 +4,8 @@ module CPM.Diff.CurryComments
   , getFuncComment
   ) where
 
-import Char
-import List (isSuffixOf)
+import Data.Char
+import Data.List (isSuffixOf)
 
 -- This is adapted from the currydoc source code.
 
@@ -35,7 +35,7 @@ classifyLine line
                   else if id1 == "data" || id1 == "type" || id1 == "newtype"
                         then DataDef (getDatatypeName line)
                         else if "'default" `isSuffixOf` id1
-                              then OtherLine 
+                              then OtherLine
                               else FuncDef id1
    where
     id1 = getFirstId line
@@ -58,7 +58,7 @@ infixIDs :: String
 infixIDs =  "~!@#$%^&*+-=<>?./|\\:"
 
 groupLines :: [SourceLine] -> (String, [(SourceLine, String)])
-groupLines sls = 
+groupLines sls =
   let (modCmts, progCmts) = break (== ModDef) sls
    in if progCmts == []
       then ("", groupProgLines sls)
@@ -99,7 +99,7 @@ skipDataDefs :: String -> [SourceLine] -> [(SourceLine, String)]
 skipDataDefs _ [] = []
 skipDataDefs _ (PragmaCmt cmt : sls) = groupProgLines (PragmaCmt cmt : sls)
 skipDataDefs _ (FuncDef f     : sls) = groupProgLines (FuncDef f   : sls)
-skipDataDefs d (DataDef d1    : sls) = 
+skipDataDefs d (DataDef d1    : sls) =
   if d == d1 then skipDataDefs d sls
              else groupProgLines (DataDef d1 : sls)
 skipDataDefs d (ModDef        : sls) = skipDataDefs d sls

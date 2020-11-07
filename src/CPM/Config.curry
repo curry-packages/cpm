@@ -1,10 +1,10 @@
 ------------------------------------------------------------------------------
---- This module defines the data type for CPM's configuration options, the 
+--- This module defines the data type for CPM's configuration options, the
 --- default values for all options, and functions for reading the user's .cpmrc
 --- file and merging its contents into the default options.
 ------------------------------------------------------------------------------
 
-module CPM.Config 
+module CPM.Config
   ( Config ( Config, packageInstallDir, binInstallDir, repositoryDir
            , appPackageDir, packageIndexURLs, packageTarFilesURLs
            , homePackageDir, curryExec
@@ -12,16 +12,18 @@ module CPM.Config
   , readConfigurationWith, defaultConfig
   , showConfiguration, showCompilerVersion ) where
 
-import Char         ( toUpper )
-import Directory    ( doesDirectoryExist, createDirectoryIfMissing
-                    , getHomeDirectory )
-import qualified Distribution as Dist
-import FilePath     ( (</>), isAbsolute )
-import Function     ( (***) )
-import IOExts       ( evalCmd )
-import List         ( intercalate, intersperse, split, splitOn )
-import Maybe        ( mapMaybe )
-import Read         ( readInt )
+import Data.Char         ( toUpper )
+import System.Directory  ( doesDirectoryExist, createDirectoryIfMissing
+                         , getHomeDirectory, doesFileExist )
+import qualified Language.Curry.Distribution as Dist
+import System.FilePath   ( (</>), isAbsolute )
+import Data.Maybe        ( mapMaybe )
+import Data.List         ( split, splitOn, intercalate, intersperse )
+import Control.Monad     ( when )
+import System.IOExts     ( evalCmd )
+
+import Data.PropertyFile ( readPropertyFile )
+import System.Path       ( getFileInPath )
 
 import Data.PropertyFile ( readPropertyFile )
 import System.Path       ( getFileInPath )
@@ -104,7 +106,7 @@ showConfiguration cfg = unlines
   , "PACKAGE_INDEX_URL      : " ++ intercalate "|" (packageIndexURLs cfg)
   , "PACKAGE_TARFILES_URL   : " ++ intercalate "|" (packageTarFilesURLs cfg)
   ]
-  
+
 --- Shows the compiler version in the configuration.
 showCompilerVersion :: Config -> String
 showCompilerVersion cfg =
@@ -156,9 +158,9 @@ setHomePackageDir cfg
   | otherwise = return cfg
 
 --- Sets the correct compiler version in the configuration.
-setCompilerVersion :: Config -> IO Config
+setCompilerVersion :: Config -> ErrorLogger Config
 setCompilerVersion cfg0 = do
-  cfg <- setCompilerExecutable cfg0
+  cfg <- liftIOErrorLogger $ setCompilerExecutable cfg0
   let initbase = baseVersion cfg
   if curryExec cfg == Dist.installDir </> "bin" </> Dist.curryCompiler
     then return cfg { compilerVersion = currVersion
@@ -173,8 +175,8 @@ setCompilerVersion cfg0 = do
                 (majs:mins:revs:_) = split (=='.') cvers
             debugMessage $ unwords ["Compiler version:",cname,cvers]
             debugMessage $ "Base lib version: " ++ bvers
-            return cfg { compilerVersion = (cname, readInt majs,
-                                            readInt mins, readInt revs)
+            return cfg { compilerVersion = (cname, read majs,
+                                            read mins, read revs)
                        , compilerBaseVersion = bvers
                        , baseVersion         = if null initbase
                                                  then bvers
@@ -182,16 +184,16 @@ setCompilerVersion cfg0 = do
  where
   getCompilerVersion currybin = do
     debugMessage $ "Getting version information from " ++ currybin
-    (r,s,e) <- evalCmd currybin
+    (r,s,e) <-  liftIOErrorLogger $ evalCmd currybin
                  ["--compiler-name","--numeric-version","--base-version"] ""
     if r>0
       then error $ "Cannot determine compiler version:\n" ++ e
       else case lines s of
         [sname,svers,sbver] -> return (sname,svers,sbver)
         _ -> do debugMessage $ "Query version information again..."
-                (c1,sname,e1) <- evalCmd currybin ["--compiler-name"] ""
-                (c2,svers,e2) <- evalCmd currybin ["--numeric-version"] ""
-                (c3,sbver,e3) <- evalCmd currybin ["--base-version"] ""
+                (c1,sname,e1) <- liftIOErrorLogger $ evalCmd currybin ["--compiler-name"] ""
+                (c2,svers,e2) <- liftIOErrorLogger $ evalCmd currybin ["--numeric-version"] ""
+                (c3,sbver,e3) <- liftIOErrorLogger $ evalCmd currybin ["--base-version"] ""
                 when (c1 > 0 || c2 > 0 || c3 > 0) $
                   error $ "Cannot determine compiler version:\n" ++
                           unlines (filter (not . null) [e1,e2,e3])
@@ -206,23 +208,24 @@ setCompilerVersion cfg0 = do
 --- into the configuration used by CPM.
 --- Resolves the $HOME variable after merging and creates
 --- any missing directories. May return an error using `Left`.
-readConfigurationWith :: [(String,String)] -> IO (Either String Config)
+readConfigurationWith :: [(String,String)] -> ErrorLogger (Either String Config)
 readConfigurationWith defsettings = do
-  home <- getHomeDirectory
-  configFile <- return $ home </> ".cpmrc"
-  settingsFromFile <-
-    ifFileExists configFile
-                 (readPropertyFile configFile >>= return . stripProps)
-                 (return [])
+  home <- liftIOErrorLogger $ getHomeDirectory
+  let configFile = home </> ".cpmrc"
+  exfile <- liftIOErrorLogger $ doesFileExist configFile
+  settingsFromFile <- liftIOErrorLogger $
+    if exfile
+      then readPropertyFile configFile >>= return . stripProps
+      else return []
   let mergedSettings = mergeConfigSettings defaultConfig
                          (settingsFromFile ++ stripProps defsettings)
   case mergedSettings of
     Left e   -> return $ Left e
-    Right s0 -> do s1 <- replaceHome s0
+    Right s0 -> do s1 <- liftIOErrorLogger $ replaceHome s0
                    s2 <- setCompilerVersion s1
-                   s3 <- setAppPackageDir   s2
-                   s4 <- setHomePackageDir  s3
-                   createDirectories s4
+                   s3 <- liftIOErrorLogger $ setAppPackageDir   s2
+                   s4 <- liftIOErrorLogger $ setHomePackageDir  s3
+                   liftIOErrorLogger $ createDirectories s4
                    return $ Right s4
 
 replaceHome :: Config -> IO Config
@@ -264,7 +267,7 @@ mergeConfigSettings cfg props = applyEither setters cfg
 ---
 --- @param opts - the options
 stripProps :: [(String, String)] -> [(String, String)]
-stripProps = map ((map toUpper . filter (/='_') . strip) *** strip) 
+stripProps = map (\(a,b) -> ((map toUpper $ filter (/='_') $ strip a), strip b))
 
 --- A map from option names to functions that will update a configuration
 --- record with a value for that option.
@@ -284,7 +287,7 @@ keySetters =
   breakURLs = splitOn "|"
 
 --- Sequentially applies a list of functions that transform a value to a value
---- of that type (i.e. a fold). Each function can error out with a Left, in 
+--- of that type (i.e. a fold). Each function can error out with a Left, in
 --- which case no further applications are done and the Left is returned from
 --- the overall application of applyEither.
 ---

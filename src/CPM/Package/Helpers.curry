@@ -11,12 +11,14 @@ module CPM.Package.Helpers
   , getLocalPackageSpec
   ) where
 
-import Directory
-import FilePath
-import List         ( isSuffixOf, nub, splitOn )
-import System       ( getPID )
+import System.Directory
+import System.FilePath
+import System.Process     ( getPID )
+import Data.List          ( isSuffixOf, splitOn, nub )
+import Control.Monad
+import Prelude hiding     ( empty, log )
 
-import System.CurryPath ( addCurrySubdir )
+import System.CurryPath   ( addCurrySubdir )
 import Text.Pretty hiding ( (</>) )
 
 import CPM.Config   ( Config, homePackageDir )
@@ -29,16 +31,15 @@ import CPM.Package
 ------------------------------------------------------------------------------
 --- Installs the source of the package from the given source location
 --- into the subdirectory `packageId pkg` of the given directory.
-installPackageSourceTo :: Package -> PackageSource -> String
-                       -> IO (ErrorLogger ())
---- 
+installPackageSourceTo :: Package -> PackageSource -> String -> ErrorLogger ()
+---
 --- @param pkg        - the package specification of the package
 --- @param source     - the source of the package
 --- @param installdir - the directory where the package subdirectory should be
 ---                     installed
 installPackageSourceTo pkg (Git url rev) installdir = do
   let pkgDir = installdir </> pkgid
-  c <- inDirectory installdir $ execQuietCmd cloneCommand
+  c <- inDirectoryEL installdir $ execQuietCmd cloneCommand
   if c == 0
     then case rev of
       Nothing           -> checkoutGitRef pkgDir "HEAD"
@@ -46,11 +47,11 @@ installPackageSourceTo pkg (Git url rev) installdir = do
                                           (replaceVersionInTag pkg tag)
       Just (Ref ref)    -> checkoutGitRef pkgDir ref
       Just VersionAsTag ->
-        let tag = "v" ++ (showVersion $ version pkg) 
-        in checkoutGitRef pkgDir tag |> 
+        let tag = "v" ++ (showVersion $ version pkg)
+        in checkoutGitRef pkgDir tag >>
            log Info ("Package '" ++ packageId pkg ++ "' installed")
-    else removeDirectoryComplete pkgDir >>
-         failIO ("Failed to clone repository from '" ++ url ++
+    else liftIOErrorLogger (removeDirectoryComplete pkgDir) >>
+         fail ("Failed to clone repository from '" ++ url ++
                  "', return code " ++ show c)
  where
   pkgid  = packageId pkg
@@ -69,51 +70,51 @@ installPackageSourceTo pkg (Http url) installdir = do
                          then basepf ++ ".tar.gz"
                          else ""
   if null pkgfile
-    then failIO $ "Illegal URL (only .zip or .tar.gz allowed):\n" ++ url
+    then fail $ "Illegal URL (only .zip or .tar.gz allowed):\n" ++ url
     else do
-      tmpdir <- tempDir
+      tmpdir <- liftIOErrorLogger tempDir
       let tmppkgfile = tmpdir </> pkgfile
       ll <- getLogLevel
-      c <- inTempDir $ showExecCmd $
-             "curl -f -s " ++ (if ll==Debug then "-S" else "")
+      c <- liftIOErrorLogger $ inTempDir $ showExecCmd $
+             "curl -f -s " ++ (if ll == Debug then "-S" else "")
                            ++ " -o " ++ tmppkgfile ++ " " ++ quote url
       if c == 0
         then installPkgFromFile pkg tmppkgfile pkgDir True
         else do cleanTempDir
-                failIO $ "`curl` failed with exit status " ++ show c
+                fail $ "`curl` failed with exit status " ++ show c
 
 --- Installs a package from a .zip or .tar.gz file into the specified
 --- package directory. If the last argument is true, the file will be
 --- deleted after unpacking.
-installPkgFromFile :: Package -> String -> String -> Bool -> IO (ErrorLogger ())
+installPkgFromFile :: Package -> String -> String -> Bool -> ErrorLogger ()
 installPkgFromFile pkg pkgfile pkgDir rmfile = do
   let iszip = takeExtension pkgfile == ".zip"
-  absfile <- getAbsolutePath pkgfile
-  createDirectory pkgDir
+  absfile <- liftIOErrorLogger $ getAbsolutePath pkgfile
+  liftIOErrorLogger $ createDirectory pkgDir
   c <- if iszip
-         then inTempDir $ showExecCmd $ "unzip -qq -d " ++ quote pkgDir ++
+         then inTempDirEL $ showExecCmd $ "unzip -qq -d " ++ quote pkgDir ++
                                         " " ++ quote absfile
-         else inDirectory pkgDir $ showExecCmd $
+         else inDirectoryEL pkgDir $ showExecCmd $
                 "tar -xzf " ++ quote absfile
-  when rmfile (showExecCmd ("rm -f " ++ absfile) >> done)
+  when rmfile (showExecCmd ("rm -f " ++ absfile) >> return ())
   cleanTempDir
   if c == 0
     then log Info $ "Installed " ++ packageId pkg
-    else do removeDirectoryComplete pkgDir
-            failIO ("Failed to unzip package, return code " ++ show c)
+    else do liftIOErrorLogger $ removeDirectoryComplete pkgDir
+            fail ("Failed to unzip package, return code " ++ show c)
 
 --- Checks out a specific ref of a Git repository and deletes
 --- the Git auxiliary files (i.e., `.git` and `.gitignore`).
---- 
+---
 --- @param dir - the directory containing the repo
 --- @param ref - the ref to check out
-checkoutGitRef :: String -> String -> IO (ErrorLogger ())
+checkoutGitRef :: String -> String -> ErrorLogger ()
 checkoutGitRef dir ref = do
-  c <- inDirectory dir $ execQuietCmd (\q -> unwords ["git checkout", q, ref])
+  c <- inDirectoryEL dir $ execQuietCmd (\q -> unwords ["git checkout", q, ref])
   if c == 0
-    then removeGitFiles >> succeedIO ()
-    else removeDirectoryComplete dir >>
-         failIO ("Failed to check out " ++ ref ++ ", return code " ++ show c)
+    then liftIOErrorLogger removeGitFiles >> return ()
+    else liftIOErrorLogger (removeDirectoryComplete dir) >>
+         fail ("Failed to check out " ++ ref ++ ", return code " ++ show c)
  where
    removeGitFiles = do
      removeDirectoryComplete (dir </> ".git")
@@ -123,10 +124,10 @@ checkoutGitRef dir ref = do
 ------------------------------------------------------------------------------
 --- Cleans auxiliary files in the local package, i.e., the package
 --- containing the current working directory.
-cleanPackage :: Config -> LogLevel -> ErrorLoggerIO ()
+cleanPackage :: Config -> LogLevel -> ErrorLogger ()
 cleanPackage cfg ll = do
   specDir <- getLocalPackageSpec cfg "."
-  pkg     <- toELM $ loadPackageSpec specDir
+  pkg     <- loadPackageSpec specDir
   let dotcpm   = specDir </> ".cpm"
       srcdirs  = map (specDir </>) (sourceDirsOf pkg)
       testdirs = map (specDir </>)
@@ -134,8 +135,8 @@ cleanPackage cfg ll = do
                             (map (\ (PackageTest m _ _ _) -> m))
                             (testSuite pkg))
       rmdirs   = nub (dotcpm : map addCurrySubdir (srcdirs ++ testdirs))
-  logMsg ll $ "Removing directories: " ++ unwords rmdirs
-  execIO $ showExecCmd (unwords $ ["rm", "-rf"] ++ rmdirs)
+  log ll $ "Removing directories: " ++ unwords rmdirs
+  showExecCmd (unwords $ ["rm", "-rf"] ++ rmdirs)
   return ()
 
 ------------------------------------------------------------------------------
@@ -157,7 +158,7 @@ renderPackageInfo allinfos plain installed pkg = pPrint doc
 
   pkgId = packageId pkg
 
-  heading   = text pkgId 
+  heading   = text pkgId
   instTxt i = if i || plain then empty
                             else red $ text "Not installed"
   rule      = text (take (length pkgId) $ repeat '-')
@@ -275,18 +276,18 @@ renderPackageInfo allinfos plain installed pkg = pPrint doc
 --- In order to avoid infinite loops due to cyclic file structures,
 --- the search is limited to the number of directories occurring in the
 --- current absolute path.
-getLocalPackageSpec :: Config -> String -> ErrorLoggerIO String
+getLocalPackageSpec :: Config -> String -> ErrorLogger String
 getLocalPackageSpec cfg dir = do
-  adir <- execIO $ getAbsolutePath dir
-  searchLocalSpec (length (splitPath adir)) dir
-    >>= maybe returnHomePackage return
+  adir <- liftIOErrorLogger $ getAbsolutePath dir
+  spec <- searchLocalSpec (length (splitPath adir)) dir
+  maybe returnHomePackage return spec
  where
   returnHomePackage = do
     let homepkgdir  = homePackageDir cfg
         homepkgspec = homepkgdir </> "package.json"
-    specexists <- execIO $ doesFileExist homepkgspec
-    unlessM (specexists || null homepkgdir) $ do
-      execIO $ createDirectoryIfMissing True homepkgdir
+    specexists <- liftIOErrorLogger $ doesFileExist homepkgspec
+    unless (specexists || null homepkgdir) $ do
+      liftIOErrorLogger $ createDirectoryIfMissing True homepkgdir
       let newpkg  = emptyPackage
                       { name            = snd (splitFileName homepkgdir)
                       , version         = initialVersion
@@ -294,19 +295,19 @@ getLocalPackageSpec cfg dir = do
                       , synopsis        = "Default home package"
                       , dependencies    = []
                       }
-      execIO $ writePackageSpec newpkg homepkgspec
-      logMsg Info $ "New empty package specification '" ++ homepkgspec ++
+      liftIOErrorLogger $ writePackageSpec newpkg homepkgspec
+      infoMessage $ "New empty package specification '" ++ homepkgspec ++
                     "' generated"
     return homepkgdir
 
   searchLocalSpec m sdir = do
-    existsLocal <- execIO $ doesFileExist $ sdir </> "package.json"
+    existsLocal <- liftIOErrorLogger $ doesFileExist $ sdir </> "package.json"
     if existsLocal
       then return (Just sdir)
       else do
-        logMsg Debug $ "No package.json in " ++ show sdir ++ ", trying " ++
-                       show (sdir </> "..")
-        parentExists <- execIO $ doesDirectoryExist $ sdir </> ".."
+        debugMessage ("No package.json in " ++ show sdir ++ ", trying " ++
+                      show (sdir </> ".."))
+        parentExists <- liftIOErrorLogger $ doesDirectoryExist $ sdir </> ".."
         if m>0 && parentExists
           then searchLocalSpec (m-1) $ sdir </> ".."
           else return Nothing
