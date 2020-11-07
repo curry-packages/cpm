@@ -61,7 +61,7 @@ installPackageSourceTo pkg (FileSource zipfile) installdir =
   installPkgFromFile pkg zipfile (installdir </> packageId pkg) False
 
 installPackageSourceTo pkg (Http url) installdir = do
-  pid <- getPID
+  pid <- liftIOErrorLogger $ getPID
   let pkgDir  = installdir </> packageId pkg
       basepf  = "package" ++ show pid
       pkgfile = if takeExtension url == ".zip"
@@ -75,7 +75,7 @@ installPackageSourceTo pkg (Http url) installdir = do
       tmpdir <- liftIOErrorLogger tempDir
       let tmppkgfile = tmpdir </> pkgfile
       ll <- getLogLevel
-      c <- inTempDir $ showExecCmd $
+      c <- inTempDirEL $ showExecCmd $
              "curl -f -s " ++ (if ll == Debug then "-S" else "")
                            ++ " -o " ++ tmppkgfile ++ " " ++ quote url
       if c == 0

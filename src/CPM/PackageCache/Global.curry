@@ -24,6 +24,7 @@ module CPM.PackageCache.Global
   , emptyCache
   ) where
 
+import Control.Applicative (when)
 import Data.Either
 import Data.List
 import Data.Maybe       (isJust)
@@ -127,8 +128,7 @@ acquireAndInstallPackage cfg pkg = do
   tryInstallFromURLs (url:urls) = do
     let stdurl = url ++ "/" ++ packageId pkg ++ ".tar.gz"
     infoMessage $ "Installing package from " ++ stdurl
-    (_,err) <- liftIOErrorLogger $ installPackageSourceTo pkg (Http stdurl)
-                                               (packageInstallDir cfg)
+    (_,err) <- installPackageSourceTo pkg (Http stdurl) (packageInstallDir cfg)
     case err of
       Left  _ -> if null urls
                    then fail downloadError
@@ -140,7 +140,7 @@ acquireAndInstallPackage cfg pkg = do
 
 --- Acquires a package from the source specified in its specification and 
 --- installs it to the global package cache.
-acquireAndInstallPackageFromSource :: Config -> Package -> IO (ErrorLogger ())
+acquireAndInstallPackageFromSource :: Config -> Package -> ErrorLogger ()
 acquireAndInstallPackageFromSource cfg reppkg =
   readPackageFromRepository cfg reppkg >>= \pkg ->
   case source pkg of
@@ -171,12 +171,14 @@ installFromZip cfg zip = do
   absZip <- liftIOErrorLogger $ getAbsolutePath zip
   c <- inTempDirEL $ showExecCmd $ "unzip -qq -d installtmp " ++ quote absZip
   if c == 0
-    then
-      loadPackageSpec (t </> "installtmp") >>= \pkgSpec ->
-      debugMessage ("ZIP contains " ++ packageId pkgSpec) >> 
-      (cleanTempDir >> return ()) >>
+    then do
+      pkgSpec <- loadPackageSpec (t </> "installtmp")
+      debugMessage ("ZIP contains " ++ packageId pkgSpec)
+      liftIOErrorLogger cleanTempDir
       installFromSource cfg pkgSpec (FileSource zip)
-    else cleanTempDir >> fail "failed to extract ZIP file"
+    else do
+      liftIOErrorLogger cleanTempDir
+      fail "failed to extract ZIP file"
 
 --- Installs a package's missing dependencies.
 installMissingDependencies :: Config -> GlobalCache -> [Package] 
@@ -220,7 +222,7 @@ uninstallPackage cfg pkgname ver = do
       pkgDir = packageInstallDir cfg </> pkgId
   exists <- liftIOErrorLogger $ doesDirectoryExist pkgDir
   if exists
-    then do liftIOErrorLogger $ showExecCmd ("rm -Rf " ++ quote pkgDir)
+    then do showExecCmd ("rm -Rf " ++ quote pkgDir)
             infoMessage $ "Package '" ++ pkgId ++ "' uninstalled."
     else infoMessage $ "Package '" ++ pkgId ++ "' is not installed."
 
@@ -234,8 +236,7 @@ tryFindPackage gc name ver = case findVersion gc name ver of
 --- Reads the global package cache.
 readGlobalCache :: Config -> Repository -> ErrorLogger GlobalCache
 readGlobalCache config repo = do
-  maybeGC <- liftIOErrorLogger $
-               readInstalledPackagesFromDir repo $ packageInstallDir config
+  maybeGC <- readInstalledPackagesFromDir repo $ packageInstallDir config
   case maybeGC of
     Left err -> fail $ "Error reading global package cache: " ++ err
     Right gc -> return gc

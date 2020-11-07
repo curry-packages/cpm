@@ -1257,9 +1257,9 @@ genPackageREADME _ specDir outputdir = do
           formatcmd1 = formatCmd1 readmefile
           formatcmd2 = formatCmd2 readmefile
       debugMessage $ "Executing command: " ++ formatcmd1
-      rc1 <- liftIOErrorLogger $ inDirectory specDir $ system formatcmd1
+      rc1 <- inDirectoryEL specDir $ system formatcmd1
       debugMessage $ "Executing command: " ++ formatcmd2
-      rc2 <- liftIOErrorLogger $ inDirectory specDir $ system formatcmd2
+      rc2 <- inDirectoryEL specDir $ system formatcmd2
       if rc1 == 0 && rc2 == 0
         then do
           -- make them readable:
@@ -1293,7 +1293,7 @@ genPackageManual pkg specDir outputdir = case documentation pkg of
                            docmain ++ "' (unknown kind)"
         else do
           debugMessage $ "Executing command: " ++ formatcmd
-          rc <- liftIOErrorLogger $ inDirectory (specDir </> docdir) $ system formatcmd
+          rc <- inDirectoryEL (specDir </> docdir) $ system formatcmd
           if rc == 0
             then do
               let outfile = outputdir </> replaceExtension docmain ".pdf"
@@ -1456,7 +1456,7 @@ testCmd opts cfg = do
                     else scriptcmd
     debugMessage $ "Removing directory: " ++ currysubdir
     showExecCmd (unwords ["rm", "-rf", currysubdir])
-    liftIOErrorLogger $ inDirectory (apkgdir </> dir) $ do
+    inDirectoryEL (apkgdir </> dir) $ do
       execWithPkgDir (ExecOptions testcmd) cfg apkgdir
       if null (testFile opts) || null mods
         then return []
@@ -1685,7 +1685,7 @@ uploadCmd opts cfg = do
   if exrepodir && not (forceUpdate opts)
     then fail "Package version already exists in repository!"
     else return ()
-  liftIOErrorLogger $ inDirectory specDir $ setTagInGitIfNecessary opts lpkg
+  inDirectoryEL specDir $ setTagInGitIfNecessary opts lpkg
   instdir <- liftIOErrorLogger tempDir
   liftIOErrorLogger $ recreateDirectory instdir
   installPkg lpkg instdir
@@ -1722,7 +1722,7 @@ uploadCmd opts cfg = do
     _                  -> fail $ "No git source with version tag"
 
   testPackage pkgid instdir = do
-    curdir <- liftIOErrorLogger $ inDirectory instdir getCurrentDirectory
+    curdir <- inDirectoryEL instdir getCurrentDirectory
     let bindir = curdir </> "pkgbin"
     liftIOErrorLogger $ recreateDirectory bindir
     let cmd = unwords
@@ -1733,7 +1733,7 @@ uploadCmd opts cfg = do
                 , "cypm", "-d bin_install_path="++bindir, "uninstall"
                 ]
     putStrLnELM $ "Testing package: '" ++ pkgid ++ "' with command:\n" ++ cmd
-    liftIOErrorLogger $ inDirectory (instdir </> pkgid) $ system cmd
+    inDirectoryEL (instdir </> pkgid) $ system cmd
 
 --- Set the package version as a tag in the local GIT repository and push it,
 --- if the package source is a GIT with tag `$version`.
