@@ -184,7 +184,7 @@ resolveAndCopyDependenciesForPackage' cfg repo gc dir pkgSpec = do
                 ++ "\nUse `cypm install` to install missing dependencies."
   if null missingDeps
     then copyDependencies cfg pkgSpec deps dir
-    else failELM failMsg
+    else fail failMsg
 
 --- Resolves the dependencies for a package copy.
 resolveDependencies :: Config -> String -> ErrorLogger ResolutionResult

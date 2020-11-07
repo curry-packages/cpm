@@ -88,35 +88,36 @@ writePackageConfig cfg pkgdir pkg loadpath =
                                (executableSpec pkg)
            in if null configmod
                 then return ()
-                else do liftIOErrorLogger $ writeConfigFile configmod binname
+                else do writeConfigFile configmod binname
                         return ())
         (configModule pkg)
  where
   writeConfigFile configmod binname = do
     let configfile = pkgdir </> "src" </> foldr1 (</>) (split (=='.') configmod)
                             <.> ".curry"
-    createDirectoryIfMissing True (takeDirectory configfile)
-    abspkgdir <- getAbsolutePath pkgdir
-    writeFile configfile $ unlines $
-      [ "module " ++ configmod ++ " where"
-      , ""
-      , "--- Package version as a string."
-      , "packageVersion :: String"
-      , "packageVersion = \"" ++ showVersion (version pkg) ++ "\""
-      , ""
-      , "--- Package location."
-      , "packagePath :: String"
-      , "packagePath = " ++ show abspkgdir
-      , ""
-      , "--- Load path for the package (if it is the main package)."
-      , "packageLoadPath :: String"
-      , "packageLoadPath = " ++ show loadpath
-      ] ++
-      if null binname
-      then []
-      else [ ""
-           , "--- Location of the executable installed by this package."
-           , "packageExecutable :: String"
-           , "packageExecutable = \"" ++ binInstallDir cfg </> binname ++ "\""
-           ]
-    log Debug $ "Config module '" ++ configfile ++ "' written."
+    liftIOErrorLogger $ do
+      createDirectoryIfMissing True (takeDirectory configfile)
+      abspkgdir <- getAbsolutePath pkgdir
+      writeFile configfile $ unlines $
+        [ "module " ++ configmod ++ " where"
+        , ""
+        , "--- Package version as a string."
+        , "packageVersion :: String"
+        , "packageVersion = \"" ++ showVersion (version pkg) ++ "\""
+        , ""
+        , "--- Package location."
+        , "packagePath :: String"
+        , "packagePath = " ++ show abspkgdir
+        , ""
+        , "--- Load path for the package (if it is the main package)."
+        , "packageLoadPath :: String"
+        , "packageLoadPath = " ++ show loadpath
+        ] ++
+        if null binname
+        then []
+        else [ ""
+            , "--- Location of the executable installed by this package."
+            , "packageExecutable :: String"
+            , "packageExecutable = \"" ++ binInstallDir cfg </> binname ++ "\""
+            ]
+    debugMessage $ "Config module '" ++ configfile ++ "' written."
