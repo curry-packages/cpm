@@ -9,12 +9,13 @@ module CPM.Repository.CacheDB
   ( repositoryCacheDB, tryInstallRepositoryDB, addPackagesToRepositoryDB )
  where
 
-import Directory    ( doesFileExist, removeFile )
-import FilePath     ( (</>) )
-import IO           ( hFlush, stdout )
+import System.Directory    ( doesFileExist, removeFile )
+import System.FilePath     ( (</>) )
+import System.IO           ( hFlush, stdout )
+import Control.Monad
 import ReadShowTerm
 
-import Database.CDBI.ER 
+import Database.CDBI.ER
 import Database.CDBI.Connection
 import System.Path  ( fileInPath )
 import Text.CSV
@@ -38,12 +39,12 @@ repositoryCacheCSV cfg = repositoryCacheFilePrefix cfg ++ ".csv"
 
 --- Installs the repository database with the current repository index
 --- if the command `sqlite3` is in the path.
-tryInstallRepositoryDB :: Config -> Bool -> Bool -> IO (ErrorLogger ())
+tryInstallRepositoryDB :: Config -> Bool -> Bool -> ErrorLogger ()
 tryInstallRepositoryDB cfg usecache writecsv = do
-  withsqlite <- fileInPath "sqlite3"
+  withsqlite <- liftIOEL $ fileInPath "sqlite3"
   if withsqlite
     then installRepositoryDB cfg usecache writecsv
-    else log Info
+    else logInfo
       "Command 'sqlite3' not found: install package 'sqlite3' to speed up CPM"
 
 --- Writes the repository database with the current repository index.
@@ -52,27 +53,27 @@ tryInstallRepositoryDB cfg usecache writecsv = do
 --- Otherwise, `writeRepositoryDB` is called.
 --- If the second argument is `True`, also a CSV file containing the
 --- database entries is written.
-installRepositoryDB :: Config -> Bool -> Bool -> IO (ErrorLogger ())
+installRepositoryDB :: Config -> Bool -> Bool -> ErrorLogger ()
 installRepositoryDB cfg False writecsv = writeRepositoryDB cfg False writecsv
 installRepositoryDB cfg True  writecsv = do
   let sqlitefile = repositoryCacheDB cfg
-  whenFileExists sqlitefile (removeFile sqlitefile)
+  liftIOEL $ whenFileExists sqlitefile $ removeFile sqlitefile
   c <- tryDownloadFromURLs sqlitefile (packageTarFilesURLs cfg)
                            "REPOSITORY_CACHE.db"
-  dbexists <- doesFileExist sqlitefile
+  dbexists <- liftIOEL $ doesFileExist sqlitefile
   if c == 0 && dbexists
     then if writecsv then saveDBAsCSV cfg
-                     else succeedIO ()
+                     else return ()
     else writeRepositoryDB cfg True writecsv
 
 --- Tries to download some target file (first argument) from a list of
 --- base URLs where the source file (third argument) is located.
 --- Returns 0 if the download was successfull.
-tryDownloadFromURLs :: String -> [String] -> String -> IO Int
+tryDownloadFromURLs :: String -> [String] -> String -> ErrorLogger Int
 tryDownloadFromURLs _      []                 _    = return 1
 tryDownloadFromURLs target (baseurl:baseurls) file = do
   let sourceurl = baseurl ++ "/" ++ file
-  rc <- inTempDir $ showExecCmd $
+  rc <- inTempDirEL $ showExecCmd $
           "curl -f -s -o " ++ quote target ++ " " ++ quote sourceurl
   if rc == 0
     then return 0
@@ -84,50 +85,54 @@ tryDownloadFromURLs target (baseurl:baseurls) file = do
 --- or from reading all package specs.
 --- If the third argument is `True`, also a CSV file containing the
 --- database entries is written.
-writeRepositoryDB :: Config -> Bool -> Bool -> IO (ErrorLogger ())
+writeRepositoryDB :: Config -> Bool -> Bool -> ErrorLogger ()
 writeRepositoryDB cfg usecache writecsv = do
   let sqlitefile = repositoryCacheDB cfg
-  whenFileExists sqlitefile (removeFile sqlitefile)
-  createNewDB sqlitefile
-  tmpdir <- tempDir
+  liftIOEL $ do
+    whenFileExists sqlitefile (removeFile sqlitefile)
+    createNewDB sqlitefile
+  tmpdir <- liftIOEL $ tempDir
   let csvfile = tmpdir </> "cachedb.csv"
   showExecCmd $ "/bin/rm -f " ++ csvfile
   c <- if usecache
          then tryDownloadFromURLs csvfile (packageTarFilesURLs cfg)
                                   "REPOSITORY_CACHE.csv"
          else return 1
-  csvexists <- doesFileExist csvfile
+  csvexists <- liftIOEL $ doesFileExist csvfile
   pkgentries <- if c == 0 && csvexists
                   then do
-                    debugMessage $ "Reading CSV file '" ++ csvfile ++ "'..."
-                    readCSVFile csvfile >>= return . map Right
+                    logDebug $ "Reading CSV file '" ++ csvfile ++ "'..."
+                    (liftIOEL $ readCSVFile csvfile) >>= return . map Right
                   else do
-                    when usecache $ debugMessage $
+                    when usecache $ logDebug $
                       "Fetching repository cache CSV file failed"
                     repo <- readRepositoryFrom (repositoryDir cfg)
-                    return (map Left (allPackages repo))
-  putStr "Writing repository cache DB"
+                    return $ map Left $ allPackages repo
+  liftIOEL $ putStr "Writing repository cache DB"
   addPackagesToRepositoryDB cfg False pkgentries
-  putChar '\n'
-  log Info "Repository cache DB written"
-  cleanTempDir
-  if writecsv then saveDBAsCSV cfg
-              else succeedIO ()
+  liftIOEL $ putChar '\n'
+  logInfo "Repository cache DB written"
+  liftIOEL $ cleanTempDir
+  if writecsv then saveDBAsCSV cfg 
+              else return ()
 
 --- Add a list of package descriptions to the database.
 --- Here, a package description is either a (reduced) package specification
 --- or a list of string (a row from a CSV file) containing the required infos.
 addPackagesToRepositoryDB :: Config -> Bool
-                          -> [Either Package [String]] -> IO (ErrorLogger ())
+                          -> [Either Package [String]] -> ErrorLogger ()
 addPackagesToRepositoryDB cfg quiet pkgs =
-  mapEL (runDBAction . newEntry) pkgs |> succeedIO ()
+  mapM (runDBAction . newEntry) pkgs >> return ()
  where
   runDBAction act = do
-    result <- runWithDB (repositoryCacheDB cfg) act
+    result <- liftIOEL $ runWithDB (repositoryCacheDB cfg) act
     case result of
-      Left (DBError kind str) -> log Critical $ "Repository DB failure: " ++
-                                                show kind ++ " " ++ str
-      Right _ -> (unless quiet $ putChar '.' >> hFlush stdout) >> succeedIO ()
+      Left (DBError kind str) -> logCritical $ "Repository DB failure: " ++
+                                                   show kind ++ " " ++ str
+      Right _ -> liftIOEL $ do
+        unless quiet $ putChar '.'
+        hFlush stdout
+        return ()
   
   newEntry (Left p) = newIndexEntry
     (name p)
@@ -145,16 +150,16 @@ addPackagesToRepositoryDB cfg quiet pkgs =
 
 --- Saves complete database as term files into an existing directory
 --- provided as a parameter.
-saveDBAsCSV :: Config -> IO (ErrorLogger ())
+saveDBAsCSV :: Config -> ErrorLogger ()
 saveDBAsCSV cfg = do
-  result <- runWithDB (repositoryCacheDB cfg)
-                      (getAllEntries indexEntry_CDBI_Description)
+  result <- liftIOEL $ runWithDB (repositoryCacheDB cfg)
+                                          (getAllEntries indexEntry_CDBI_Description)
   case result of
-    Left (DBError kind str) -> log Critical $ "Repository DB failure: " ++
-                                              show kind ++ " " ++ str
+    Left (DBError kind str) -> logCritical $ "Repository DB failure: " ++
+                                                 show kind ++ " " ++ str
     Right es -> do let csvfile = repositoryCacheCSV cfg
-                   writeCSVFile csvfile (map showIndexEntry es)
-                   log Info ("CSV file '" ++ csvfile ++ "' written!")
+                   liftIOEL $ writeCSVFile csvfile $ map showIndexEntry es
+                   logInfo ("CSV file '" ++ csvfile ++ "' written!")
  where
   showIndexEntry (IndexEntry _ pn pv deps cc syn cat dirs mods exe) =
     [pn,pv,deps,cc,syn,cat,dirs,mods,exe]

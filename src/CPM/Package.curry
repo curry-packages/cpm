@@ -34,28 +34,28 @@ module CPM.Package
   , showDependency
   , showCompilerDependency
   , showVersionConstraints
-  , loadPackageSpec, loadPackageSpecELM
+  , loadPackageSpec
   , writePackageSpec
   , Conjunction
   , Disjunction
   , packageSpecToJSON
   ) where
 
-import Char
-import Either
-import FilePath    ( (</>) )
-import IOExts      ( readCompleteFile )
+import Data.Char
+import Data.Either
+import Data.List        ( intercalate, intersperse, isInfixOf, splitOn )
+import System.FilePath  ( (</>) )
+import System.Directory ( doesFileExist )
+import System.IOExts    ( readCompleteFile )
 import JSON.Data
 import JSON.Parser
-import JSON.Pretty ( ppJSON )
-import List        ( intercalate, intersperse, isInfixOf, splitOn )
-import Read        ( readInt )
+import JSON.Pretty      ( ppJSON )
 import Test.Prop
+import Prelude hiding   ( (<$>), (<*>), (<*), (*>), (<|>), some, empty )
 
 import DetParse
 
 import CPM.ErrorLogger
-import CPM.FileUtil (ifFileExists)
 
 --- Data type representin a version number.
 --- It is a tuple where the components are major, minor, patch, prerelease,
@@ -104,7 +104,7 @@ data VersionConstraint = VExact         Version
  deriving (Eq,Show)
 
 --- Compiler compatibility constraint, takes the name of the compiler (kics2 or
---- pakcs), as well as a disjunctive normal form combination of version 
+--- pakcs), as well as a disjunctive normal form combination of version
 --- constraints (see Dependency).
 data CompilerCompatibility = CompilerCompatibility String Disjunction
  deriving (Eq,Show)
@@ -141,14 +141,14 @@ data PackageDocumentation = PackageDocumentation String String String
  deriving (Eq,Show)
 
 --- A source where the contents of a package can be acquired.
---- @cons Http - URL to a ZIP file 
---- @cons Git - URL to a Git repository and an optional revision spec to check 
+--- @cons Http - URL to a ZIP file
+--- @cons Git - URL to a Git repository and an optional revision spec to check
 ---   out
 --- @cons FileSource - The path to a ZIP file to install. Cannot be specified in
 ---   a package specification file, for internal use only.
-data PackageSource = Http String 
+data PackageSource = Http String
                    | Git String (Maybe GitRevision)
-                   | FileSource String 
+                   | FileSource String
  deriving (Eq,Show)
 
 --- A Git revision.
@@ -331,22 +331,17 @@ writePackageSpec pkg file = writeFile file $ ppJSON $ packageSpecToJSON pkg
 --- Loads a package specification from a package directory.
 ---
 --- @param the directory containing the package.json file
-loadPackageSpecELM :: String -> ErrorLoggerIO Package
-loadPackageSpecELM = toELM . loadPackageSpec
-
---- Loads a package specification from a package directory.
----
---- @param the directory containing the package.json file
-loadPackageSpec :: String -> IO (ErrorLogger Package)
+loadPackageSpec :: String -> ErrorLogger Package
 loadPackageSpec dir = do
   let packageFile = dir </> "package.json"
-  ifFileExists packageFile
-    (do debugMessage $ "Reading package specification '" ++ packageFile ++ "'..."
-        contents <- readCompleteFile packageFile
-        case readPackageSpec contents of
-          Left err -> failIO err
-          Right v  -> succeedIO v )
-    (failIO $ "Illegal package: file '" ++ packageFile ++ "' does not exist!")
+  exfile <- liftIOEL $ doesFileExist packageFile
+  if exfile
+    then do logDebug $ "Reading package specification '" ++ packageFile ++ "'..."
+            contents <- liftIOEL $ readCompleteFile packageFile
+            case readPackageSpec contents of
+               Left err -> fail err
+               Right v  -> return v
+    else fail $ "Illegal package: file `" ++ packageFile ++ "' does not exist!"
 
 --- Checks whether two package ids are equal, i.e. if their names and versions
 --- match.
@@ -381,7 +376,7 @@ replaceVersionInTag pkg =
 vlt :: Version -> Version -> Bool
 vlt (majorA, minorA, patchA, preA) (majorB, minorB, patchB, preB) =
   major || minor || patch || pre
- where 
+ where
   major = majorA < majorB
   minor = majorA <= majorB && minorA < minorB
   patch = majorA <= majorB && minorA <= minorB && patchA < patchB
@@ -394,7 +389,7 @@ vlt (majorA, minorA, patchA, preA) (majorB, minorB, patchB, preB) =
       Just b  -> a `ltPre` b
 
 ltPre :: String -> String -> Bool
-ltPre a b | isNumeric a && isNumeric b = readInt a < readInt b
+ltPre a b | isNumeric a && isNumeric b = (read a :: Int) < read b
           | isNumeric a = True
           | isNumeric b = False
           | otherwise   = a `ltShortlex` b
@@ -552,7 +547,7 @@ packageSpecFromJObject kv =
     mustBeVersion s f = case readVersion s of
       Nothing -> Left $ "'" ++ s ++ "' is not a valid version specification."
       Just v -> f v
-      
+
     getDependencies :: ([Dependency] -> Either String a) -> Either String a
     getDependencies f = case lookup "dependencies" kv of
       Nothing -> f []
@@ -689,7 +684,7 @@ mandatoryString k kv f = case lookup k kv of
   Just JFalse      -> Left $ "Expected a string, got 'false'" ++ forKey
   Just JNull       -> Left $ "Expected a string, got 'null'" ++ forKey
  where forKey = " for key '" ++ k ++ "'"
-     
+
 optionalString :: String -> [(String, JValue)]
                -> (Maybe String -> Either String a) -> Either String a
 optionalString k kv f = case lookup k kv of
@@ -757,7 +752,7 @@ dependenciesFromJObject kv = if any isLeft dependencies
 
   wrongVersionConstraint = Left "Version constraint must be a string"
 
---- Reads the compiler compatibility constraints of a package from the 
+--- Reads the compiler compatibility constraints of a package from the
 --- key-value-pairs of a JObject.
 compilerCompatibilityFromJObject :: [(String, JValue)]
                                  -> Either String [CompilerCompatibility]
@@ -820,7 +815,7 @@ execSpecFromJObject kv =
     in if any isLeft os
          then Left $ head (lefts os)
          else Right (zip (map fst o) (map fromRight os))
-  
+
   extractString s = case s of
     JString s' -> Right s'
     _          -> Left $ "'executable>options': values must be strings"
@@ -883,7 +878,7 @@ docuSpecFromJObject kv =
   Right $ PackageDocumentation docdir docmain (maybe "" id doccmd)
 
 
---- Reads a dependency constraint expression in disjunctive normal form into 
+--- Reads a dependency constraint expression in disjunctive normal form into
 --- a list of lists of version constraints. The inner lists are conjunctions of
 --- version constraints, the outer list is a disjunction of conjunctions.
 readVersionConstraints :: String -> Maybe [[VersionConstraint]]
@@ -969,10 +964,10 @@ showVersion (maj, min, pat, pre) = majMinPat ++ preRelease
           Nothing        -> ""
 
 --- Tries to parse a version string.
-tryReadVersion :: String -> IO (ErrorLogger Version)
+tryReadVersion :: String -> ErrorLogger Version
 tryReadVersion s = case readVersion s of
-  Just v -> succeedIO v
-  Nothing -> failIO $ s ++ " is not a valid version"
+  Just v -> return v
+  Nothing -> fail $ s ++ " is not a valid version"
 
 --- Tries to parse a version string.
 readVersion :: String -> Maybe Version

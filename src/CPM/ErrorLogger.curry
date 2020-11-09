@@ -2,37 +2,36 @@
 --- Contains combinators for chaining IO actions that can fail and log messages.
 --------------------------------------------------------------------------------
 
-module CPM.ErrorLogger 
-  ( ErrorLogger
+module CPM.ErrorLogger
+  ( ErrorLogger (runErrorLogger)
   , LogEntry
-  , LogLevel (..)
-  , logLevelOf
-  , levelGte
-  , getLogLevel, setLogLevel
-  , setWithShowTime
-  , ErrorLoggerIO, fromELM, toELM, execIO, putStrELM, putStrLnELM, runELM
-  , (|>=), (|>)
-  , mapEL
-  , foldEL
-  , succeedIO
-  , failIO, failELM
-  , log, logMsg
-  , showLogEntry
-  , infoMessage, debugMessage, errorMessage, fromErrorLogger
-  , showExecCmd, execQuietCmd
+  , LogLevel (..), logLevelOf
+  , logAt, getLogLevel, setLogLevel, getWithShowTime, setWithShowTime
+  , logInfo, logDebug, logError, logCritical, showLogEntry, levelGte
+  , putStrELM, putStrLnELM
+  , fromErrorLogger
+  , showExecCmd, execQuietCmd, liftIOEL, tryEL
+  , inDirectoryEL, inTempDirEL
   ) where
 
-import Global
-import IO      ( hPutStrLn, stderr )
-import System  ( exitWith, system )
+import System.IO      ( hPutStrLn, stderr )
+import System.Process ( exitWith, system )
+import System.Directory
+
+import CPM.FileUtil
 
 import Debug.Profile -- for show run-time
-import Text.Pretty
+import Text.Pretty hiding (empty)
 
-infixl 0 |>=, |>
+-- A value or an error, along with logs.
+type ErrorLog a = ([LogEntry], Either LogEntry a)
 
---- An error logger.
-type ErrorLogger a = ([LogEntry], Either LogEntry a)
+--- An error logging IO monad.
+newtype ErrorLogger a = ErrorLogger
+  {
+    runErrorLogger :: LogLevel -> Bool
+                   -> IO ((LogLevel, Bool), ErrorLog a)
+  }
 
 --- A log entry.
 data LogEntry = LogEntry LogLevel String
@@ -48,125 +47,57 @@ data LogLevel = Quiet
               | Critical
  deriving Eq
 
---- The global value for the log level.
-logLevel :: Global LogLevel
-logLevel = global Info Temporary
-
---- Gets the global log level. Messages below this level will not be printed.
-getLogLevel :: IO LogLevel
-getLogLevel = readGlobal logLevel
-
---- Sets the global log level. Messages below this level will not be printed.
-setLogLevel :: LogLevel -> IO ()
-setLogLevel level = writeGlobal logLevel level
-
--- Should the current time be shown with every log information?
-withShowTime :: Global Bool
-withShowTime = global False Temporary
-
---- Gets the "show time" information.
-getWithShowTime :: IO Bool
-getWithShowTime = readGlobal withShowTime
-
---- Sets the "show time" information. If true, then timing information
---- will be shown with every log information.
-setWithShowTime :: Bool -> IO ()
-setWithShowTime wst = writeGlobal withShowTime wst
-
 ---------------------------------------------------------------------------
---- Datatype to define the `ErrorLoggerIO` monad.
-data ErrorLoggerIO a = ErrorLoggerIO (IO (ErrorLogger a))
 
---- Transforms an `ErrorLoggerIO` monad action into an IO action.
-fromELM :: ErrorLoggerIO a -> IO (ErrorLogger a)
-fromELM (ErrorLoggerIO errio) = errio
+instance Functor ErrorLogger where
+  fmap f e = ErrorLogger $ \l s -> do
+    (st, (msgs, err)) <- runErrorLogger e l s
+    let (glob, _) = st
+    mapM (showLogEntry glob) msgs
+    case err of
+      Left  v -> return (st, ([], Left v))
+      Right a -> return (st, ([], Right (f a)))
 
---- Transforms an IO action into an `ErrorLoggerIO` monad action.
-toELM :: IO (ErrorLogger a) -> ErrorLoggerIO a
-toELM act = ErrorLoggerIO act
+instance Applicative ErrorLogger where
+  pure = return
+  f <*> v = f >>= \f' -> fmap f' v
 
---- Definition of the `ErrorLoggerIO` monad.
-instance Monad ErrorLoggerIO where
-  return = toELM  . succeedIO
-  a >>= f = toELM (fromELM a |>= \x -> fromELM (f x))
+instance Alternative ErrorLogger where
+  empty = fail "empty"
+  a <|> b = ErrorLogger $ \l s -> do
+    (st, (msgs, a')) <- runErrorLogger a l s
+    let (glob, showTime) = st
+    mapM (showLogEntry glob) msgs
+    case a' of
+      Left  _ -> runErrorLogger b glob showTime
+      Right v -> return (st, ([], Right v))
 
---- Executes an IO action in the `ErrorLoggerIO` monad.
-execIO :: IO a -> ErrorLoggerIO a
-execIO act = toELM (act >>= succeedIO)
+instance Monad ErrorLogger where
+  return a = ErrorLogger $ \l s -> return ((l, s), ([], Right a))
+  m >>= f = ErrorLogger $ \l s -> do
+    (st, (msgs, err)) <- runErrorLogger m l s
+    let (glob, showTime) = st
+    mapM (showLogEntry glob) msgs
+    case err of
+      Right v -> do
+        (st', (msgs', err')) <- runErrorLogger (f v) glob showTime
+        return $ (st', (msgs', err'))
+      Left  e -> return $ (st, ([], Left e))
 
---- Prints a string in the `ErrorLoggerIO` monad.
-putStrELM :: String -> ErrorLoggerIO ()
-putStrELM = execIO . putStr
-
---- Prints a line in the `ErrorLoggerIO` monad.
-putStrLnELM :: String -> ErrorLoggerIO ()
-putStrLnELM = execIO . putStrLn
-
---- Runs an `ErrorLoggerIO` monad action as an IO action.
---- Shows all messages and exit with status 1 if an error occurred.
-runELM :: ErrorLoggerIO a -> IO a
-runELM elmact = do
-  (msgs, result) <- fromELM elmact
-  mapM showLogEntry msgs
-  let allOk =  all (levelGte Info) (map logLevelOf msgs) &&
-               either (\le -> levelGte Info (logLevelOf le))
-                      (const True)
-                      result
-  unless allOk $ exitWith 1
-  case result of Left  m -> showLogEntry m >> exitWith 1
-                 Right v -> return v
-
-----------------------------------------------------------------------------
-
--- Chains two actions passing the result from the first to the second.
-(|>=) :: IO (ErrorLogger a) -> (a -> IO (ErrorLogger b)) -> IO (ErrorLogger b)
-a |>= f = do
-  (msgs, err) <- a 
-  mapM showLogEntry msgs
-  case err of
-    Right v -> do (msgs', err') <- f v 
-                  return (msgs', err')
-    Left  m -> return ([], Left m)
-
---- Chains two actions ignoring the result of the first.
-(|>) :: IO (ErrorLogger a) -> IO (ErrorLogger b) -> IO (ErrorLogger b)
-a1 |> a2 = a1 |>= \_ -> a2
-
---- Maps an action over a list of values. Fails if one of the actions fails.
-mapEL :: (a -> IO (ErrorLogger b)) -> [a] -> IO (ErrorLogger [b])
-mapEL _ [] = succeedIO []
-mapEL f (x:xs) = do
-  (msgs, err) <- f x
-  mapM showLogEntry msgs
-  case err of
-    Right v -> do
-      (msgs', xs') <- mapEL f xs
-      case xs' of
-        Right xs'' -> succeedIO (v:xs'')
-        Left    m'  -> return $ (msgs', Left m')
-    Left m -> return $ ([], Left m)
-
---- Folds a list of values using an action. Fails if one of the actions fails.
-foldEL :: (a -> b -> IO (ErrorLogger a)) -> a -> [b] -> IO (ErrorLogger a)
-foldEL _ z [] = succeedIO z
-foldEL f z (x:xs) = do
-  (msgs, err) <- f z x
-  mapM showLogEntry msgs
-  case err of
-    Right v -> foldEL f v xs
-    Left m -> return $ ([], Left m)
+instance MonadFail ErrorLogger where
+  fail msg = ErrorLogger $ \l s -> return ((l, s), ([logMsg], Left logMsg))
+    where logMsg = LogEntry Critical msg
 
 --- Renders a log entry to stderr.
-showLogEntry :: LogEntry -> IO ()
-showLogEntry (LogEntry lvl msg) = do
-  minLevel <- getLogLevel
+showLogEntry :: LogLevel -> LogEntry -> IO ()
+showLogEntry minLevel (LogEntry lvl msg) = do
   if levelGte lvl minLevel
     then mapM_ (\l -> hPutStrLn stderr $ pPrint $ lvlText <+> text l)
                (lines msg)
     else return ()
  where
   lvlText = case lvl of
-    Quiet    -> text "QUIET "  -- show not occur...
+    Quiet    -> text "QUIET "  -- should not occur...
     Info     -> text "INFO "
     Debug    -> green $ text "DEBUG "
     Critical -> red   $ text "CRITICAL "
@@ -200,75 +131,104 @@ levelGte Critical Quiet = True
 levelGte Critical Error = True
 levelGte Critical Critical = True
 
---- Create an action that always succeeds.
-succeed :: a -> ErrorLogger a
-succeed v = ([], Right v)
-
---- Create an IO action that always succeeds.
-succeedIO :: a -> IO (ErrorLogger a)
-succeedIO v = return $ succeed v
-
---- Create an action that always fails.
-fail :: String -> ErrorLogger a
-fail msg = ([logmsg], Left logmsg)
- where logmsg = LogEntry Critical msg
-
---- Create an IO action that always fails.
-failIO :: String -> IO (ErrorLogger a)
-failIO msg = return $ fail msg
-
---- Create an `ErrorLoggerIO` action that always fails with a message.
-failELM :: String -> ErrorLoggerIO a
-failELM msg = toELM (failIO msg)
-
---- Creates an IO action that logs a message.
-logMsg :: LogLevel -> String -> ErrorLoggerIO ()
-logMsg lvl msg = toELM $ log lvl msg
-
---- Creates an IO action that logs a message.
-log :: LogLevel -> String -> IO (ErrorLogger ())
-log lvl msg = do
-  wst <- getWithShowTime
+--- Logs a message at a user-defined level.
+logAt :: LogLevel -> String -> ErrorLogger ()
+logAt lvl msg = ErrorLogger $ \l wst ->
   if wst
     then do
       runtime <- getProcessInfos >>= return . maybe 0 id . lookup ElapsedTime
-      return $ ([LogEntry lvl (showTime runtime ++ 's':' ':msg)], Right ())
+      return ((l, wst), ([LogEntry lvl (showTime runtime ++ 's':' ':msg)], Right ()))
     else
-      return $ ([LogEntry lvl msg], Right ())
+      return ((l, wst), ([LogEntry lvl msg], Right ()))
  where
   showTime t = show (t `div` 1000) ++ "." ++ show ((t `mod` 1000) `div` 10)
 
---- Prints an info message in the standard IO monad.
-infoMessage :: String -> IO ()
-infoMessage msg = (log Info msg |> succeedIO ()) >> done
+--- Logs a message at the info level.
+logInfo :: String -> ErrorLogger ()
+logInfo = logAt Info
 
---- Prints a debug message in the standard IO monad.
-debugMessage :: String -> IO ()
-debugMessage msg = (log Debug msg |> succeedIO ()) >> done
+--- Logs a message at the debug level.
+logDebug :: String -> ErrorLogger ()
+logDebug = logAt Debug
 
---- Prints an error message in the standard IO monad.
-errorMessage :: String -> IO ()
-errorMessage msg = (log Error msg |> succeedIO ()) >> done
+--- Logs a message at the error level.
+logError :: String -> ErrorLogger ()
+logError = logAt Error
+
+--- Logs a message at the critical level.
+logCritical :: String -> ErrorLogger ()
+logCritical = logAt Critical
+
+--- Prints a string in the `ErrorLogger` monad.
+putStrELM :: String -> ErrorLogger ()
+putStrELM = liftIOEL . putStr
+
+--- Prints a line in the `ErrorLogger` monad.
+putStrLnELM :: String -> ErrorLogger ()
+putStrLnELM = liftIOEL . putStrLn
 
 --- Transforms an error logger action into a standard IO action.
 --- It shows all messages and, if the result is not available,
 --- exits with a non-zero code.
-fromErrorLogger :: IO (ErrorLogger a) -> IO a
-fromErrorLogger a = do
-  (msgs, err) <- a 
-  mapM showLogEntry msgs
+fromErrorLogger :: LogLevel -> Bool -> ErrorLogger a -> IO a
+fromErrorLogger l s a = do
+  ((glob, _), (msgs, err)) <- runErrorLogger a l s
+  mapM (showLogEntry glob) msgs
   case err of
-    Left  m -> showLogEntry m >> exitWith 1
     Right v -> return v
+    Left  m -> showLogEntry glob m >> exitWith 1
 
 --- Executes a system command and show the command as debug message.
-showExecCmd :: String -> IO Int
-showExecCmd cmd = debugMessage ("Executing: " ++ cmd) >> system cmd
+showExecCmd :: String -> ErrorLogger Int
+showExecCmd cmd = logDebug ("Executing: " ++ cmd) >>
+  liftIOEL (system cmd)
 
 --- Executes a parameterized system command.
 --- The parameter is set to `-q` unless the LogLevel is Debug.
-execQuietCmd :: (String -> String) -> IO Int
-execQuietCmd cmd = do
-  ll <- getLogLevel
-  debugMessage $ "Executing: " ++ cmd ""
-  system $ cmd (if ll == Debug then "" else "-q")
+execQuietCmd :: (String -> String) -> ErrorLogger Int
+execQuietCmd cmd = logDebug ("Executing: " ++ cmd "") >>
+  ErrorLogger (\l s -> do i <- system $ cmd (if l == Debug then "" else "-q")
+                          return ((l, s), ([], Right i)))
+
+getLogLevel :: ErrorLogger LogLevel
+getLogLevel = ErrorLogger $ \ l s -> return ((l, s), ([], Right l))
+
+getWithShowTime :: ErrorLogger Bool
+getWithShowTime = ErrorLogger $ \ l s -> return ((l, s), ([], Right s))
+
+setLogLevel :: LogLevel -> ErrorLogger ()
+setLogLevel l = ErrorLogger $ \ _ s -> return ((l, s), ([], Right ()))
+
+setWithShowTime :: Bool -> ErrorLogger ()
+setWithShowTime s = ErrorLogger $ \ l _ -> return ((l, s), ([], Right ()))
+
+liftIOEL :: IO a -> ErrorLogger a
+liftIOEL ma = ErrorLogger (\l s -> do a <- ma
+                                      return ((l, s), ([], Right a)))
+
+--- Tries to execute an EL action and returns either an error that
+--- occurred or the value.
+tryEL :: ErrorLogger a -> ErrorLogger (Either LogEntry a)
+tryEL a = liftIOEL $ fmap (snd . snd) $ runErrorLogger a Quiet False
+
+--- Executes an EL action with the current directory set to a specific
+--- directory.
+inDirectoryEL :: String -> ErrorLogger b -> ErrorLogger b
+inDirectoryEL dir b = do
+  previous <- liftIOEL getCurrentDirectory
+  liftIOEL $ setCurrentDirectory dir
+  b' <- b
+  liftIOEL $ setCurrentDirectory previous
+  return b'
+
+
+--- Executes an EL action with the current directory set to  CPM's temporary
+--- directory.
+inTempDirEL :: ErrorLogger b -> ErrorLogger b
+inTempDirEL b = do
+  t <- liftIOEL tempDir
+  exists <- liftIOEL $ doesDirectoryExist t
+  if exists
+    then return ()
+    else liftIOEL $ createDirectory t
+  inDirectoryEL t b

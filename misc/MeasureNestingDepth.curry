@@ -1,10 +1,10 @@
 module MeasureNestingDepth where
 
-import Directory
-import Debug
-import List
-import Distribution
-import FilePath
+import System.Directory
+import Debug.Trace
+import Data.List
+import Language.Curry.Distribution
+import System.FilePath
 import AbstractCurry.Types
 import AbstractCurry.Select
 import AbstractCurry.Files
@@ -29,7 +29,7 @@ typeDepths :: [(String, CurryProg)] -> CurryProg -> [(QName, Int)]
 typeDepths progs (CurryProg _ _ ts _ _) = zip (map typeName ts) (map (typeDepth [] progs) ts)
 
 typeDepth :: [QName] -> [(String, CurryProg)] -> CTypeDecl -> Int
-typeDepth seen progs (CType n _ _ cs) = if n `elem` seen 
+typeDepth seen progs (CType n _ _ cs) = if n `elem` seen
   then 0
   else 1 + (foldl max 0 $ map (typeConsDepth (n:seen) progs) cs)
 typeDepth seen progs (CTypeSyn n _ _ e) = if n `elem` seen
@@ -60,7 +60,7 @@ typeExprDepth seen progs e@(CTCons n@(mod, _) es) = typeDepth seen progs ity
   ity = instantiateType e ty
 
 instantiateType :: CTypeExpr -> CTypeDecl -> CTypeDecl
-instantiateType (CTCons _ es) (CType nt v vs cs) = 
+instantiateType (CTCons _ es) (CType nt v vs cs) =
   CType nt v vs ics
  where
   ics = map (instantiateConstructor $ zip vs es) cs

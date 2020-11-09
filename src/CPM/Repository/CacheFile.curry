@@ -19,9 +19,9 @@ module CPM.Repository.CacheFile
   ( readRepository )
  where
 
-import Directory    ( doesFileExist )
-import IO
-import ReadShowTerm ( showQTerm, readQTerm, showTerm, readUnqualifiedTerm )
+import System.Directory ( doesFileExist )
+import System.IO
+import ReadShowTerm     ( showQTerm, readQTerm, showTerm, readUnqualifiedTerm )
 
 import CPM.Config        ( Config, repositoryDir )
 import CPM.ConfigPackage ( packageVersion )
@@ -37,16 +37,16 @@ import CPM.Repository
 --- @param cfg   - the configuration to use
 --- @param large - if true reads the larger cache with more package information
 ---                (e.g., for searching all packages)
-readRepository :: Config -> Bool -> IO Repository
+readRepository :: Config -> Bool -> ErrorLogger Repository
 readRepository cfg large = do
   warnIfRepositoryOld cfg
   mbrepo <- readRepositoryCache cfg large
   case mbrepo of
     Nothing -> do
       repo <- readRepositoryFrom (repositoryDir cfg)
-      infoMessage $ "Writing " ++ (if large then "large" else "base") ++
+      logInfo $ "Writing " ++ (if large then "large" else "base") ++
                     " repository cache..."
-      writeRepositoryCache cfg large repo
+      liftIOEL $ writeRepositoryCache cfg large repo
       return repo
     Just repo -> return repo
 
@@ -87,20 +87,21 @@ writeRepositoryCache cfg large repo =
 --- @param cfg   - the configuration to use
 --- @param large - if true reads the larger cache with more package information
 ---                (e.g., for searching all packages)
-readRepositoryCache :: Config -> Bool -> IO (Maybe Repository)
+readRepositoryCache :: Config -> Bool -> ErrorLogger (Maybe Repository)
 readRepositoryCache cfg large = do
   let cf = repositoryCache cfg large
-  excache <- doesFileExist cf
+  excache <- liftIOEL $ doesFileExist cf
   if excache
-    then debugMessage ("Reading repository cache from '" ++ cf ++ "'...") >>
-         catch ((if large
+    then do logDebug ("Reading repository cache from '" ++ cf ++ "'...")
+            ((if large
                   then readTermInCacheFile cfg (largetuple2package . uread) cf
                   else readTermInCacheFile cfg (smalltuple2package . uread) cf)
                   >>= \repo ->
-                debugMessage "Finished reading repository cache" >> return repo)
-               (\_ -> do infoMessage "Cleaning broken repository cache..."
-                         cleanRepositoryCache cfg
-                         return Nothing )
+                logDebug "Finished reading repository cache" >> return repo)
+              <|>
+               (do logInfo "Cleaning broken repository cache..."
+                   cleanRepositoryCache cfg
+                   return Nothing )
     else return Nothing
  where
   uread s = readUnqualifiedTerm ["CPM.Package","Prelude"] s
@@ -122,14 +123,14 @@ readRepositoryCache cfg large = do
       }
 
 readTermInCacheFile :: Config -> (String -> Package) -> String
-                    -> IO (Maybe Repository)
+                    -> ErrorLogger (Maybe Repository)
 readTermInCacheFile cfg trans cf = do
-  h <- openFile cf ReadMode
-  pv <- hGetLine h
+  h <- liftIOEL $ openFile cf ReadMode
+  pv <- liftIOEL $ hGetLine h
   if pv == repoCacheVersion
-    then hGetContents h >>= \t ->
+    then liftIOEL (hGetContents h) >>= \t ->
          return $!! Just (pkgsToRepository (map trans (lines  t)))
-    else do infoMessage "Cleaning repository cache (wrong version)..."
+    else do logInfo "Cleaning repository cache (wrong version)..."
             cleanRepositoryCache cfg
             return Nothing
 

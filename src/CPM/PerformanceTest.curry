@@ -6,17 +6,16 @@
 module CPM.PerformanceTest where
 
 import ReadShowTerm
-import IO
-import IOExts
-import Directory
-import Debug
-import FilePath ((</>))
-import List
-import Maybe
-import Function
-import Either
-import Read (readInt)
-import System
+import System.IO
+import System.Directory
+import System.FilePath ((</>))
+import System.Process
+import System.IOExts
+import Debug.Trace
+import Data.List
+import Data.Maybe
+import Data.Function
+import Data.Either
 
 import AbstractCurry.Build
 import AbstractCurry.Types hiding (version)
@@ -61,7 +60,7 @@ defaultOptions = Options {
   }
 
 optionParser :: ParseSpec (Options -> Options)
-optionParser = optParser 
+optionParser = optParser
   (   commands (metavar "COMMAND")
         (   command "behavior" (help "Run behavior diff performance test.") (\a -> a { optCommand = BehaviorDiff })
               (   option (\s a -> a { bdTypeNesting = readInt s })
@@ -79,7 +78,7 @@ optionParser = optParser
                     (  metavar "NUMBER-OF-EACH"
                     <> help "Number of added, removed, changed functions and types to generate."
                     <> long "number"
-                    <> short "n") ) 
+                    <> short "n") )
         <|> command "resolution" (help "Run resolution performance test.") (\a -> a { optCommand = Resolution })
               (   option (\s a -> a { resRepoPath = Just s })
                     (  metavar "REPO-PATH"
@@ -135,18 +134,18 @@ behaviorDiffPerformance o = do
   profileTime genTestProgram
   putStrLn "DONE"
 
-genTestProgram :: IO (ErrorLogger ())
-genTestProgram = preparePackageDirs defaultConfig emptyRepository GC.emptyCache "/tmp/verA" "/tmp/verB" |>= 
+genTestProgram :: ErrorLogger ()
+genTestProgram = preparePackageDirs defaultConfig emptyRepository GC.emptyCache "/tmp/verA" "/tmp/verB" |>=
     \info -> findFunctionsToCompare defaultConfig emptyRepository GC.emptyCache (infSourceDirA info) (infSourceDirB info) False Nothing |>=
     \(acyCache, loadpath, funcs, _) ->
     genCurryCheckProgram defaultConfig emptyRepository GC.emptyCache funcs
                          info True acyCache loadpath |>
-    succeedIO ()
+    return ()
 
 apiDiffPerformance :: Options -> IO ()
 apiDiffPerformance o = do
   putStrLn $ "Running API diff performance test with " ++ (show n) ++ " functions"
-  (prog1, prog2) <- return $ genDiffProgs n n n n n n 
+  (prog1, prog2) <- return $ genDiffProgs n n n n n n
   recreateDirectory "/tmp/verA"
   recreateDirectory "/tmp/verA/src"
   recreateDirectory "/tmp/verB"
@@ -196,8 +195,8 @@ resolutionPerformance o = do
   parsePkgs s = map parsePkg $ splitOn "," s
 
 parsePkg :: String -> (String, Version)
-parsePkg s = 
-  let 
+parsePkg s =
+  let
     split = splitOn "-" s
     pkgName = intercalate "-" $ init split
     pkgVer = last split
@@ -212,7 +211,7 @@ countDeps o = do
   pkg <- return $ fromJust $ uncurry (findVersion ls) $ parsePkg (cdPackage o)
   transDeps <- return $ transitiveDependencies ls pkg
   verCount <- return $ foldl (flip $ (+) . length . (findAllVersions' ls)) 0 transDeps
-  putStrLn $ packageId pkg ++ " has " ++ (show $ length transDeps) 
+  putStrLn $ packageId pkg ++ " has " ++ (show $ length transDeps)
     ++ " dependencies with " ++ show verCount ++ " versions"
  where
   findAllVersions' ls p = findAllVersions ls p True
@@ -274,11 +273,11 @@ genDiffFunc :: APIDiffType -> Int -> (Maybe CFuncDecl, Maybe CFuncDecl)
 genDiffFunc Added n = (Just f, Nothing)
  where
   f = cfunc ("Sample", "f" ++ (show n)) 1 Public (CFuncType stringType stringType) [
-    simpleRule (pVars 1) (toVar 0) ] 
+    simpleRule (pVars 1) (toVar 0) ]
 genDiffFunc Removed n = (Nothing, Just f)
  where
   f = cfunc ("Sample", "f" ++ (show n)) 1 Public (CFuncType stringType stringType) [
-    simpleRule (pVars 1) (toVar 0) ] 
+    simpleRule (pVars 1) (toVar 0) ]
 genDiffFunc Changed n = (Just f1, Just f2)
  where
   f1 = cfunc ("Sample", "f" ++ (show n)) 1 Public (CFuncType stringType stringType) [
@@ -314,7 +313,7 @@ genDiffTypes :: Int -> Int -> APIDiffType -> ([CTypeDecl], [CTypeDecl])
 genDiffTypes s n t = both catMaybes $ extractComponents $ map (genDiffType t) (enumFromTo s n)
 
 genDiffProgs :: Int -> Int -> Int -> Int -> Int -> Int -> (CurryProg, CurryProg)
-genDiffProgs nfsAdded nfsRemoved nfsChanged ntsAdded ntsRemoved ntsChanged = 
+genDiffProgs nfsAdded nfsRemoved nfsChanged ntsAdded ntsRemoved ntsChanged =
   (prog1, prog2)
  where
   fromfsAdded = 1
@@ -346,4 +345,3 @@ genNestedType n | n == 0    = [CType ("Sample", "Nested0") Public [] [CCons ("Sa
 genCompareFunc :: Int -> Int -> CFuncDecl
 genCompareFunc tn n = cfunc ("Sample", "f" ++ (show n)) 1 Public (CFuncType (CTCons ("Sample", "Nested" ++ (show tn)) []) (CTCons ("Sample", "Nested" ++ (show tn)) [])) [
   simpleRule (pVars 1) (toVar 0) ]
-

@@ -1,11 +1,11 @@
 ------------------------------------------------------------------------------
 --- This module implements the LookupSet datatype. A lookup set is used to store
---- and query packages for dependency resolution. It stores the source of a 
+--- and query packages for dependency resolution. It stores the source of a
 --- package specification alongside the specification itself (e.g. the global
 --- repository or the local package cache).
 ------------------------------------------------------------------------------
 
-module CPM.LookupSet 
+module CPM.LookupSet
   ( LookupSource (..)
   , LookupSet
   , emptySet
@@ -19,12 +19,13 @@ module CPM.LookupSet
   , setLocallyIgnored
   ) where
 
-import List (sortBy, delete, deleteBy)
+import Data.List (sortBy, delete, deleteBy)
 import Test.Prop
+import Prelude hiding (empty)
 
 import Data.Table.RBTree as Table ( TableRBT, empty, lookup, toList,update )
 
-import CPM.Package 
+import CPM.Package
 
 ------------------------------------------------------------------------------
 
@@ -47,9 +48,9 @@ defaultOptions :: LookupOptions
 defaultOptions = LookupOptions []
 
 --- Set the set of packages whose locally installed versions are ignored when
---- finding all package versions. 
+--- finding all package versions.
 setLocallyIgnored :: LookupSet -> [String] -> LookupSet
-setLocallyIgnored (LookupSet ls o) pkgs = 
+setLocallyIgnored (LookupSet ls o) pkgs =
   LookupSet ls (o { ignoreLocalVersions = pkgs })
 
 --- Adds multiple packages to a lookup set with the same source.
@@ -72,7 +73,7 @@ addPackage :: LookupSet -> Package -> LookupSource -> LookupSet
 addPackage (LookupSet ls o) pkg src = case Table.lookup (name pkg) ls of
   Nothing -> LookupSet (update (name pkg) [(src, pkg)] ls) o
   Just ps -> let ps' = filter ((/= packageId pkg) . packageId . snd) ps
-              in LookupSet (update (name pkg) ((src, pkg):ps') ls) o 
+              in LookupSet (update (name pkg) ((src, pkg):ps') ls) o
 
 --- Finds a specific entry (including the source) in the lookup set.
 ---
@@ -86,7 +87,7 @@ findEntry (LookupSet ls _) p = maybeHead candidates
     Nothing -> []
     Just ps -> filter ((packageIdEq p) . snd) ps
 
---- Finds all versions of a package known to the lookup set. Returns the 
+--- Finds all versions of a package known to the lookup set. Returns the
 --- packages from the local cache first, and then from other sources. Each
 --- group is sorted from newest do oldest version.
 ---
@@ -95,7 +96,7 @@ findEntry (LookupSet ls _) p = maybeHead candidates
 --- @param pre should pre-release versions be included?
 findAllVersions :: LookupSet -> String -> Bool -> [Package]
 findAllVersions (LookupSet ls o) p pre = localSorted' ++ nonLocalSorted
-  where 
+  where
     packageVersions = case Table.lookup p ls of
       Nothing -> []
       Just vs -> vs
@@ -106,12 +107,12 @@ findAllVersions (LookupSet ls o) p pre = localSorted' ++ nonLocalSorted
     nonLocalSorted = sortedByVersion $ preFiltered $ sameName $ ps $ onlyNonLocal
     sortedByVersion = sortBy (\a b -> (version a) `vgt` (version b))
     preFiltered = filter filterPre
-    sameName = filter ((== p) . name) 
+    sameName = filter ((== p) . name)
     filterPre p' = pre || (not . isPreRelease . version) p'
     isLocal (FromLocalCache, _) = True
     isLocal (FromGlobalCache, _) = False
     isLocal (FromRepository, _) = False
-    ps = map snd 
+    ps = map snd
 
 test_findAllVersions_localBeforeNonLocal :: Prop
 test_findAllVersions_localBeforeNonLocal = findAllVersions ls "A" False -=- [aLocal, aNonLocal]
