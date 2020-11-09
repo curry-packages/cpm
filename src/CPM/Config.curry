@@ -25,9 +25,6 @@ import System.IOExts     ( evalCmd )
 import Data.PropertyFile ( readPropertyFile )
 import System.Path       ( getFileInPath )
 
-import Data.PropertyFile ( readPropertyFile )
-import System.Path       ( getFileInPath )
-
 import CPM.ErrorLogger
 import CPM.FileUtil ( ifFileExists )
 import CPM.Helpers  ( strip )
