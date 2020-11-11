@@ -17,7 +17,7 @@ import System.Directory ( doesDirectoryExist )
 import Data.List        ( intercalate )
 import Data.Maybe       ( mapMaybe )
 
-import CPM.Config       ( Config, baseVersion )
+import CPM.Config       ( Config, compilerBaseVersion )
 import CPM.Repository   ( Repository, allPackages )
 import CPM.Repository.Select
 import qualified CPM.LookupSet as LS
@@ -195,19 +195,19 @@ resolveDependencies cfg dir = do
   resolveDependenciesForPackageCopy cfg pkgSpec repo gc dir
 
 ------------------------------------------------------------------------------
---- Sets `base` package dependency in a package to the current `baseVersion`
---- if this dependency is compatible with the current `baseVersion`.
+--- Sets `base` package dependency in a package to requiring equality
+--- with the current `compilerBaseVersion`.
 --- Hence, a conflict occurs if some package requires a different version
 --- of the `base` package.
 setBaseDependency :: Config -> Package -> Package
 setBaseDependency cfg pkg =
   pkg { dependencies = map setBase (dependencies pkg) }
  where
-  bv = maybe (0,0,0,Nothing) id (readVersion (baseVersion cfg))
+  bv = maybe (0,0,0,Nothing) id (readVersion (compilerBaseVersion cfg))
 
   setBase (Dependency n disj) =
-    Dependency n $ if n == "base" && isDisjunctionCompatible bv disj
-                     then [[VExact bv]]
+    Dependency n $ if n == "base"
+                     then map (\conj -> VExact bv : conj) disj
                      else disj
 
 --- Same as `LS.addPackages` but set the `base` package dependency.

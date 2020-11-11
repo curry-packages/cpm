@@ -8,7 +8,7 @@ module CPM.Config
   ( Config ( Config, packageInstallDir, binInstallDir, repositoryDir
            , appPackageDir, packageIndexURLs, packageTarFilesURLs
            , homePackageDir, curryExec
-           , compilerVersion, compilerBaseVersion, baseVersion )
+           , compilerVersion, compilerBaseVersion )
   , readConfigurationWith, defaultConfig
   , showConfiguration, showCompilerVersion ) where
 
@@ -64,8 +64,6 @@ data Config = Config {
   , compilerVersion :: (String,Int,Int,Int)
     --- The version of the base libraries used by the compiler
   , compilerBaseVersion :: String
-    --- The version of the base libraries to be used for package installations
-  , baseVersion :: String
   }
 
 --- CPM's default configuration values. These are used if no .cpmrc file is found
@@ -85,7 +83,6 @@ defaultConfig = Config
                              , Dist.curryCompilerMinorVersion
                              , Dist.curryCompilerRevisionVersion )
   , compilerBaseVersion    = Dist.baseVersion
-  , baseVersion            = ""
   }
 
 --- Shows the configuration.
@@ -93,7 +90,6 @@ showConfiguration :: Config -> String
 showConfiguration cfg = unlines
   [ "Compiler version       : " ++ showCompilerVersion cfg
   , "Compiler base version  : " ++ compilerBaseVersion cfg
-  , "BASE_VERSION           : " ++ baseVersion         cfg
   , "CURRY_BIN              : " ++ curryExec           cfg
   , "REPOSITORY_PATH        : " ++ repositoryDir       cfg
   , "PACKAGE_INSTALL_PATH   : " ++ packageInstallDir   cfg
@@ -158,13 +154,9 @@ setHomePackageDir cfg
 setCompilerVersion :: Config -> ErrorLogger Config
 setCompilerVersion cfg0 = do
   cfg <- liftIOEL $ setCompilerExecutable cfg0
-  let initbase = baseVersion cfg
   if curryExec cfg == Dist.installDir </> "bin" </> Dist.curryCompiler
     then return cfg { compilerVersion = currVersion
-                    , compilerBaseVersion = Dist.baseVersion
-                    , baseVersion         = if null initbase
-                                              then Dist.baseVersion
-                                              else initbase }
+                    , compilerBaseVersion = Dist.baseVersion }
     else do (sname,svers,sbver) <- getCompilerVersion (curryExec cfg)
             let cname = strip sname
                 cvers = strip svers
@@ -174,10 +166,7 @@ setCompilerVersion cfg0 = do
             logDebug $ "Base lib version: " ++ bvers
             return cfg { compilerVersion = (cname, read majs,
                                             read mins, read revs)
-                       , compilerBaseVersion = bvers
-                       , baseVersion         = if null initbase
-                                                 then bvers
-                                                 else initbase }
+                       , compilerBaseVersion = bvers }
  where
   getCompilerVersion currybin = do
     logDebug $ "Getting version information from " ++ currybin
@@ -271,7 +260,6 @@ stripProps = map (\(a,b) -> ((map toUpper $ filter (/='_') $ strip a), strip b))
 keySetters :: [(String, String -> Config -> Config)]
 keySetters =
   [ ("APPPACKAGEPATH"     , \v c -> c { appPackageDir       = v })
-  , ("BASEVERSION"        , \v c -> c { baseVersion         = v })
   , ("BININSTALLPATH"     , \v c -> c { binInstallDir       = v })
   , ("CURRYBIN"           , \v c -> c { curryExec           = v })
   , ("HOMEPACKAGEPATH"    , \v c -> c { homePackageDir      = v })

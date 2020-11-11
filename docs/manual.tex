@@ -702,6 +702,67 @@ publish it.
 
 \clearpage
 
+\section{The \texttt{base} Package}
+\label{sec:basepackage}
+
+Every Curry distribution comes with some libraries
+to support basic operations, like list operations,
+actions to read and write files, etc.
+The most prominent library is the \code{Prelude}
+which is implicitly added to the import list of a Curry module.
+In order to manage different versions of these base libraries,
+there is a distinguished package \code{base} containing
+these libraries.
+Thus, one can include a dependency to a specific version
+of the \code{base} package in the \code{package.json} file, e.g.:
+%
+\begin{lstlisting}
+{
+  ...,
+  "dependencies": {
+    "base": ">= 2.1.0, < 3.0.0",
+    "html": ">= 2.0.0, < 2.2.0"
+    "json": "~1.1.0"
+  }
+  ...
+}
+\end{lstlisting}
+%
+Each Curry system comes with a specific version of the \code{base}
+package. This version can be queried with the option \code{--base-version},
+e.g.,
+%
+\begin{lstlisting}
+> pakcs --base-version
+3.0.0
+\end{lstlisting}
+%
+If CPM tries to install a package, it adds the condition
+that the version of package \code{base} must be identical to the \code{base}
+version of the compiler used by CPM.
+For instance, if \code{pakcs} is used by CPM
+(see Section~\ref{sec:config} how to change the default compiler of CPM),
+the dependencies shown above are changed to
+%
+\begin{lstlisting}
+{
+  ...,
+  "dependencies": {
+    "base": "= 3.0.0, >= 2.1.0, < 3.0.0",
+    "html": ">= 2.0.0, < 2.2.0"
+    "json": "~1.1.0"
+  }
+  ...
+}
+\end{lstlisting}
+%
+before resolving all constraints.
+Of course, in this case, the constraints are not solvable
+so that one has to choose another Curry compiler for this package.
+
+
+\clearpage
+
 \section{Configuration}
 \label{sec:config}
 
@@ -709,6 +770,12 @@ CPM can be configured via the \code{\$HOME/.cpmrc} configuration file. The
 following list shows all configuration options and their default values.
 
 \begin{description}
+\item[\fbox{\code{CURRY_BIN}}]
+The name of the executable of the Curry system used
+to compile and test packages.
+The default value is the binary of the Curry system which has been used
+to compile CPM.
+
 \item[\fbox{\code{REPOSITORY_PATH}}] The path to the index of all packages.
 Default value: \code{\$HOME/.cpm/index}.
 
@@ -732,30 +799,6 @@ Default value: \code{\$HOME/.cpm/apps_$Curry system$}.
 The path to the meta-package which is used if you are outside another
 package (see Section~\ref{sec:meta-package}).
 Default value: \code{\$HOME/.cpm/$Curry system$-homepackage}.
-
-\item[\fbox{\code{CURRY_BIN}}]
-The name of the executable of the Curry system used
-to compile and test packages.
-The default value is the binary of the Curry system which has been used
-to compile CPM.
-
-\item[\fbox{\code{BASE_VERSION}}]
-The version of the base libraries which is used for package installations.
-In the default case, the base version is the version of the system libraries
-used by the Curry compiler. These system libraries are also available
-as package \ccode{base} so that they can listed as a dependency
-in the package specification.
-If the base version of the package is identical to the base version
-of the Curry compiler used by CPM, the installed copy
-of the base libraries is ignored.\footnote{Since the system libraries
-of a Curry compiler are usually pre-compiled, the usage of the
-system libraries instead of the \code{base} package might result
-in faster compilation times.}
-If one uses a different base version, e.g., enforced by a package
-dependency or by setting this configuration variable,
-then this version of the base package is used.
-Thus, one can use a package even if the current compiler
-has a different version of the base libraries.
 
 \item[\fbox{\code{PACKAGE_INDEX_URL}}]
 The URL of the central package index

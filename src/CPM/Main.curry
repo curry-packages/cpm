@@ -64,7 +64,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine, bannerText, bannerLine]
  where
   bannerText =
-    "Curry Package Manager <curry-lang.org/tools/cpm> (version of 05/11/2020)"
+    "Curry Package Manager <curry-lang.org/tools/cpm> (version of 11/11/2020)"
   bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -938,7 +938,6 @@ installCmd (InstallOptions Nothing Nothing _ instexec False) cfg = do
   pkgdir <- getLocalPackageSpec cfg "."
   cleanCurryPathCache pkgdir
   (pkg,_) <- installLocalDependencies cfg pkgdir
-  liftIOEL $ saveBaseVersionToCache cfg pkgdir
   currypath <- getCurryLoadPath cfg pkgdir
   writePackageConfig cfg pkgdir pkg currypath
   when instexec $ installExecutable cfg pkg
@@ -1599,19 +1598,14 @@ computePackageLoadPath :: Config -> String -> ErrorLogger String
 computePackageLoadPath cfg pkgdir = do
   logDebug "Computing load path for package..."
   pkg <- loadPackageSpec pkgdir
-  cbv <- loadBaseVersionFromCache pkgdir
-  let cfg' = if null cbv then cfg else cfg { baseVersion = cbv }
-  allpkgs <- resolveAndCopyDependenciesForPackage cfg' pkgdir pkg
+  allpkgs <- resolveAndCopyDependenciesForPackage cfg pkgdir pkg
   abs <- liftIOEL $ getAbsolutePath pkgdir
   let srcdirs = map (abs </>) (sourceDirsOf pkg)
-      -- remove 'base' package if it is the same as in current config:
-      pkgs = filter notCurrentBase allpkgs
+      -- remove 'base' package since it is in the compiler libraries:
+      pkgs = filter (\p -> name p /= "base") allpkgs
       currypath = joinSearchPath (srcdirs ++ dependencyPathsSeparate pkgs abs)
-  liftIOEL $ saveCurryPathToCache cfg' pkgdir currypath
+  liftIOEL $ saveCurryPathToCache cfg pkgdir currypath
   return currypath
- where
-  notCurrentBase pkg = name pkg /= "base" ||
-                       showVersion (version pkg) /= compilerBaseVersion cfg
 
 
 --- Implementation of the `new` command: create a new package.
@@ -1794,35 +1788,12 @@ compatPackageNotFoundFailure cfg pkgname helpcmt =
 -- Caching the current CURRYPATH of a package for faster startup.
 -- The file `.cpm/CURRYPATH_CACHE` contains the following lines:
 -- * The CURRYPATH used to load the package
--- * The compiler name and major/minor version
+-- * The compiler name and major/minor/revision version
 -- * The version of the base libraries required during package install
 
 --- The name of the cache file in a package directory.
 curryPathCacheFile :: String -> String
 curryPathCacheFile pkgdir = pkgdir </> ".cpm" </> "CURRYPATH_CACHE"
-
---- The name of the cache file for the base version in a package directory.
-baseVersionCacheFile :: String -> String
-baseVersionCacheFile pkgdir = pkgdir </> ".cpm" </> "BASEVERSION_CACHE"
-
---- Saves baseVersion of config in local cache file in the given package dir.
-saveBaseVersionToCache :: Config -> String -> IO ()
-saveBaseVersionToCache cfg pkgdir = do
-  let cpmdir = pkgdir </> ".cpm"
-  createDirectoryIfMissing False cpmdir
-  writeFile (baseVersionCacheFile pkgdir) (baseVersion cfg ++ "\n")
-
---- Loads baseVersion from local cache file in the given package dir.
-loadBaseVersionFromCache :: String -> ErrorLogger String
-loadBaseVersionFromCache pkgdir = do
-  let cachefile = baseVersionCacheFile pkgdir
-  excache <- liftIOEL $ doesFileExist cachefile
-  if excache
-    then do bv <- liftIOEL $
-                    safeReadFile cachefile >>= return . either (const "") id
-            logDebug $ "Base version loaded from cache: " ++ bv
-            return bv
-    else return ""
 
 --- Saves package CURRYPATH in local cache file in the given package dir.
 saveCurryPathToCache :: Config -> String -> String -> IO ()
@@ -1830,7 +1801,7 @@ saveCurryPathToCache cfg pkgdir path = do
   let cpmdir = pkgdir </> ".cpm"
   createDirectoryIfMissing False cpmdir
   writeFile (curryPathCacheFile pkgdir)
-            (unlines [path, showCompilerVersion cfg, baseVersion cfg])
+            (unlines [path, showCompilerVersion cfg, compilerBaseVersion cfg])
 
 --- Gets CURRYPATH of the given package (either from the local cache file
 --- in the package dir or compute it).
@@ -1860,14 +1831,14 @@ loadCurryPathFromCache cfg pkgdir = do
  where
   consistentCache cls =
     length cls > 2 && cls!!1 == showCompilerVersion cfg
-                   && cls!!2 == baseVersion cfg
+                   && cls!!2 == compilerBaseVersion cfg
 
 --- Cleans the local cache file for CURRYPATH. This might be necessary
 --- for upgrade/install/link commands.
 cleanCurryPathCache :: String -> ErrorLogger ()
 cleanCurryPathCache pkgdir = liftIOEL $ do
   let pathcachefile = curryPathCacheFile pkgdir
-      basecachefile = baseVersionCacheFile pkgdir
   whenFileExists pathcachefile $ removeFile pathcachefile
-  whenFileExists basecachefile $ removeFile basecachefile
   return ()
+
+------------------------------------------------------------------------------
