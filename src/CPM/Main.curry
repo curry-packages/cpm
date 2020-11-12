@@ -64,7 +64,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine, bannerText, bannerLine]
  where
   bannerText =
-    "Curry Package Manager <curry-lang.org/tools/cpm> (version of 11/11/2020)"
+    "Curry Package Manager <curry-lang.org/tools/cpm> (version of 12/11/2020)"
   bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -1339,7 +1339,8 @@ genDocForPrograms opts cfg docdir specDir pkg = do
                       (executableSpec pkg)
   (docmods,apidoc) <-
      maybe (if null exports
-              then maybe (do ms <- liftIOEL $ curryModulesInDir (specDir </>"src")
+              then maybe (do ms <- liftIOEL $
+                                     curryModulesInDir (specDir </> "src")
                              return (ms,True))
                          (\m -> return ([m],False))
                          mainmod
@@ -1501,7 +1502,8 @@ curryModulesInDir :: String -> IO [String]
 curryModulesInDir dir = getModules "" dir
  where
   getModules p d = do
-    entries <- getDirectoryContents d
+    exdir <- doesDirectoryExist d
+    entries <- if exdir then getDirectoryContents d else return []
     let realentries = filter (\f -> length f >= 1 && head f /= '.') entries
         newprogs    = filter (\f -> takeExtension f == ".curry") realentries
     subdirs <- mapM (\e -> do b <- doesDirectoryExist (d </> e)
