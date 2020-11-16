@@ -495,19 +495,33 @@ test_transitiveDependencies_multipleVersions = transitiveDependencies db pkg -=-
         d = cPackage "D" (1, 0, 0, Nothing) []
         db = cDB [b100, b110, c, d]
 
+-- Is the package compatible to the compiler used by CPM?
 isCompatibleToCompiler :: Config -> Package -> Bool
 isCompatibleToCompiler cfg p = case compats of
-  []    -> True -- No constraints => compiler is compatible
+  []    -> -- No compiler constraints => check base compatibility
+           isCompilerCompatibleBase cfg p
   (_:_) -> case constraintForCompiler of
     Nothing -> False -- No constraints for current compiler
                      -- => compiler is incompatible
     Just (CompilerCompatibility _ c) ->
-               isDisjunctionCompatible (maj, min, revi, Nothing) c
+      isDisjunctionCompatible (maj, min, revi, Nothing) c &&
+      isCompilerCompatibleBase cfg p
  where
   (name, maj, min, revi) = compilerVersion cfg
   compats = compilerCompatibility p
   constraintForCompiler = find (\(CompilerCompatibility c _) -> c == name)
                                compats
+
+-- Is the package compatible to the base version of the compiler used by CPM?
+isCompilerCompatibleBase :: Config -> Package -> Bool
+isCompilerCompatibleBase cfg p =
+  all (\ (Dependency _ c) -> isDisjunctionCompatible baseversion c)
+      basedependencies
+ where
+  baseversion = maybe (0,0,0,Nothing) id
+                      (readVersion (compilerBaseVersion cfg))
+  basedependencies = filter (\ (Dependency dp _) -> dp == "base")
+                            (dependencies p)
 
 isDisjunctionCompatible :: Version -> Disjunction -> Bool
 isDisjunctionCompatible ver cs = any id (map (all id) rs)

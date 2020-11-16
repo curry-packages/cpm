@@ -938,10 +938,13 @@ The option \code{--all} shows more information.
 Prints basic information on the given package version.
 The option \code{--all} shows more information.
 
-\item[\fbox{\code{list [--versions] [--csv]}}]
+\item[\fbox{\code{list [--system] [--versions] [--csv]}}]
 List the names and synopses of all packages of the central package index.
 Unless the option \code{--versions} is set, only the newest version
-of a package (compatible to the current compiler) is shown.
+of a package is shown.
+The option \code{--system} restricts the list to those packages
+which are compatible with the current compiler (if it is
+explicitly specified in the package).
 The option \code{--versions} shows all versions of the packages.
 If a package is not compatible to the current compiler, then
 the package version is shown in brackets (e.g., \ccode{(1.5.4)}).

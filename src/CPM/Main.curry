@@ -64,7 +64,7 @@ cpmBanner :: String
 cpmBanner = unlines [bannerLine, bannerText, bannerLine]
  where
   bannerText =
-    "Curry Package Manager <curry-lang.org/tools/cpm> (version of 12/11/2020)"
+    "Curry Package Manager <curry-lang.org/tools/cpm> (version of 16/11/2020)"
   bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -190,9 +190,10 @@ data InfoOptions = InfoOptions
   }
 
 data ListOptions = ListOptions
-  { listVers :: Bool   -- list all versions of each package
-  , listCSV  :: Bool   -- list in CSV format
-  , listCat  :: Bool   -- list all categories
+  { listVers   :: Bool   -- list all versions of each package
+  , listSystem :: Bool   -- list package compatible with current Curry system
+  , listCSV    :: Bool   -- list in CSV format
+  , listCat    :: Bool   -- list all categories
   }
 
 data SearchOptions = SearchOptions
@@ -295,7 +296,7 @@ infoOpts s = case optCommand s of
 listOpts :: Options -> ListOptions
 listOpts s = case optCommand s of
   List opts -> opts
-  _         -> ListOptions False False False
+  _         -> ListOptions False False False False
 
 searchOpts :: Options -> SearchOptions
 searchOpts s = case optCommand s of
@@ -754,7 +755,12 @@ optionParser allargs = optParser
                                   List (listOpts a) { listVers = True } })
           (  short "v"
           <> long "versions"
-          <> help "Show all versions" )
+          <> help "List all versions" )
+    <.> flag (\a -> Right $ a { optCommand =
+                                  List (listOpts a) { listSystem = True } })
+          (  short "s"
+          <> long "system"
+          <> help "List packages compatible with current compiler" )
     <.> flag (\a -> Right $ a { optCommand =
                                   List (listOpts a) { listCSV = True } })
           (  short "t"
@@ -1063,21 +1069,29 @@ uninstallPackageExecutable cfg pkg =
 --- Lists all (compiler-compatible if `lall` is false) packages
 --- in the given repository.
 listCmd :: ListOptions -> Config -> ErrorLogger ()
-listCmd (ListOptions lv csv cat) cfg = do
+listCmd (ListOptions lv currysystem csv cat) cfg = do
   repo <- if cat then getRepositoryWithNameVersionCategory cfg
-                 else getRepositoryWithNameVersionSynopsis cfg
+                 else if currysystem
+                        then getRepositoryWithNameVersionSynopsisDeps cfg
+                        else getRepositoryWithNameVersionSynopsis cfg
   let listresult = if cat then renderCats (catgroups repo)
                           else renderPkgs (allpkgs repo)
   putStrELM listresult
  where
   -- all packages (and versions if `lv`)
-  allpkgs repo = concatMap (if lv then id else ((:[]) . filterCompatPkgs cfg))
-                    (sortBy (\ps1 ps2 -> name (head ps1) <= name (head ps2))
-                            (listPackages repo))
+  allpkgs repo = concatMap filterPkgVersions
+                   (sortBy (\ps1 ps2 -> name (head ps1) <= name (head ps2))
+                           (listPackages repo))
+   where
+    filterPkgVersions pvs =
+      if lv then pvs
+            else if currysystem
+                   then take 1 (filter (isCompatibleToCompiler cfg) pvs)
+                   else take 1 pvs
 
   -- all categories together with their package names:
   catgroups repo =
-    let pkgid p = name p ++ '-' : showVersionIfCompatible cfg p
+    let pkgid p = name p -- ++ '-' : showVersionIfCompatible cfg p
         newpkgs = map (filterCompatPkgs cfg) (listPackages repo)
         catpkgs = concatMap (\p -> map (\c -> (c, pkgid p)) (category p))
                             newpkgs
@@ -1088,7 +1102,7 @@ listCmd (ListOptions lv csv cat) cfg = do
                        else [("???", nub $ sortBy (<=) nocatps)]
 
   renderPkgs pkgs =
-    let (colsizes,rows) = packageVersionAsTable cfg pkgs
+    let (colsizes,rows) = packageVersionAsTable cfg pkgs True
     in renderTable colsizes rows
 
   renderCats catgrps =
@@ -1112,15 +1126,17 @@ filterCompatPkgs cfg pkgs =
 
 -- Format a list of packages by showing their names, synopsis, and versions
 -- as table rows. Returns also the column sizes.
-packageVersionAsTable :: Config -> [Package] -> ([Int],[[String]])
-packageVersionAsTable cfg pkgs = (colsizes, rows)
+packageVersionAsTable :: Config -> [Package] -> Bool -> ([Int],[[String]])
+packageVersionAsTable cfg pkgs withversion =
+  (colsizes, if withversion then rows else map (take 2) rows)
  where
   namelen = foldl max 4 $ map (length . name) pkgs
-  colsizes = [namelen + 2, 68 - namelen, 10]
+  colsizes = if withversion then [namelen + 2, 68 - namelen, 10]
+                            else [namelen + 2, 78 - namelen]
   header  = [ ["Name", "Synopsis", "Version"]
             , ["----", "--------", "-------"]]
-  rows    = header ++ map formatPkg pkgs
   formatPkg p = [name p, synopsis p, showVersionIfCompatible cfg p]
+  rows    = header ++ map formatPkg pkgs
 
 --- Shows the version of a package if it is compatible with the
 --- current compiler, otherwise shows the version in brackets.
@@ -1145,7 +1161,7 @@ searchCmd (SearchOptions q smod sexec) cfg = do
                             (map (sortBy (\a b -> version a `vgt` version b))
                                  (groupBy (\a b -> name a == name b)
                                  allpkgs)))
-      (colsizes,rows) = packageVersionAsTable cfg results
+      (colsizes,rows) = packageVersionAsTable cfg results False
   putStrELM $ unlines $
     if null results
       then [ "No packages found for '" ++ q ++ "'", useUpdateHelp ]
