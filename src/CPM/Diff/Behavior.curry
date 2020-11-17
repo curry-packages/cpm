@@ -315,11 +315,11 @@ genLimitFunction typeinfos tdecl = case tdecl of
    where
     nullaryConsOf [] = error $ "Cannot generate limit operation for types " ++
                                "without nullary constructors: " ++ showQName tc
-    nullaryConsOf (CCons _ _ qc _ []   : _ ) = qc
-    nullaryConsOf (CCons _ _ _ _ (_:_) : cs) = nullaryConsOf cs
-    nullaryConsOf (CRecord _ _ _ _ _   : cs) = nullaryConsOf cs
+    nullaryConsOf (CCons qc _ []   : _ ) = qc
+    nullaryConsOf (CCons _ _ (_:_) : cs) = nullaryConsOf cs
+    nullaryConsOf (CRecord _ _ _   : cs) = nullaryConsOf cs
 
-  cdecl2rules tvs tnull (CCons _ _ qc _ texps) =
+  cdecl2rules tvs tnull (CCons qc _ texps) =
     let lfunargs = map (CPVar . var2limitfun) tvs
         argvars  = map (\i -> (i,"x"++show i)) [0 .. length texps - 1]
         isRecursive t = t `elem` fromMaybe [] (lookupProgInfo t typeinfos)
@@ -336,7 +336,7 @@ genLimitFunction typeinfos tdecl = case tdecl of
                     CPComb qc (map CPVar argvars)])
       (applyF qc (map (\ (te,v) -> applyE (type2LimOp te)
                                  [CVar (0,"n"), CVar v]) (zip texps argvars)))]
-  cdecl2rules _ _ (CRecord _ _ qc _ _) =
+  cdecl2rules _ _ (CRecord qc _ _) =
     error $ "Cannot generate limit operation for record field " ++ showQName qc
 
   type2LimOp texp = case texp of
@@ -605,13 +605,13 @@ genTranslatorFunction cfg repo gc info acy tm texp =
                Nothing -> CVar (i, "x" ++ show i)
                Just tn -> applyF ("Compare", tn) [CVar (i, "x" ++ show i)]
 
-      ruleForCons (CCons _ _ (m, cn) _ es) = simpleRule [pattern] call
+      ruleForCons (CCons (m, cn) _ es) = simpleRule [pattern] call
        where
         pattern = CPComb (mapIfNeededA m, cn) (pVars (length es))
         -- Apply constructor from B, calling translator functions if neccessary.
         call = applyF (mapIfNeededB m, cn) $ map transformer
                                            $ zip (take (length es) [0..]) es
-      ruleForCons (CRecord _ _ (m, cn) _ fs) = simpleRule [pattern] call
+      ruleForCons (CRecord (m, cn) _ fs) = simpleRule [pattern] call
        where
         pattern = CPComb (mapIfNeededA m, cn) (pVars (length fs))
         call = applyF (mapIfNeededB m, cn) $ map transformer
@@ -638,8 +638,8 @@ genTranslatorFunction cfg repo gc info acy tm texp =
   extractExprs (CType _ _ _ es _) = concat $ map extractExprsCons es
   extractExprs (CTypeSyn _ _ _ e) = [e]
   extractExprs (CNewType _ _ _ c _) = extractExprsCons c
-  extractExprsCons (CCons _ _ _ _ es) = es
-  extractExprsCons (CRecord _ _ _ _ fs) = map (\(CField _ _ es) -> es) fs
+  extractExprsCons (CCons _ _ es) = es
+  extractExprsCons (CRecord _ _ fs) = map (\(CField _ _ es) -> es) fs
 
   -- Recursively prefixes those types which are present in two versions.
   prefixMappedTypes pre (CTCons (mod', n')) =
@@ -697,10 +697,10 @@ instantiate tdecl texp = case texp of
   instantiate' (CType n v vs cs d) es = CType n v vs (map cons cs) d
    where
     varMap = zip vs es
-    cons (CCons tvs ct n' v' es') =
-          CCons tvs ct n' v' $ map (maybeReplaceVar varMap) es'
-    cons (CRecord tvs ct n' v' fs') =
-          CRecord tvs ct n' v' $ map maybeReplaceField fs'
+    cons (CCons n' v' es') =
+          CCons n' v' $ map (maybeReplaceVar varMap) es'
+    cons (CRecord n' v' fs') =
+          CRecord n' v' $ map maybeReplaceField fs'
     maybeReplaceField (CField n'' v'' e) =
       CField n'' v'' $ maybeReplaceVar varMap e
   instantiate' (CTypeSyn n v vs e) es =
@@ -710,10 +710,10 @@ instantiate tdecl texp = case texp of
   instantiate' (CNewType n v vs c d) es = CNewType n v vs (cons c) d
    where
     varMap = zip vs es
-    cons (CCons tvs ct n' v' es') =
-          CCons tvs ct n' v' $ map (maybeReplaceVar varMap) es'
-    cons (CRecord tvs ct n' v' fs') =
-          CRecord tvs ct n' v' $ map maybeReplaceField fs'
+    cons (CCons n' v' es') =
+          CCons n' v' $ map (maybeReplaceVar varMap) es'
+    cons (CRecord n' v' fs') =
+          CRecord n' v' $ map maybeReplaceField fs'
     maybeReplaceField (CField n'' v'' e) =
       CField n'' v'' $ maybeReplaceVar varMap e
 
@@ -1032,8 +1032,8 @@ filterFuncsDeep tpred dirA _ deps acy allFuncs =
   checkType a ts (CTypeSyn _ _ _ e)   = checkTypeExpr (a, ts, False) e
   checkType a ts (CNewType _ _ _ c _) = checkCons (a, ts, False) c
 
-  checkCons (a, ts, r) (CCons _ _ _ _ es) = foldM checkTypeExpr (a, ts, r) es
-  checkCons (a, ts, r) (CRecord _ _ _ _ fs) =
+  checkCons (a, ts, r) (CCons _ _ es) = foldM checkTypeExpr (a, ts, r) es
+  checkCons (a, ts, r) (CRecord _ _ fs) =
     let es = map (\(CField _ _ e) -> e) fs
     in foldM checkTypeExpr (a, ts, r) es
 
@@ -1173,7 +1173,7 @@ typesEqual texp dirA dirB deps acyCache checked =
 
   consEqual :: ACYCache -> CConsDecl -> CConsDecl
             -> ErrorLogger (ACYCache, Bool)
-  consEqual acy (CCons _ _ _ _ es1) (CCons _ _ _ _ es2) =
+  consEqual acy (CCons _ _ es1) (CCons _ _ es2) =
     foldM esEqual (acy, True) (zip es1 es2)
    where
     esEqual (a, r) (e1, e2) = if e1 == e2
@@ -1181,7 +1181,7 @@ typesEqual texp dirA dirB deps acyCache checked =
         then typesEqual e1 dirA dirB deps a (texp:checked)
         else return (acy, r)
       else return (acy, False)
-  consEqual acy (CRecord _ _ _ _ fs1) (CRecord _ _ _ _ fs2) =
+  consEqual acy (CRecord _ _ fs1) (CRecord _ _ fs2) =
     foldM fEqual (acy, True) (zip fs1 fs2)
    where
     fEqual (a, r) (f1@(CField _ _ e1), f2@(CField _ _ _)) = if f1 == f2
@@ -1189,8 +1189,8 @@ typesEqual texp dirA dirB deps acyCache checked =
         then typesEqual e1 dirA dirB deps a (texp:checked)
         else return (acy, r)
       else return (acy, False)
-  consEqual acy (CCons _ _ _ _ _) (CRecord _ _ _ _ _) = return (acy, False)
-  consEqual acy (CRecord _ _ _ _ _) (CCons _ _ _ _ _) = return (acy, False)
+  consEqual acy (CCons _ _ _) (CRecord _ _ _) = return (acy, False)
+  consEqual acy (CRecord _ _ _) (CCons _ _ _) = return (acy, False)
 
 isTypePublic :: CTypeDecl -> Bool
 isTypePublic (CType _ v _ _ _)    = v == Public
