@@ -1654,9 +1654,11 @@ newCmd (NewOptions pname) = do
     let cmain = "Main.curry"
     copyFile (packagePath </> "templates" </> cmain) (pname </> "src" </> cmain)
     writeFile (pname </> "README.md") readme
+    writeFile (pname </> ".gitignore") gitignore
     putStr $ unlines todo
  where
   readme = unlines [pname, take (length pname) (repeat '=')]
+  gitignore = unlines ["*~", ".cpm", ".curry"]
 
   todo =
     [ "A new package in the directory '" ++ pname ++ "' has been created!"
