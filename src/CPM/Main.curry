@@ -1649,10 +1649,12 @@ newCmd (NewOptions pname) = do
                               , licenseFile     = Just "LICENSE"
                               }
     writePackageSpec pkgSpec (pname </> "package.json")
-    copyFile (packagePath </> "templates" </> "LICENSE") (pname </> "LICENSE")
+    let licenseFile = packagePath </> "templates" </> "LICENSE"
+    whenFileExists licenseFile $ copyFile licenseFile (pname </> "LICENSE")
     createDirectory (pname </> "src")
-    let cmain = "Main.curry"
-    copyFile (packagePath </> "templates" </> cmain) (pname </> "src" </> cmain)
+    let cmain    = "Main.curry"
+        mainFile = packagePath </> "templates" </> cmain
+    whenFileExists mainFile $ copyFile mainFile (pname </> "src" </> cmain)
     writeFile (pname </> "README.md") readme
     writeFile (pname </> ".gitignore") gitignore
     putStr $ unlines todo
