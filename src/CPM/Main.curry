@@ -57,31 +57,35 @@ import CPM.PackageCache.Runtime ( dependencyPathsSeparate, writePackageConfig )
 import CPM.PackageCopy
 import CPM.Diff.API as APIDiff
 import qualified CPM.Diff.Behavior as BDiff
-import CPM.ConfigPackage        ( packagePath )
+import CPM.ConfigPackage        ( packagePath, packageVersion )
 
 -- Banner of this tool:
 cpmBanner :: String
 cpmBanner = unlines [bannerLine, bannerText, bannerLine]
  where
   bannerText =
-    "Curry Package Manager <curry-lang.org/tools/cpm> (version of 16/11/2020)"
+    "Curry Package Manager <curry-lang.org/tools/cpm> (Version " ++
+    packageVersion ++ ", 20/11/2020)"
   bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
 main = do
   args <- getArgs
-  parseResult <- return $ parse (unwords args) (optionParser args) "cypm"
-  case parseResult of
-    Left err -> do putStrLn cpmBanner
-                   putStrLn err
-                   --putStrLn "(use option -h for usage information)"
-                   exitWith 1
-    Right  r -> case applyParse r of
-      Left err   -> do putStrLn cpmBanner
-                       --printUsage "cypm" 80 (optionParser args)
+  if "-V" `elem` args || "--version" `elem` args
+    then putStrLn $ "Curry Package Manager, version " ++ packageVersion
+    else do
+      parseResult <- return $ parse (unwords args) (optionParser args) "cypm"
+      case parseResult of
+        Left err -> do putStrLn cpmBanner
                        putStrLn err
+                       --putStrLn "(use option -h for usage information)"
                        exitWith 1
-      Right opts -> runWithArgs opts
+        Right  r -> case applyParse r of
+          Left err   -> do putStrLn cpmBanner
+                           --printUsage "cypm" 80 (optionParser args)
+                           putStrLn err
+                           exitWith 1
+          Right opts -> runWithArgs opts
 
 runWithArgs :: Options -> IO ()
 runWithArgs opts = do
@@ -126,14 +130,15 @@ runWithArgs opts = do
 
 -- The global options of CPM.
 data Options = Options
-  { optLogLevel  :: LogLevel
-  , optDefConfig :: [(String,String)]
-  , optWithTime  :: Bool
-  , optCommand   :: Command }
+  { optLogLevel    :: LogLevel
+  , optDefConfig   :: [(String,String)]
+  , optShowVersion :: Bool
+  , optWithTime    :: Bool
+  , optCommand     :: Command }
 
 -- The default options: no command, no timing, info log level
 defaultOptions :: Options
-defaultOptions = Options Info [] False NoCommand
+defaultOptions = Options Info [] False False NoCommand
 
 data Command
   = NoCommand
@@ -394,7 +399,11 @@ a >.> f = case a of
 
 optionParser :: [String] -> ParseSpec (Options -> Either String Options)
 optionParser allargs = optParser
-  (   option (\s a -> readLogLevel s >.> \ll -> a { optLogLevel = ll })
+  (   flag (\a -> Right $ a { optShowVersion = True })
+        (  long "version"
+        <> short "V"
+        <> help "Show version and quit" )
+  <.> option (\s a -> readLogLevel s >.> \ll -> a { optLogLevel = ll })
        (  long "verbosity"
        <> short "v"
        <> metavar "LEVEL"
