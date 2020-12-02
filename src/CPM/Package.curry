@@ -490,7 +490,7 @@ readPackageSpec s = case parseJSON s of
   Nothing -> Left "Invalid JSON"
   Just j -> case j of
     JObject kv -> packageSpecFromJObject kv
-    _ -> Left "Expected a JSON object."
+    _          -> Left "Expected a JSON object."
 
 --- Reads a package spec from the key-value-pairs of a JObject.
 packageSpecFromJObject :: [(String, JValue)] -> Either String Package
@@ -549,18 +549,20 @@ packageSpecFromJObject kv =
       Just v -> f v
 
     getDependencies :: ([Dependency] -> Either String a) -> Either String a
-    getDependencies f = case lookup "dependencies" kv of
-      Nothing -> f []
-      Just (JObject ds) -> case dependenciesFromJObject ds of
-        Left e -> Left e
-        Right ds' -> f ds'
-      Just (JString _) -> Left $ "Expected an object, got a string" ++ forKey
-      Just (JArray  _) -> Left $ "Expected an object, got an array" ++ forKey
-      Just (JNumber _) -> Left $ "Expected an object, got a number" ++ forKey
-      Just JTrue       -> Left $ "Expected an object, got 'true'"   ++ forKey
-      Just JFalse      -> Left $ "Expected an object, got 'false'"  ++ forKey
-      Just JNull       -> Left $ "Expected an object, got 'null'"   ++ forKey
-     where forKey = " for key 'dependencies'"
+    getDependencies f =
+      either Left (f . concat)
+             (processAllKeyObjects kv "dependencies" checkDependency)
+     where
+      checkDependency :: JValue -> Either String [Dependency]
+      checkDependency jo = case jo of
+        JObject ds -> dependenciesFromJObject ds
+        JString _  -> Left $ "Expected an object, got a string" ++ forKey
+        JArray  _  -> Left $ "Expected an object, got an array" ++ forKey
+        JNumber _  -> Left $ "Expected an object, got a number" ++ forKey
+        JTrue      -> Left $ "Expected an object, got 'true'"   ++ forKey
+        JFalse     -> Left $ "Expected an object, got 'false'"  ++ forKey
+        JNull      -> Left $ "Expected an object, got 'null'"   ++ forKey
+       where forKey = " for key 'dependencies'"
 
     getCompilerCompatibility :: ([CompilerCompatibility] -> Either String a)
                              -> Either String a
@@ -671,6 +673,17 @@ packageSpecFromJObject kv =
       Just JNull       -> Left $ "Expected an object, got 'null'"   ++ forKey
      where forKey = " for key 'documentation'"
 
+-- Process all objects with a given key in a list of key/value pairs.
+-- Returns either the first error (`Left` value) or the list of
+-- all right values.
+processAllKeyObjects :: [(String, JValue)] -> String
+                     -> (JValue -> Either String a) -> Either String [a]
+processAllKeyObjects kv key f =
+  let (lfts,rghts) = partitionEithers
+                       (map (f . snd)
+                            (filter ((== key) . fst) kv))
+  in if null lfts then Right $ rghts
+                  else Left  $ head lfts
 
 mandatoryString :: String -> [(String, JValue)]
                 -> (String -> Either String a) -> Either String a

@@ -170,6 +170,8 @@ putStrLnELM = liftIOEL . putStrLn
 --- Transforms an error logger action into a standard IO action.
 --- It shows all messages and, if the result is not available,
 --- exits with a non-zero code.
+--- The first argument specifies the logging level for messages.
+--- If the second argument is true, timings are shown in the messages.
 fromErrorLogger :: LogLevel -> Bool -> ErrorLogger a -> IO a
 fromErrorLogger l s a = do
   ((glob, _), (msgs, err)) <- runErrorLogger a l s
