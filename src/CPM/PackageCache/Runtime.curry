@@ -110,12 +110,20 @@ writePackageConfig cfg pkgdir pkg loadpath =
         , "--- Load path for the package (if it is the main package)."
         , "packageLoadPath :: String"
         , "packageLoadPath = " ++ show loadpath
-        , ""
-        , "--- Location of the executables installed by this package."
-        , "packageExecutables :: [String]"
-        , "packageExecutables = [" ++
-          intercalate ", "
-            (map (\s -> "\"" ++ binInstallDir cfg </> s ++ "\"") binnames) ++
-          "]"
-        ]
+        , "" ] ++
+        showExecutables binnames
     logDebug $ "Config module '" ++ configfile ++ "' written."
+
+  showExecutables bins = case length bins of
+    0 -> []
+    1 -> [ "--- Location of the executable installed by this package."
+         , "packageExecutable :: String"
+         , "packageExecutable = \"" ++ binInstallDir cfg </> head bins ++ "\""
+         ]
+    _ -> [ "--- Location of the executables installed by this package."
+         , "packageExecutables :: [String]"
+         , "packageExecutables = [" ++
+           intercalate ", "
+             (map (\s -> "\"" ++ binInstallDir cfg </> s ++ "\"") bins) ++
+           "]"
+         ]
