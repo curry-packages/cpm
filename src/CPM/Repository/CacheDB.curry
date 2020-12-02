@@ -2,12 +2,14 @@
 --- Operations to initialize and manipulate the repository cache database.
 ---
 --- @author Michael Hanus
---- @version June 2019
+--- @version December 2020
 ------------------------------------------------------------------------------
 
 module CPM.Repository.CacheDB
   ( repositoryCacheDB, tryInstallRepositoryDB, addPackagesToRepositoryDB )
  where
+
+import Data.Maybe          ( maybeToList, listToMaybe )
 
 import System.Directory    ( doesFileExist, removeFile )
 import System.FilePath     ( (</>) )
@@ -143,7 +145,7 @@ addPackagesToRepositoryDB cfg quiet pkgs =
     (showTerm (category p))
     (showTerm (sourceDirs p))
     (showTerm (exportedModules p))
-    (showTerm (executableSpec  p))
+    (showTerm (listToMaybe (executableSpec  p)))
   newEntry (Right [pn,pv,deps,cc,syn,cat,dirs,mods,exe]) =
     newIndexEntry pn pv deps cc syn cat dirs mods exe
 

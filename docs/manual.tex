@@ -1387,6 +1387,11 @@ the command \code{cypm install} also compiles the main module
 and installs the executable in the \code{bin} install directory of CPM
 (see Section~\ref{sec:config} for details).
 
+It is also allowed that a package specification contains
+more than one \code{executable} specification.
+In this case, all the specified executables are installed by
+the command \code{cypm install}.
+
 \item[\fbox{\code{testsuite}}]
 A JSON object specifying a test suite for this package.
 This object contains a directory (with key \code{src-dir})

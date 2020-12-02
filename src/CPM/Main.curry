@@ -65,7 +65,7 @@ cpmBanner = unlines [bannerLine, bannerText, bannerLine]
  where
   bannerText =
     "Curry Package Manager <curry-lang.org/tools/cpm> (Version " ++
-    packageVersion ++ ", 20/11/2020)"
+    packageVersion ++ ", 02/12/2020)"
   bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -990,15 +990,15 @@ installApp opts cfg = do
     logDebug $ "Change into directory " ++ copkgdir
     liftIOEL $ setCurrentDirectory copkgdir
     pkg <- loadPackageSpec "."
-    maybe
-     (do liftIOEL $ setCurrentDirectory curdir
-         liftIOEL $ removeDirectoryComplete copkgdir
-         fail $ "Package '" ++ name pkg ++
-                   "' has no executable, nothing installed.\n" ++
-                   "Hint: use 'cypm add " ++ copname ++
-                   "' to add new dependency and install it.")
-     (\_ -> installCmd (InstallOptions Nothing Nothing False True False) cfg)
-     (executableSpec pkg)
+    if null (executableSpec pkg)
+      then do
+        liftIOEL $ setCurrentDirectory curdir
+        liftIOEL $ removeDirectoryComplete copkgdir
+        fail $ "Package '" ++ name pkg ++
+               "' has no executable, nothing installed.\n" ++
+               "Hint: use 'cypm add " ++ copname ++
+               "' to add new dependency and install it."
+      else installCmd (InstallOptions Nothing Nothing False True False) cfg
 
 --- Checks the compiler compatibility.
 checkCompiler :: Config -> Package -> ErrorLogger ()
@@ -1012,8 +1012,7 @@ checkCompiler cfg pkg =
 installExecutable :: Config -> Package -> ErrorLogger ()
 installExecutable cfg pkg = do
   checkCompiler cfg pkg
-  maybe (return ())
-        (\ (PackageExecutable name mainmod eopts) -> do
+  mapM_ (\ (PackageExecutable name mainmod eopts) -> do
            lvl <- getLogLevel
            path <- liftIOEL $ getEnv "PATH"
            logInfo $ "Compiling main module: " ++ mainmod
@@ -1065,8 +1064,7 @@ uninstallCmd (UninstallOptions Nothing Nothing) cfg = do
 
 uninstallPackageExecutable :: Config -> Package -> ErrorLogger ()
 uninstallPackageExecutable cfg pkg =
-  maybe (return ())
-        (\ (PackageExecutable name _ _) -> do
+  mapM_ (\ (PackageExecutable name _ _) -> do
            let binexec = binInstallDir cfg </> name
            exf <- liftIOEL $ doesFileExist binexec
            if exf
@@ -1358,17 +1356,16 @@ genDocForPrograms :: DocOptions -> Config -> String -> String -> Package
 genDocForPrograms opts cfg docdir specDir pkg = do
   abspkgdir <- liftIOEL $ getAbsolutePath specDir
   checkCompiler cfg pkg
-  let exports = exportedModules pkg
-      mainmod = maybe Nothing
-                      (\ (PackageExecutable _ emain _) -> Just emain)
-                      (executableSpec pkg)
+  let exports  = exportedModules pkg
+      mainmods = map (\ (PackageExecutable _ emain _) -> emain)
+                     (executableSpec pkg)
   (docmods,apidoc) <-
      maybe (if null exports
-              then maybe (do ms <- liftIOEL $
+              then if null mainmods
+                     then (do ms <- liftIOEL $
                                      curryModulesInDir (specDir </> "src")
-                             return (ms,True))
-                         (\m -> return ([m],False))
-                         mainmod
+                              return (ms,True))
+                     else return (mainmods,False)
               else return (exports,True))
            (\ms -> return (ms,True))
            (docModules opts)

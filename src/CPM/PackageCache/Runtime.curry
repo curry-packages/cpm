@@ -82,16 +82,15 @@ writePackageConfig :: Config -> String -> Package -> String -> ErrorLogger ()
 writePackageConfig cfg pkgdir pkg loadpath =
   maybe (return ())
         (\configmod ->
-           let binname = maybe ""
-                               (\ (PackageExecutable n _ _) -> n)
-                               (executableSpec pkg)
+           let binnames = map (\ (PackageExecutable n _ _) -> n)
+                              (executableSpec pkg)
            in if null configmod
                 then return ()
-                else do writeConfigFile configmod binname
+                else do writeConfigFile configmod binnames
                         return ())
         (configModule pkg)
  where
-  writeConfigFile configmod binname = do
+  writeConfigFile configmod binnames = do
     let configfile = pkgdir </> "src" </> foldr1 (</>) (split (=='.') configmod)
                             <.> ".curry"
     liftIOEL $ do
@@ -111,12 +110,12 @@ writePackageConfig cfg pkgdir pkg loadpath =
         , "--- Load path for the package (if it is the main package)."
         , "packageLoadPath :: String"
         , "packageLoadPath = " ++ show loadpath
-        ] ++
-        if null binname
-        then []
-        else [ ""
-            , "--- Location of the executable installed by this package."
-            , "packageExecutable :: String"
-            , "packageExecutable = \"" ++ binInstallDir cfg </> binname ++ "\""
-            ]
+        , ""
+        , "--- Location of the executables installed by this package."
+        , "packageExecutables :: [String]"
+        , "packageExecutables = [" ++
+          intercalate ", "
+            (map (\s -> "\"" ++ binInstallDir cfg </> s ++ "\"") binnames) ++
+          "]"
+        ]
     logDebug $ "Config module '" ++ configfile ++ "' written."

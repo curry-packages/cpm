@@ -2,7 +2,7 @@
 --- Some queries on the repository cache.
 ---
 --- @author Michael Hanus
---- @version November 2020
+--- @version December 2020
 ------------------------------------------------------------------------------
 {-# OPTIONS_CYMAKE -F --pgmF=currypp --optF=foreigncode --optF=-o #-}
 
@@ -23,6 +23,7 @@ module CPM.Repository.Select
 
 import Data.Char        ( toLower )
 import Data.List        ( isInfixOf )
+import Data.Maybe       ( maybeToList )
 import System.Directory ( doesFileExist )
 import ReadShowTerm
 
@@ -122,7 +123,7 @@ searchExecutable cfg pat =
                  , version = pkgRead vs
                  , synopsis = syn
                  , compilerCompatibility = pkgRead cmp
-                 , executableSpec        = pkgRead exec
+                 , executableSpec        = maybeToList (pkgRead exec)
                  }
 
 --- Returns the complete repository where in each package

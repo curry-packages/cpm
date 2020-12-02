@@ -149,7 +149,7 @@ renderPackageInfo allinfos plain installed pkg = pPrint doc
   doc = vcat $ [ heading, rule
                , if allinfos then instTxt installed else empty
                , ver, auth, maintnr, synop
-               , cats, deps, compilers, descr, execspec ] ++
+               , cats, deps, compilers, descr ] ++ execspecs ++
                if allinfos
                  then [ srcdirs, expmods, cfgmod ] ++ testsuites ++
                       [ docuspec, src, licns, licfl, copyrt, homepg
@@ -183,9 +183,9 @@ renderPackageInfo allinfos plain installed pkg = pPrint doc
       else fill maxLen (boldText "Category") <+>
            indent 0 (fillSep (map text (category pkg)))
 
-  execspec = case executableSpec pkg of
-    Nothing -> empty
-    Just  (PackageExecutable n m eopts) ->
+  execspecs = map showExec (executableSpec pkg)
+   where
+    showExec (PackageExecutable n m eopts) =
       if allinfos
         then boldText "Executable" <$$>
              indent 4 (boldText "Name         " <+> text n) <$$>

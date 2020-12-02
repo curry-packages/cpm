@@ -182,7 +182,7 @@ data Package = Package {
   , sourceDirs            :: [String]
   , exportedModules       :: [String]
   , configModule          :: Maybe String
-  , executableSpec        :: Maybe PackageExecutable
+  , executableSpec        :: [PackageExecutable]
   , testSuite             :: Maybe [PackageTest]
   , documentation         :: Maybe PackageDocumentation
   }
@@ -216,16 +216,16 @@ emptyPackage = Package {
   , sourceDirs            = []
   , exportedModules       = []
   , configModule          = Nothing
-  , executableSpec        = Nothing
+  , executableSpec        = []
   , testSuite             = Nothing
   , documentation         = Nothing
   }
 
---- Returns the name of the executable of the package.
+--- Returns the names of the executables of the package.
 --- Returns the empty string if the package has no executable to install.
 execOfPackage :: Package -> String
 execOfPackage p =
-  maybe "" (\ (PackageExecutable e _ _) -> e) (executableSpec p)
+  unwords (map (\ (PackageExecutable e _ _) -> e) (executableSpec p))
 
 ------------------------------------------------------------------------------
 --- Translates a package to a JSON object.
@@ -254,7 +254,7 @@ packageSpecToJSON pkg = JObject $
   stringListToJSON "sourceDirs"      (sourceDirs pkg) ++
   stringListToJSON "exportedModules" (exportedModules pkg) ++
   maybeStringToJSON "configModule" (configModule pkg) ++
-  maybeExecToJSON (executableSpec pkg) ++
+  map execToJSON (executableSpec pkg) ++
   maybeTestToJSON (testSuite pkg) ++
   maybeDocuToJSON (documentation pkg)
  where
@@ -282,11 +282,10 @@ packageSpecToJSON pkg = JObject $
       revToJSON (Tag t)      = [("tag", JString t)]
       revToJSON VersionAsTag = [("tag", JString "$version")]
 
-  maybeExecToJSON =
-    maybe [] (\ (PackageExecutable ename emain eopts) ->
-                  [("executable", JObject $ [ ("name", JString ename)
-                                            , ("main", JString emain)] ++
-                                            exOptsToJSON eopts)])
+  execToJSON (PackageExecutable ename emain eopts) =
+    ("executable", JObject $ [ ("name", JString ename)
+                             , ("main", JString emain)] ++
+                             exOptsToJSON eopts)
    where
     exOptsToJSON eopts =
       if null eopts
@@ -630,19 +629,21 @@ packageSpecFromJObject kv =
       forKey       = " for key '" ++ key ++ "'"
       expectedText = "Expected an array, got "
 
-    getExecutableSpec :: (Maybe PackageExecutable -> Either String a)
+    getExecutableSpec :: ([PackageExecutable] -> Either String a)
                       -> Either String a
-    getExecutableSpec f = case lookup "executable" kv of
-      Nothing -> f Nothing
-      Just (JObject s) -> case execSpecFromJObject s of Left  e  -> Left e
-                                                        Right s' -> f (Just s')
-      Just (JString _) -> Left $ "Expected an object, got a string" ++ forKey
-      Just (JArray  _) -> Left $ "Expected an object, got an array" ++ forKey
-      Just (JNumber _) -> Left $ "Expected an object, got a number" ++ forKey
-      Just JTrue       -> Left $ "Expected an object, got 'true'"   ++ forKey
-      Just JFalse      -> Left $ "Expected an object, got 'false'"  ++ forKey
-      Just JNull       -> Left $ "Expected an object, got 'null'"   ++ forKey
-     where forKey = " for key 'executable'"
+    getExecutableSpec f =
+      either Left f (processAllKeyObjects kv "executable" checkExecutable)
+     where
+      checkExecutable :: JValue -> Either String PackageExecutable
+      checkExecutable jo = case jo of
+        JObject s -> execSpecFromJObject s
+        JString _ -> Left $ "Expected an object, got a string" ++ forKey
+        JArray  _ -> Left $ "Expected an object, got an array" ++ forKey
+        JNumber _ -> Left $ "Expected an object, got a number" ++ forKey
+        JTrue     -> Left $ "Expected an object, got 'true'"   ++ forKey
+        JFalse    -> Left $ "Expected an object, got 'false'"  ++ forKey
+        JNull     -> Left $ "Expected an object, got 'null'"   ++ forKey
+       where forKey = " for key 'executable'"
 
     getTestSuite :: (Maybe [PackageTest] -> Either String a) -> Either String a
     getTestSuite f = case lookup "testsuite" kv of

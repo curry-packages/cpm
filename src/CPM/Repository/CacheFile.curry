@@ -12,12 +12,14 @@
 --- * large cache: synopsis category sourceDirs exportedModules executableSpec
 ---
 --- @author Michael Hanus
---- @version March 2018
+--- @version December 2020
 ------------------------------------------------------------------------------
 
 module CPM.Repository.CacheFile
   ( readRepository )
  where
+
+import Data.Maybe       ( maybeToList, listToMaybe )
 
 import System.Directory ( doesFileExist )
 import System.IO
@@ -80,7 +82,7 @@ writeRepositoryCache cfg large repo =
   package2largetuple p =
     (package2smalltuple p,
     (synopsis p, category p, sourceDirs p, exportedModules p,
-     executableSpec  p))
+     listToMaybe (executableSpec  p)))
 
 --- Reads the given repository from the cache.
 ---
@@ -119,7 +121,7 @@ readRepositoryCache cfg large = do
       , category = cat
       , sourceDirs = srcs
       , exportedModules = exps
-      , executableSpec  = exec
+      , executableSpec  = maybeToList exec
       }
 
 readTermInCacheFile :: Config -> (String -> Package) -> String
