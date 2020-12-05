@@ -258,7 +258,7 @@ samplePackageA = Package {
   , compilerCompatibility = []
   , source = Nothing
   , exportedModules = ["Sample"]
-  , executableSpec  = Nothing
+  , executableSpec  = []
   , testSuite       = Nothing
   }
 
