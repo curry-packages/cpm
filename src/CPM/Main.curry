@@ -5,6 +5,7 @@
 module CPM.Main ( main )
  where
 
+import Curry.Compiler.Distribution ( installDir )
 import Data.Char           ( toLower )
 import Data.List           ( groupBy, intercalate, isPrefixOf, isSuffixOf
                            , nub, split, sortBy, splitOn )
@@ -22,7 +23,6 @@ import System.Environment  ( getArgs, getEnv, setEnv, unsetEnv )
 import System.Process      ( exitWith, system, getPID )
 import Control.Monad       ( when, unless, foldM )
 import System.IOExts       ( evalCmd, readCompleteFile )
-import Language.Curry.Distribution ( installDir )
 import Prelude hiding      ( (<|>) )
 
 import Boxes            ( table, render )

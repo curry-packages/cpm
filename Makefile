@@ -1,8 +1,5 @@
 # Root location of the Curry System specified by variable CURRYROOT
-# TODO: Figure out how to make sure the 'distribution' package is
-#       available to the Curry compiler and use Language.Curry.Distribution's
-#       putStrLn installDir again
-CURRYROOT := $(shell dirname $(shell dirname $(shell readlink -f $(shell which curry))))
+CURRYROOT := $(shell curry --nocypm :set v0 :set -time :add Curry.Compiler.Distribution :eval "putStrLn installDir" :quit)
 
 # Curry system binary:
 export CURRY = $(CURRYROOT)/bin/curry

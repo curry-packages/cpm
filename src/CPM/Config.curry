@@ -15,7 +15,7 @@ module CPM.Config
 import Data.Char         ( toUpper )
 import System.Directory  ( doesDirectoryExist, createDirectoryIfMissing
                          , getHomeDirectory, doesFileExist )
-import qualified Language.Curry.Distribution as Dist
+import qualified Curry.Compiler.Distribution as Dist
 import System.FilePath   ( (</>), isAbsolute )
 import Data.Maybe        ( mapMaybe )
 import Data.List         ( split, splitOn, intercalate, intersperse )
