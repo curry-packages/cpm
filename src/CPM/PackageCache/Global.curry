@@ -34,8 +34,9 @@ import System.IOExts    ( readCompleteFile )
 
 import CPM.Config       ( Config, packageInstallDir, packageTarFilesURLs )
 import CPM.ErrorLogger
-import CPM.FileUtil     ( cleanTempDir, copyDirectory, inTempDir, recreateDirectory
-                        , recreateDirectory, inDirectory, removeDirectoryComplete
+import CPM.FileUtil     ( cleanTempDir, copyDirectory, recreateDirectory
+                        , recreateDirectory, inDirectory
+                        , removeDirectoryComplete
                         , tempDir, whenFileExists
                         , checkAndGetVisibleDirectoryContents, quote )
 import CPM.Package

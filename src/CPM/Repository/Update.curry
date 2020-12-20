@@ -43,13 +43,14 @@ updateRepository cfg cleancache download usecache writecsv = do
   cleanRepositoryCache cfg
   when cleancache $ do
     logDebug $ "Deleting global package cache: '" ++
-                   packageInstallDir cfg ++ "'"
+               packageInstallDir cfg ++ "'"
     liftIOEL $ removeDirectoryComplete $ packageInstallDir cfg
   logDebug $ "Recreating package index: '" ++ repositoryDir cfg ++ "'"
   if download
     then do
       liftIOEL $ recreateDirectory $ repositoryDir cfg
-      c <- inDirectoryEL (repositoryDir cfg) (tryDownload (packageIndexURLs cfg))
+      c <- inDirectoryEL (repositoryDir cfg)
+                         (tryDownload (packageIndexURLs cfg))
       if c == 0
         then finishUpdate
         else fail $ "Failed to update package index, return code " ++ show c

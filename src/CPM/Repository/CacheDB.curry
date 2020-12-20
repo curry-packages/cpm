@@ -25,8 +25,7 @@ import Text.CSV
 import CPM.Config      ( Config, packageTarFilesURLs, readConfigurationWith
                        , repositoryDir )
 import CPM.ErrorLogger
-import CPM.FileUtil    ( cleanTempDir, inTempDir, quote, tempDir
-                       , whenFileExists )
+import CPM.FileUtil    ( cleanTempDir, quote, tempDir, whenFileExists )
 import CPM.Repository.RepositoryDB
 import CPM.Package
 import CPM.Repository
@@ -75,8 +74,7 @@ tryDownloadFromURLs :: String -> [String] -> String -> ErrorLogger Int
 tryDownloadFromURLs _      []                 _    = return 1
 tryDownloadFromURLs target (baseurl:baseurls) file = do
   let sourceurl = baseurl ++ "/" ++ file
-  rc <- inTempDirEL $ showExecCmd $
-          "curl -f -s -o " ++ quote target ++ " " ++ quote sourceurl
+  rc <- showExecCmd $ "curl -f -s -o " ++ quote target ++ " " ++ quote sourceurl
   if rc == 0
     then return 0
     else tryDownloadFromURLs target baseurls file
