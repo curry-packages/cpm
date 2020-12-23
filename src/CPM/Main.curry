@@ -65,7 +65,7 @@ cpmBanner = unlines [bannerLine, bannerText, bannerLine]
  where
   bannerText =
     "Curry Package Manager <curry-lang.org/tools/cpm> (Version " ++
-    packageVersion ++ ", 02/12/2020)"
+    packageVersion ++ ", 23/12/2020)"
   bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -1382,7 +1382,7 @@ genDocForPrograms opts cfg docdir specDir pkg = do
           logInfo ("Documentation generated in '"++docdir++"'")
         else runDocCmd currypath pkgurls [docdir, head docmods]
  where
-  apititle = "\"API Documentation of Package '" ++ name pkg ++ "'\""
+  apititle = "\"Package " ++ name pkg ++ "\""
 
   getCurryDoc = do
     mbf <- liftIOEL $ getFileInPath cdbin
