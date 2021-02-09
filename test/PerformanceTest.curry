@@ -3,7 +3,7 @@
 --- and behavior diff as well as resolution performance.
 --------------------------------------------------------------------------------
 
-module CPM.PerformanceTest where
+module PerformanceTest where
 
 import ReadShowTerm
 import System.IO
