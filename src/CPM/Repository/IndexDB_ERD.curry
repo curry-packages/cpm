@@ -5,6 +5,8 @@
 --- @version March 2018
 ------------------------------------------------------------------------------
 
+module CPM.Repository.IndexDB_ERD where
+
 import Database.ERD
 
 picERD :: ERD
