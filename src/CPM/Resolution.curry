@@ -4,7 +4,7 @@
 
 module CPM.Resolution
   ( ResolutionResult
-  , showResult
+  , showResult, dependenciesAsGraph
   , resolutionSuccess
   , resolvedPackages
   , showDependencies
@@ -20,6 +20,7 @@ module CPM.Resolution
 import Data.Either
 import Data.List
 import Data.Maybe
+import qualified Data.GraphViz as DG
 import Test.Prop
 import Text.Pretty
 
@@ -138,6 +139,22 @@ showResult r@(ResolutionFailure _)   = showConflict r
 data ResolutionResult = ResolutionSuccess Package [Package]
                       | ResolutionFailure (Tree ConflictState)
  deriving (Eq,Show)
+
+--- Shows a successful resolution as a (Graphviz) dot graph.
+dependenciesAsGraph :: ResolutionResult -> Maybe DG.DotGraph
+dependenciesAsGraph (ResolutionFailure _)           = Nothing
+dependenciesAsGraph (ResolutionSuccess pkg deppkgs) =
+  let allpkgs     = pkg : deppkgs
+      alldepnames = map (\p -> (name p, map (\ (Dependency p' _) -> p')
+                                           (dependencies p)))
+                        allpkgs
+      showPkg pn  = maybe pn packageId (find ((== pn) . name) allpkgs)
+      deps        = map (\ (p,dp) -> (showPkg p, map showPkg dp)) alldepnames
+  in Just $ DG.dgraph ("Dependencies of " ++ name pkg)
+       (map (\s -> DG.Node s [])
+            (nub (map fst deps ++ concatMap snd deps)))
+       (map (\ (s,t) -> DG.Edge s t [])
+            (nub (concatMap (\ (p,ds) -> map (\d -> (p,d)) ds) deps)))
 
 --- Represents an activation of a package in the candidate tree. Activations
 --- form a chain up to the initial activation, i.e. the initial package that
@@ -448,7 +465,7 @@ dependencyTree chosen pkg = Node pkg $ map (dependencyTree chosen) childPkgs
   findPkg (Dependency p _) = find ((== p) . name) chosen
 
 maybeHead :: [a] -> Maybe a
-maybeHead [] = Nothing
+maybeHead []    = Nothing
 maybeHead (x:_) = Just x
 
 packageSource :: Package -> LookupSet -> Maybe LookupSource
@@ -464,7 +481,12 @@ allTransitiveDependencies :: LookupSet -> String -> [String]
 allTransitiveDependencies = allTransitiveDependencies' []
 
 transitiveDependencies' :: [String] -> LookupSet -> Package -> [String]
-transitiveDependencies' seen ls pkg = foldl (\s d -> if d `elem` s then s else (nub (s ++ allTransitiveDependencies' (d:s) ls d))) seen deps
+transitiveDependencies' seen ls pkg =
+  foldl (\s d -> if d `elem` s
+                   then s
+                   else nub (s ++ allTransitiveDependencies' (d:s) ls d))
+        seen
+        deps
  where
   deps = map dependencyName $ dependencies pkg
   dependencyName (Dependency n _) = n
@@ -473,11 +495,14 @@ transitiveDependencies :: LookupSet -> Package -> [String]
 transitiveDependencies = transitiveDependencies' []
 
 test_transitiveDependencies_simpleCase :: Prop
-test_transitiveDependencies_simpleCase = transitiveDependencies db pkg -=- ["B", "C"]
-  where pkg = cPackage "A" (0, 0, 1, Nothing) [cDep "B" ">= 1.0.0", cDep "C" "= 1.2.0"]
-        b = cPackage "B" (1, 0, 9, Nothing) []
-        c = cPackage "C" (1, 2, 0, Nothing) []
-        db = cDB [b, c]
+test_transitiveDependencies_simpleCase =
+  transitiveDependencies db pkg -=- ["B", "C"]
+ where
+  pkg = cPackage "A" (0, 0, 1, Nothing)
+                     [cDep "B" ">= 1.0.0", cDep "C" "= 1.2.0"]
+  b   = cPackage "B" (1, 0, 9, Nothing) []
+  c   = cPackage "C" (1, 2, 0, Nothing) []
+  db  = cDB [b, c]
 
 test_transitiveDependencies_loop :: Prop
 test_transitiveDependencies_loop = transitiveDependencies db pkg -=- ["B", "C"]
