@@ -67,7 +67,7 @@ cpmBanner = unlines [bannerLine, bannerText, bannerLine]
  where
   bannerText =
     "Curry Package Manager <curry-lang.org/tools/cpm> (Version " ++
-    packageVersion ++ ", 09/02/2021)"
+    packageVersion ++ ", 02/03/2021)"
   bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -990,18 +990,20 @@ installCmd (InstallOptions Nothing Nothing _ instexec False) cfg = do
   (pkg,_) <- installLocalDependencies cfg pkgdir
   currypath <- getCurryLoadPath cfg pkgdir
   writePackageConfig cfg pkgdir pkg currypath
-  when instexec $ installExecutable cfg pkg
+  when instexec $ installExecutable cfg pkg Nothing
 -- Install executable only:
-installCmd (InstallOptions Nothing Nothing _ _ True) cfg = do
+installCmd (InstallOptions mbexec Nothing _ _ True) cfg = do
   pkgdir <- getLocalPackageSpec cfg "."
   pkg    <- loadPackageSpec pkgdir
-  installExecutable cfg pkg
-installCmd (InstallOptions (Just pkg) vers pre _ _) cfg = do
+  installExecutable cfg pkg mbexec
+installCmd (InstallOptions _ (Just _) _ _ True) _ =
+  fail "Cannot use option '--exec'  for a specific package version"
+installCmd (InstallOptions (Just pkg) vers pre _ False) cfg = do
   fileExists <- liftIOEL $ doesFileExist pkg
   if fileExists
     then installFromZip cfg pkg
     else installApp (CheckoutOptions pkg vers pre) cfg
-installCmd (InstallOptions Nothing (Just _) _ _ _) _ =
+installCmd (InstallOptions Nothing (Just _) _ _ False) _ =
   fail "Must specify package name"
 
 --- Installs the application (i.e., binary) provided by a package.
@@ -1044,8 +1046,8 @@ checkCompiler cfg pkg =
 
 --- Installs the executable specified in the package in the
 --- bin directory of CPM (compare .cpmrc).
-installExecutable :: Config -> Package -> ErrorLogger ()
-installExecutable cfg pkg = do
+installExecutable :: Config -> Package -> Maybe String -> ErrorLogger ()
+installExecutable cfg pkg mbexec = do
   checkCompiler cfg pkg
   mapM_ (\ (PackageExecutable name mainmod eopts) -> do
            lvl <- getLogLevel
@@ -1065,8 +1067,10 @@ installExecutable cfg pkg = do
            showExecCmd (unwords ["mv", mainmod, binexec])
            checkPath path bindir
         )
-        (executableSpec pkg)
+        (filter installExec (executableSpec pkg))
  where
+  installExec (PackageExecutable name _ _) = maybe True (==name) mbexec
+
   checkPath path bindir =
     if bindir `elem` splitSearchPath path
       then return ()
