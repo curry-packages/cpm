@@ -1,7 +1,7 @@
 abstract-curry https://git.ps.informatik.uni-kiel.de/curry-packages/abstract-curry.git v3.0.0
 boxes https://git.ps.informatik.uni-kiel.de/curry-packages/boxes.git v3.0.0
-cass-analysis https://git.ps.informatik.uni-kiel.de/curry-packages/cass-analysis.git v3.0.0
 cass https://git.ps.informatik.uni-kiel.de/curry-packages/cass.git v3.0.0
+cass-analysis https://git.ps.informatik.uni-kiel.de/curry-packages/cass-analysis.git v3.0.0
 cdbi https://git.ps.informatik.uni-kiel.de/curry-packages/cdbi.git v3.0.0
 containers https://git.ps.informatik.uni-kiel.de/curry-packages/containers.git v3.0.0
 csv https://git.ps.informatik.uni-kiel.de/curry-packages/csv.git v3.0.0
