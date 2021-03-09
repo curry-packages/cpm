@@ -8,7 +8,6 @@ csv https://git.ps.informatik.uni-kiel.de/curry-packages/csv.git v3.0.0
 currypath https://git.ps.informatik.uni-kiel.de/curry-packages/currypath.git v3.0.0
 det-parse https://git.ps.informatik.uni-kiel.de/curry-packages/det-parse.git v3.0.0
 directory https://git.ps.informatik.uni-kiel.de/curry-packages/directory.git v3.0.0
-distribution https://git.ps.informatik.uni-kiel.de/curry-packages/distribution.git v3.0.0
 execpath https://git.ps.informatik.uni-kiel.de/curry-packages/execpath.git v3.0.0
 filepath https://git.ps.informatik.uni-kiel.de/curry-packages/filepath.git v3.0.0
 flatcurry https://git.ps.informatik.uni-kiel.de/curry-packages/flatcurry.git v3.0.0
