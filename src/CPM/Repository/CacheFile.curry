@@ -23,7 +23,7 @@ import Data.Maybe       ( maybeToList, listToMaybe )
 
 import System.Directory ( doesFileExist )
 import System.IO
-import ReadShowTerm     ( showQTerm, readQTerm, showTerm, readUnqualifiedTerm )
+import ReadShowTerm     ( showTerm, readUnqualifiedTerm )
 
 import CPM.Config        ( Config, repositoryDir )
 import CPM.ConfigPackage ( packageVersion )

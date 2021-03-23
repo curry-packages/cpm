@@ -28,7 +28,6 @@ import System.FilePath
 import System.IO
 import System.IOExts    ( readCompleteFile )
 import System.Process   ( exitWith, system )
-import ReadShowTerm     ( showQTerm, readQTerm, showTerm, readUnqualifiedTerm )
 
 import CPM.Config        ( Config, repositoryDir )
 import CPM.ConfigPackage ( packageVersion )

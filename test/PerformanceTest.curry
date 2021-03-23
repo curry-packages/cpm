@@ -168,13 +168,14 @@ readPackageSpecs :: Options -> IO LookupSet
 readPackageSpecs o = case resRepoPath o of
   Nothing -> do
     putStrLn "About to read packages.term..."
-    readQTermFile "packages.term" >>=
-      \l -> return $!! addPackages emptySet l FromRepository
+    readFile "packages.term" >>= \s ->
+      let pl = readUnqualifiedTerm ["CPM.Package","Prelude"] s
+      in return $!! addPackages emptySet pl FromRepository
   Just  p -> do
     putStrLn $ "About to read the index from '" ++ p ++ "' ..."
     ls <- profileTime $ readLS p
     putStrLn "Writing the index to packages.term..."
-    writeQTermFile "packages.term" (id $!! allPackages ls)
+    writeFile "packages.term" (showTerm $!! allPackages ls)
     return ls
 
 resolutionPerformance :: Options -> IO ()
