@@ -2,7 +2,7 @@
 --- Some queries on the repository cache.
 ---
 --- @author Michael Hanus
---- @version December 2020
+--- @version April 2021
 ------------------------------------------------------------------------------
  
 module CPM.Repository.Select
@@ -272,7 +272,7 @@ queryDBorCache cfg large dbaction = do
               else readRepository cfg large
 
 --- Reads an unqualified Curry term w.r.t. the module `CPM.Package`.
-pkgRead :: String -> a
+pkgRead :: Data a => String -> a
 pkgRead = readUnqualifiedTerm ["CPM.Package","Prelude"]
 
 ------------------------------------------------------------------------------
