@@ -14,14 +14,14 @@ module CPM.Package.Helpers
 import System.Directory
 import System.FilePath
 import System.Process     ( getPID )
-import Data.List          ( isSuffixOf, splitOn, nub )
+import Data.List          ( intercalate, isSuffixOf, splitOn, nub )
 import Control.Monad
 import Prelude hiding     ( empty )
 
 import System.CurryPath   ( addCurrySubdir )
 import Text.Pretty hiding ( (</>) )
 
-import CPM.Config   ( Config, homePackageDir )
+import CPM.Config   ( Config(..), homePackageDir )
 import CPM.ErrorLogger
 import CPM.FileUtil ( cleanTempDir, inDirectory, inTempDir, quote
                     , removeDirectoryComplete, tempDir, whenFileExists )
@@ -134,10 +134,17 @@ cleanPackage cfg ll = do
                      (maybe []
                             (map (\ (PackageTest m _ _ _) -> m))
                             (testSuite pkg))
-      rmdirs   = nub (dotcpm : map addCurrySubdir (srcdirs ++ testdirs))
+      rmdirs   = nub (dotcpm : map (</> compilerSubdir) (srcdirs ++ testdirs))
   logAt ll $ "Removing directories: " ++ unwords rmdirs
   showExecCmd (unwords $ ["rm", "-rf"] ++ rmdirs)
   return ()
+ where
+  --- Name of the sub directory where auxiliary files (.fint, .fcy, etc)
+  --- are stored, e.g., ".curry/pakcs-3.4.0".
+  compilerSubdir =
+    let (cname,cmaj,cmin,crev) = compilerVersion cfg
+    in ".curry" </>
+       cname ++ '-' : intercalate "." (map show [cmaj,  cmin, crev])
 
 ------------------------------------------------------------------------------
 --- Renders information about a package.
