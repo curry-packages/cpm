@@ -67,7 +67,7 @@ cpmBanner = unlines [bannerLine, bannerText, bannerLine]
  where
   bannerText =
     "Curry Package Manager <curry-lang.org/tools/cpm> (Version " ++
-    packageVersion ++ ", 28/04/2021)"
+    packageVersion ++ ", 31/05/2021)"
   bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -99,7 +99,7 @@ runWithArgs opts = do
         Left err -> do logError $ "Error reading .cpmrc settings: " ++ err
                        liftIOEL $ exitWith 1
         Right c' -> return c'
-      logDebug ("Current configuration:\n" ++ showConfiguration config)
+      logDebug $ "Current configuration:\n" ++ showConfiguration config
       case optCommand opts of
         NoCommand   -> fail "NoCommand"
         Config o    -> configCmd    o config

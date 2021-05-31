@@ -12,6 +12,7 @@ module CPM.Config
   , readConfigurationWith, defaultConfig
   , showConfiguration, showCompilerVersion ) where
 
+import Control.Monad     ( unless )
 import Data.Char         ( toUpper )
 import System.Directory  ( doesDirectoryExist, createDirectoryIfMissing
                          , getHomeDirectory, doesFileExist )
@@ -115,14 +116,20 @@ showVersionNumber (maj,min,rev) =
 --- Try to use the predefined CURRYBIN value.
 --- If it is an absolute path name but does not exists,
 --- try to find the executable "curry" in the path.
-setCompilerExecutable :: Config -> IO Config
+setCompilerExecutable :: Config -> ErrorLogger Config
 setCompilerExecutable cfg = do
   let exec = curryExec cfg
   if isAbsolute exec
-    then ifFileExists exec (return cfg) (findExecutable "curry")
+    then do isexec <- liftIOEL $ doesFileExist exec
+            if isexec
+              then return cfg
+              else do
+                logInfo $ "Warning: executable '" ++ exec ++ "' not found!"
+                logInfo $ "Looking for 'curry' in path..."
+                findExecutable "curry"
     else findExecutable exec
  where
-  findExecutable exec =
+  findExecutable exec = liftIOEL $
     getFileInPath exec >>=
     maybe (error $ "Executable '" ++ exec ++ "' not found in path!")
           (\absexec -> return cfg { curryExec = absexec })
@@ -153,7 +160,7 @@ setHomePackageDir cfg
 --- Sets the correct compiler version in the configuration.
 setCompilerVersion :: Config -> ErrorLogger Config
 setCompilerVersion cfg0 = do
-  cfg <- liftIOEL $ setCompilerExecutable cfg0
+  cfg <- setCompilerExecutable cfg0
   if curryExec cfg == Dist.installDir </> "bin" </> Dist.curryCompiler
     then return cfg { compilerVersion = currVersion
                     , compilerBaseVersion = Dist.baseVersion }
@@ -199,12 +206,16 @@ readConfigurationWith defsettings = do
   home <- liftIOEL $ getHomeDirectory
   let configFile = home </> ".cpmrc"
   exfile <- liftIOEL $ doesFileExist configFile
-  settingsFromFile <- liftIOEL $
+  rcsettings <- liftIOEL $
     if exfile
-      then readPropertyFile configFile >>= return . stripProps
+      then do rcdefs <- readPropertyFile configFile >>= return . stripProps
+              return rcdefs
       else return []
+  unless (null rcsettings) $ logDebug $
+    "Properties defined in " ++ configFile ++ ":\n" ++
+    unlines (map (\ (x,y) -> "  " ++ x ++ "=" ++ y) rcsettings)
   let mergedSettings = mergeConfigSettings defaultConfig
-                         (settingsFromFile ++ stripProps defsettings)
+                         (rcsettings ++ stripProps defsettings)
   case mergedSettings of
     Left e   -> return $ Left e
     Right s0 -> do s1 <- liftIOEL $ replaceHome s0
