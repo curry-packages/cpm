@@ -2,7 +2,7 @@ abstract-curry https://git.ps.informatik.uni-kiel.de/curry-packages/abstract-cur
 boxes https://git.ps.informatik.uni-kiel.de/curry-packages/boxes.git v3.0.0
 cass https://git.ps.informatik.uni-kiel.de/curry-packages/cass.git v3.0.0
 cass-analysis https://git.ps.informatik.uni-kiel.de/curry-packages/cass-analysis.git v3.0.0
-cdbi https://git.ps.informatik.uni-kiel.de/curry-packages/cdbi.git v3.0.0
+cdbi https://git.ps.informatik.uni-kiel.de/curry-packages/cdbi.git v3.1.0
 containers https://git.ps.informatik.uni-kiel.de/curry-packages/containers.git v3.0.0
 csv https://git.ps.informatik.uni-kiel.de/curry-packages/csv.git v3.0.0
 currypath https://git.ps.informatik.uni-kiel.de/curry-packages/currypath.git v3.0.0
@@ -12,7 +12,7 @@ execpath https://git.ps.informatik.uni-kiel.de/curry-packages/execpath.git v3.0.
 filepath https://git.ps.informatik.uni-kiel.de/curry-packages/filepath.git v3.0.0
 flatcurry https://git.ps.informatik.uni-kiel.de/curry-packages/flatcurry.git v3.0.0
 frontend-exec https://git.ps.informatik.uni-kiel.de/curry-packages/frontend-exec.git v3.3.0
-global https://git.ps.informatik.uni-kiel.de/curry-packages/global.git v3.0.0
+global https://git.ps.informatik.uni-kiel.de/curry-packages/global.git v3.1.0
 graphviz https://git.ps.informatik.uni-kiel.de/curry-packages/graphviz.git v3.0.0
 io-extra https://git.ps.informatik.uni-kiel.de/curry-packages/io-extra.git v3.0.0
 json https://git.ps.informatik.uni-kiel.de/curry-packages/json.git v3.0.0
@@ -27,5 +27,6 @@ redblacktree https://git.ps.informatik.uni-kiel.de/curry-packages/redblacktree.g
 scc https://git.ps.informatik.uni-kiel.de/curry-packages/scc.git v3.0.0
 socket https://git.ps.informatik.uni-kiel.de/curry-packages/socket.git v3.0.0
 time https://git.ps.informatik.uni-kiel.de/curry-packages/time.git v3.0.0
+transformers https://git.ps.informatik.uni-kiel.de/curry-packages/transformers.git v3.0.0
 wl-pprint https://git.ps.informatik.uni-kiel.de/curry-packages/wl-pprint.git v3.0.0
 xml https://git.ps.informatik.uni-kiel.de/curry-packages/xml.git v3.0.0
