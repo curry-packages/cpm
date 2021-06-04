@@ -67,7 +67,7 @@ cpmBanner = unlines [bannerLine, bannerText, bannerLine]
  where
   bannerText =
     "Curry Package Manager <curry-lang.org/tools/cpm> (Version " ++
-    packageVersion ++ ", 31/05/2021)"
+    packageVersion ++ ", 04/06/2021)"
   bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -102,6 +102,9 @@ runWithArgs opts = do
       logDebug $ "Current configuration:\n" ++ showConfiguration config
       case optCommand opts of
         NoCommand   -> fail "NoCommand"
+        Help        -> liftIOEL $ do
+                         putStrLn cpmBanner
+                         printUsage "cypm" 80 (optionParser [])
         Config o    -> configCmd    o config
         Update o    -> updateCmd    o config
         Compiler o  -> curryCmd     o config
@@ -144,6 +147,7 @@ defaultOptions = Options Info [] False False NoCommand
 
 data Command
   = NoCommand
+  | Help
   | Config     ConfigOptions
   | Deps       DepsOptions
   | Checkout   CheckoutOptions
@@ -424,64 +428,66 @@ optionParser allargs = optParser
         <> short "t"
         <> help "Show elapsed time with every log output" )
   <.> commands (metavar "COMMAND")
-        (   command "config"
+        (   command "add"
+              (help "Add a package (as dependency or to the local repository)")
+              Right
+              addArgs
+        <|> command "checkout" (help "Checkout a package.") Right
+                    (checkoutArgs Checkout)
+        <|> command "clean" (help "Clean the current package")
+                            (\a -> Right $ a { optCommand = Clean }) []
+        <|>  command "config"
                     (help "Show current configuration of CPM")
                     (\a -> Right $ a { optCommand = Config (configOpts a) })
                     configArgs
-        <|> command "checkout" (help "Checkout a package.") Right
-                    (checkoutArgs Checkout)
-        <|> command "install" (help "Install a package with its dependencies.")
-                     (\a -> Right $ a { optCommand = Install (installOpts a) })
-                     installArgs
-        <|> command "uninstall" (help "Uninstall a package")
-                 (\a -> Right $ a { optCommand = Uninstall (uninstallOpts a) })
-                 uninstallArgs
-        <|> command "deps" (help "Calculate dependencies")
-                           (\a -> Right $ a { optCommand = Deps (depsOpts a) })
-                           depsArgs
-        <|> command "clean" (help "Clean the current package")
-                            (\a -> Right $ a { optCommand = Clean }) []
-        <|> command "new" (help "Create a new package") Right newArgs
-        <|> command "update"
-                    (help "Update the package index")
-                    (\a -> Right $ a { optCommand = Update (updateOpts a) })
-                    updateArgs
         <|> command "curry"
            (help "Load package spec and start Curry with correct dependencies.")
                  (\a -> Right $ a { optCommand = Compiler (execOpts a) })
                  curryArgs
-        <|> command "exec"
-                    (help "Execute a command with the CURRYPATH set")
-                    (\a -> Right $ a { optCommand = Exec (execOpts a) })
-                    execArgs
-        <|> command "info" (help "Print package information")
-                    (\a -> Right $ a { optCommand = PkgInfo (infoOpts a) })
-                    infoArgs
-        <|> command "doc"
-           (help "Generation documentation for current package (with CurryDoc)")
-                    (\a -> Right $ a { optCommand = Doc (docOpts a) })
-                    docArgs
-        <|> command "test" (help "Test the current package (with CurryCheck)")
-                    (\a -> Right $ a { optCommand = Test (testOpts a) })
-                    testArgs
+        <|> command "deps" (help "Calculate dependencies")
+                           (\a -> Right $ a { optCommand = Deps (depsOpts a) })
+                           depsArgs
         <|> command "diff"
                     (help "Diff the current package against another version")
                     (\a -> Right $ a { optCommand = Diff (diffOpts a) })
                     diffArgs
+        <|> command "doc"
+           (help "Generation documentation for current package (with CurryDoc)")
+                    (\a -> Right $ a { optCommand = Doc (docOpts a) })
+                    docArgs
+        <|> command "exec"
+                    (help "Execute a command with the CURRYPATH set")
+                    (\a -> Right $ a { optCommand = Exec (execOpts a) })
+                    execArgs
+        <|> command "help" (help "Show list of all commands and quit")
+                           (\a -> Right $ a { optCommand = Help }) []
+        <|> command "info" (help "Print package information")
+                    (\a -> Right $ a { optCommand = PkgInfo (infoOpts a) })
+                    infoArgs
+        <|> command "install" (help "Install a package with its dependencies.")
+                     (\a -> Right $ a { optCommand = Install (installOpts a) })
+                     installArgs
+        <|> command "link" (help "Link a package to the local cache") Right
+                    linkArgs
         <|> command "list" (help "List all packages of the repository")
                     (\a -> Right $ a { optCommand = List (listOpts a) })
                     listArgs
+        <|> command "new" (help "Create a new package") Right newArgs
         <|> command "search" (help "Search the package repository") Right
                     searchArgs
+        <|> command "test" (help "Test the current package (with CurryCheck)")
+                    (\a -> Right $ a { optCommand = Test (testOpts a) })
+                    testArgs
+        <|> command "uninstall" (help "Uninstall a package")
+                 (\a -> Right $ a { optCommand = Uninstall (uninstallOpts a) })
+                 uninstallArgs
         <|> command "upgrade" (help "Upgrade one or more packages")
                     (\a -> Right $ a { optCommand = Upgrade (upgradeOpts a) })
                     upgradeArgs
-        <|> command "link" (help "Link a package to the local cache") Right
-                    linkArgs
-        <|> command "add"
-              (help "Add a package (as dependency or to the local repository)")
-              Right
-              addArgs
+        <|> command "update"
+                    (help "Update the package index")
+                    (\a -> Right $ a { optCommand = Update (updateOpts a) })
+                    updateArgs
         <|> command "upload"
                     (help "Upload current package to package server")
                     (\a -> Right $ a { optCommand = Upload (uploadOpts a) })

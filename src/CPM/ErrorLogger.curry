@@ -14,8 +14,8 @@ module CPM.ErrorLogger
   , inDirectoryEL, inTempDirEL
   ) where
 
-import System.IO      ( hPutStrLn, stderr )
-import System.Process ( exitWith, system )
+import System.IO        ( hPutStrLn, stderr )
+import System.Process   ( exitWith, system )
 import System.Directory
 
 import CPM.FileUtil

@@ -36,7 +36,8 @@
     },
     "compilerCompatibility": {
         "pakcs"   : ">= 3.0.0, < 4.0.0",
-        "kics2"   : ">= 3.0.0, < 4.0.0"
+        "kics2"   : ">= 3.0.0, < 4.0.0",
+        "curry2go": ">= 1.0.0"
     },
     "configModule": "CPM.ConfigPackage",
     "executable": {
