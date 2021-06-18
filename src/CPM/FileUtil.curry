@@ -8,8 +8,7 @@ module CPM.FileUtil
   , copyDirectory
   , createSymlink
   , removeSymlink
-  , isSymlink
-  , linkTarget
+  , isSymlink, linkTarget, realPath
   , copyDirectoryFollowingSymlinks
   , quote
   , tempDir
@@ -76,9 +75,15 @@ isSymlink link = do
 linkTarget :: String -> IO String
 linkTarget link = do
   (rc, out, _) <- evalCmd "readlink" ["-n", link] ""
-  if rc == 0
-    then return $ replaceFileName link out
-    else return ""
+  return $ if rc == 0 then replaceFileName link out
+                      else ""
+
+--- Returns the real path for a given file path by following all symlinks
+--- in all path components.
+realPath :: String -> IO String
+realPath path = do
+  (rc, out, _) <- evalCmd "readlink" ["-fn", path] ""
+  return $ if rc == 0 then out else path
 
 --- Puts a file argument into quotes to avoid problems with files containing
 --- blanks.

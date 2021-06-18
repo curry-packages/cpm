@@ -10,11 +10,11 @@ module CPM.PackageCache.Runtime
   , writePackageConfig
   ) where
 
-import System.FilePath    ( (</>), (<.>), takeDirectory )
+import Data.List          ( intercalate, isPrefixOf, split )
 import System.Directory   ( createDirectoryIfMissing, copyFile, doesFileExist
                           , getDirectoryContents, doesDirectoryExist
                           , getAbsolutePath )
-import Data.List          ( intercalate, split )
+import System.FilePath    ( (</>), (<.>), splitSearchPath, takeDirectory )
 
 import CPM.Config         ( Config, binInstallDir )
 import CPM.ErrorLogger
@@ -22,7 +22,8 @@ import CPM.PackageCache.Global (installedPackageDir)
 import CPM.Package        ( Package, packageId, PackageExecutable(..)
                           , sourceDirsOf, executableSpec, version
                           , configModule, showVersion )
-import CPM.FileUtil       ( copyDirectoryFollowingSymlinks, recreateDirectory )
+import CPM.FileUtil       ( copyDirectoryFollowingSymlinks, realPath
+                          , recreateDirectory )
 import CPM.PackageCache.Local as LocalCache
 import CPM.Repository     ( readPackageFromRepository )
 
@@ -82,12 +83,14 @@ writePackageConfig :: Config -> String -> Package -> String -> ErrorLogger ()
 writePackageConfig cfg pkgdir pkg loadpath =
   maybe (return ())
         (\configmod ->
-           let binnames = map (\ (PackageExecutable n _ _) -> n)
-                              (executableSpec pkg)
-           in if null configmod
-                then return ()
-                else do writeConfigFile configmod binnames
-                        return ())
+           if null configmod
+             then return ()
+             else do
+               let binnames = map (\ (PackageExecutable n _ _) -> n)
+                                  (executableSpec pkg)
+               realbins <- mapM (liftIOEL . realPath . (binInstallDir cfg </>))
+                                binnames
+               writeConfigFile configmod realbins)
         (configModule pkg)
  where
   writeConfigFile configmod binnames = do
@@ -103,27 +106,55 @@ writePackageConfig cfg pkgdir pkg loadpath =
         , "packageVersion :: String"
         , "packageVersion = \"" ++ showVersion (version pkg) ++ "\""
         , ""
-        , "--- Package location."
+        , "--- Returns the location (installation directory) of the package."
+        , "getPackagePath :: IO String"
+        , "getPackagePath = return " ++ show abspkgdir
+        , ""
+        , "--- Package location (deprecated, use 'getPackagePath')."
         , "packagePath :: String"
         , "packagePath = " ++ show abspkgdir
         , ""
-        , "--- Load path for the package (if it is the main package)."
+        , "--- Returns the load path for the package (if it is the main package)."
+        , "getPackageLoadPath :: IO [String]"
+        , "getPackageLoadPath = do"
+        , "  pp <- getPackagePath"
+        , "  return " ++ showLoadPath abspkgdir
+        , ""
+        , "--- Load path for the package (deprecated, use 'getPackageLoadPath')."
         , "packageLoadPath :: String"
         , "packageLoadPath = " ++ show loadpath
         , "" ] ++
         showExecutables binnames
     logDebug $ "Config module '" ++ configfile ++ "' written."
 
+  showLoadPath pdir =
+    "[" ++
+    intercalate ", "
+      (map replacePackagePath
+        (splitSearchPath loadpath)) ++ "]"
+   where
+    replacePackagePath d =
+      if pdir `isPrefixOf` d
+        then "pp ++ " ++ show (drop (length pdir) d)
+        else show d
+
   showExecutables bins = case length bins of
     0 -> []
-    1 -> [ "--- Location of the executable installed by this package."
+    1 -> [ "--- Returns the location of the executable installed by this package."
+         , "getPackageExecutable :: IO String"
+         , "getPackageExecutable = return \"" ++ head bins ++ "\""
+         , ""
+         , "--- Location of the executable (deprecated, use 'getPackageExecutable')."
          , "packageExecutable :: String"
-         , "packageExecutable = \"" ++ binInstallDir cfg </> head bins ++ "\""
+         , "packageExecutable = \"" ++ head bins ++ "\""
          ]
-    _ -> [ "--- Location of the executables installed by this package."
+    _ -> [ "--- Returns the locations of the executables installed by this package."
+         , "getPackageExecutables :: IO [String]"
+         , "getPackageExecutables = return [" ++
+           intercalate ", " (map (\s -> "\"" ++ s ++ "\"") bins) ++ "]"
+         , ""
+         , "--- Location of the executables (deprecated, use 'getPackageExecutables')."
          , "packageExecutables :: [String]"
          , "packageExecutables = [" ++
-           intercalate ", "
-             (map (\s -> "\"" ++ binInstallDir cfg </> s ++ "\"") bins) ++
-           "]"
+           intercalate ", " (map (\s -> "\"" ++ s ++ "\"") bins) ++ "]"
          ]
