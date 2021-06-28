@@ -141,7 +141,8 @@ logAt lvl msg = ErrorLogger $ \l wst ->
     else
       return ((l, wst), ([LogEntry lvl msg], Right ()))
  where
-  showTime t = show (t `div` 1000) ++ "." ++ show ((t `mod` 1000) `div` 10)
+  showTime t = show (t `div` 1000) ++ "." ++ show2 ((t `mod` 1000) `div` 10)
+  show2 i = if i < 10 then '0' : show i else show i
 
 --- Logs a message at the info level.
 logInfo :: String -> ErrorLogger ()
