@@ -7,17 +7,22 @@ module CPM.Main ( main )
 
 import Curry.Compiler.Distribution ( installDir )
 import Data.Char           ( toLower )
-import Data.List           ( groupBy, intercalate, isPrefixOf, isSuffixOf
-                           , nub, split, sortBy, splitOn )
+import Data.List           ( (\\), delete, groupBy, intercalate, isPrefixOf
+                           , isSuffixOf, nub, split, sortBy, splitOn )
 import Data.Either
+import Data.Maybe          ( isJust )
 import Data.Time           ( calendarTimeToString, getLocalTime )
-import System.Directory    ( doesFileExist, getAbsolutePath, doesDirectoryExist
+import FlatCurry.Files     ( readFlatCurryInt )
+import FlatCurry.Goodies   ( progImports )
+import System.Directory    ( doesFileExist, doesDirectoryExist
                            , copyFile, createDirectory, createDirectoryIfMissing
                            , getCurrentDirectory, getDirectoryContents
                            , getModificationTime
                            , renameFile, removeFile, setCurrentDirectory )
-import System.FilePath     ( (</>), splitSearchPath, replaceExtension
+import System.FilePath     ( (</>), splitDirectories, splitSearchPath
+                           , replaceExtension
                            , takeExtension, pathSeparator, isPathSeparator )
+import System.FrontendExec ( defaultParams, setFullPath, setQuiet )
 import System.IO           ( hFlush, stdout )
 import System.Environment  ( getArgs, getEnv, setEnv, unsetEnv )
 import System.Process      ( exitWith, system, getPID )
@@ -28,13 +33,13 @@ import Prelude hiding      ( (<|>) )
 import Boxes               ( table, render )
 import Data.GraphViz       ( showDotGraph, viewDotGraph )
 import OptParse
-import System.CurryPath    ( addCurrySubdir, stripCurrySuffix )
+import System.CurryPath    ( addCurrySubdir, stripCurrySuffix, sysLibPath )
 import System.Path         ( fileInPath, getFileInPath )
 import Text.CSV            ( readCSV, showCSV, writeCSVFile )
 
 import CPM.ErrorLogger
-import CPM.FileUtil ( cleanTempDir, joinSearchPath, safeReadFile, whenFileExists
-                    , inDirectory, recreateDirectory
+import CPM.FileUtil ( cleanTempDir, getRealPath, joinSearchPath, safeReadFile
+                    , whenFileExists, inDirectory, recreateDirectory
                     , removeDirectoryComplete, copyDirectory, quote, tempDir )
 import CPM.Config   ( Config (..)
                     , readConfigurationWith, showCompilerVersion
@@ -67,7 +72,7 @@ cpmBanner = unlines [bannerLine, bannerText, bannerLine]
  where
   bannerText =
     "Curry Package Manager <curry-lang.org/tools/cpm> (Version " ++
-    packageVersion ++ ", 28/06/2021)"
+    packageVersion ++ ", 13/10/2021)"
   bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -121,6 +126,7 @@ runWithArgs opts = do
         Search    o -> searchCmd    o config
         Upgrade   o -> upgradeCmd   o config
         Diff      o -> diffCmd      o config
+        Check     o -> checkCmd     o config
         Checkout  o -> checkoutCmd  o config
         Install   o -> installCmd   o config
         Upload    o -> uploadCmd    o config
@@ -150,6 +156,7 @@ data Command
   | Help
   | Config     ConfigOptions
   | Deps       DepsOptions
+  | Check      CheckOptions
   | Checkout   CheckoutOptions
   | Install    InstallOptions
   | Uninstall  UninstallOptions
@@ -177,6 +184,10 @@ data DepsOptions = DepsOptions
   { depsPath  :: Bool  -- show CURRYPATH only?
   , depsGraph :: Bool  -- show dot graph instead of tree?
   , depsView  :: Bool  -- view dot graph with `dotviewcommand` of rc file?
+  }
+
+data CheckOptions = CheckOptions
+  { chkInfo    :: Bool
   }
 
 data CheckoutOptions = CheckoutOptions
@@ -286,6 +297,11 @@ depsOpts :: Options -> DepsOptions
 depsOpts s = case optCommand s of
   Deps opts -> opts
   _         -> DepsOptions False False False
+
+checkOpts :: Options -> CheckOptions
+checkOpts s = case optCommand s of
+  Check opts -> opts
+  _          -> CheckOptions False
 
 checkoutOpts :: Options -> CheckoutOptions
 checkoutOpts s = case optCommand s of
@@ -432,7 +448,10 @@ optionParser allargs = optParser
               (help "Add a package (as dependency or to the local repository)")
               Right
               addArgs
-        <|> command "checkout" (help "Checkout a package.") Right
+        <|> command "check" (help "Check a package")
+                    (\a -> Right $ a { optCommand = Check (checkOpts a) })
+                    checkArgs
+        <|> command "checkout" (help "Checkout a package") Right
                     (checkoutArgs Checkout)
         <|> command "clean" (help "Clean the current package")
                             (\a -> Right $ a { optCommand = Clean }) []
@@ -521,6 +540,14 @@ optionParser allargs = optParser
              <> long "viewgraph"
              <> help "View dependency graph (with 'dotviewcommand')"
              <> optional )
+
+  checkArgs =
+     flag (\a -> Right $ a { optCommand = Check (checkOpts a)
+                                                { chkInfo = True } })
+          (  short "i"
+          <> long "info"
+          <> help "Show more information about the package"
+          <> optional )
 
   checkoutArgs cmd =
         arg (\s a -> Right $ a { optCommand = cmd (checkoutOpts a)
@@ -882,7 +909,8 @@ checkRequiredExecutables = do
     , "cp"
     , "rm"
     , "ln"
-    , "readlink" ]
+    , "readlink"
+    , "realpath" ]
 
 checkExecutables :: [String] -> IO [String]
 checkExecutables executables = do
@@ -972,6 +1000,82 @@ printInfo cfg allinfos plain pkg = do
 
 
 ------------------------------------------------------------------------------
+-- `check` command:
+checkCmd :: CheckOptions -> Config -> ErrorLogger ()
+checkCmd chkopts cfg = do
+  specDir <- getLocalPackageSpec cfg "."
+  pkg     <- loadPackageSpec specDir
+  checkCompiler cfg pkg
+  aspecdir  <- liftIOEL $ getRealPath specDir
+  checkCompleteDependencies chkopts cfg aspecdir pkg
+
+-- Check whether the source modules of the given package imports
+-- only modules from the direct dependencies or the base libraries.
+-- Additionally, warnings about unused packages are issued.
+checkCompleteDependencies :: CheckOptions -> Config -> String -> Package
+                          -> ErrorLogger ()
+checkCompleteDependencies (CheckOptions chkinfo) cfg aspecdir pkg = do
+  let deps    = map (\ (Dependency p _) -> p) (dependencies pkg)
+      pkgsdir = aspecdir </> ".cpm" </> "packages"
+  -- get the complete load path for this package:
+  loadpath <- getCurryLoadPath cfg aspecdir >>= return . splitSearchPath
+  aloadpath <- mapM (liftIOEL . getRealPath) loadpath
+  -- filter load path w.r.t. the packages in the dependency list:
+  let dloadpath = filter (isDepsDir pkgsdir deps) aloadpath
+  logDebug $ unlines ("Source and dependency directories:" : dloadpath)
+  allmods <- mapM (\d -> liftIOEL (curryModulesInDir d) >>=
+                           return . map (\m -> (m,d)))
+                  (dloadpath ++ sysLibPath)
+               >>= return . concat
+  logDebug $ "Source and dependency modules:\n" ++ unwords (map fst allmods)
+  -- compute the names of all source modules:
+  allsrcmods <- getSourceModulesOfPkg aspecdir pkg
+  let realsrcmods = filter (isNotHierarchical allsrcmods) allsrcmods
+  when chkinfo $ logInfo $
+    "Package source contains " ++ show (length realsrcmods) ++
+    " Curry modules:\n" ++ unwords realsrcmods
+  -- check all source modules:
+  let currypath = joinSearchPath loadpath
+  logDebug $ "CURRYPATH=" ++ currypath
+  liftIOEL (setEnv "CURRYPATH" currypath)
+  usedsrcdirs <- mapM (checkImports allmods) realsrcmods >>=
+                   return . nub . concat
+  let usedpkgs   = map (packageOfDepsDir pkgsdir)
+                       (filter (pkgsdir `isPrefixOf`) usedsrcdirs)
+      unusedpkgs = delete "base" deps \\ usedpkgs
+  mapM_ (\p -> logInfo $ "Warning: Package dependency '" ++ p ++
+                         "' not used in source code.")
+        unusedpkgs
+ where
+  isDepsDir pkgsdir depsnames dir =
+    not (pkgsdir `isPrefixOf` dir) ||
+    any (\d -> d `isPrefixOf` pkgversion &&
+               isJust (readVersion (drop (length d + 1) pkgversion)))
+        depsnames
+   where
+    pkgversion = splitDirectories (drop (length pkgsdir) dir) !! 1
+
+  packageOfDepsDir pkgsdir dir =
+    intercalate "-"
+      (fst (break (\s -> not (null s) && isDigit (head s))
+              (split (=='-')
+                     (splitDirectories (drop (length pkgsdir) dir) !! 1))))
+
+  -- Is some of the given modules `mods` a suffix of the module `m`?
+  -- In this case, module `m` is probably not a hierarchical one.
+  isNotHierarchical mods m = all (\n -> not (('.':n) `isSuffixOf` m)) mods
+
+  checkImports allowedimports mname = do
+    logInfo $ "Checking source module: " ++ mname
+    imps <- liftIOEL (readFlatCurryInt mname) >>= return . progImports
+    logDebug $ "Imports: " ++ unwords imps
+    let addimports  = imps \\ map fst allowedimports
+        usedsrcdirs = map (\m -> maybe [] (:[]) (lookup m allowedimports)) imps
+    unless (null addimports) $ logError $
+      "ILLEGAL IMPORTS (add to package dependencies!): " ++ unwords addimports
+    return (nub (concat usedsrcdirs))
+
+------------------------------------------------------------------------------
 -- `checkout` command:
 checkoutCmd :: CheckoutOptions -> Config -> ErrorLogger ()
 checkoutCmd (CheckoutOptions pkgname Nothing pre) cfg = do
@@ -989,6 +1093,8 @@ checkoutCmd (CheckoutOptions pkgname (Just ver) _) cfg = do
   Just  p -> do acquireAndInstallPackage cfg p
                 checkoutPackage cfg p
 
+------------------------------------------------------------------------------
+-- `install` command:
 installCmd :: InstallOptions -> Config -> ErrorLogger ()
 installCmd (InstallOptions Nothing Nothing _ instexec False) cfg = do
   pkgdir <- getLocalPackageSpec cfg "."
@@ -1299,7 +1405,7 @@ docCmd opts cfg = do
   specDir <- getLocalPackageSpec cfg "."
   pkg     <- loadPackageSpec specDir
   let docdir = maybe "cdoc" id (docDir opts) </> packageId pkg
-  absdocdir <- liftIOEL $ getAbsolutePath docdir
+  absdocdir <- liftIOEL $ getRealPath docdir
   liftIOEL $ createDirectoryIfMissing True absdocdir
   when (docReadme   opts) $ genPackageREADME pkg specDir absdocdir
   when (docManual   opts) $ genPackageManual pkg specDir absdocdir
@@ -1399,7 +1505,7 @@ replaceSubString sub newsub s = replString s
 genDocForPrograms :: DocOptions -> Config -> String -> String -> Package
                   -> ErrorLogger ()
 genDocForPrograms opts cfg docdir specDir pkg = do
-  abspkgdir <- liftIOEL $ getAbsolutePath specDir
+  abspkgdir <- liftIOEL $ getRealPath specDir
   checkCompiler cfg pkg
   let exports  = exportedModules pkg
       mainmods = map (\ (PackageExecutable _ emain _) -> emain)
@@ -1407,8 +1513,7 @@ genDocForPrograms opts cfg docdir specDir pkg = do
   (docmods,apidoc) <-
      maybe (if null exports
               then if null mainmods
-                     then (do ms <- liftIOEL $
-                                     curryModulesInDir (specDir </> "src")
+                     then (do ms <- getSourceModulesOfPkg specDir pkg
                               return (ms,True))
                      else return (mainmods,False)
               else return (exports,True))
@@ -1475,8 +1580,8 @@ testCmd opts cfg = do
   specDir <- getLocalPackageSpec cfg "."
   pkg     <- loadPackageSpec specDir
   checkCompiler cfg pkg
-  aspecDir  <- liftIOEL $ getAbsolutePath specDir
-  mainprogs <- liftIOEL $ curryModulesInDir (aspecDir </> "src")
+  aspecDir  <- liftIOEL $ getRealPath specDir
+  mainprogs <- getSourceModulesOfPkg aspecDir pkg
   mbcc      <- if testCompile opts then return Nothing else getCurryCheck
   let pkg'  = maybe (pkg { testSuite = Nothing }) (const pkg) mbcc
       tests = testSuites pkg' mainprogs
@@ -1575,7 +1680,7 @@ combineCSVStatsOfPkg pkgid csvs outfile = do
   addStats (header,nums1,mods1) (_,nums2,mods2) =
     (header, map (uncurry (+)) (zip nums1 nums2), mods1 ++ " " ++ mods2)
 
-
+------------------------------------------------------------------------------
 --- Get the names of all Curry modules contained in a directory.
 --- Modules in subdirectories are returned as hierarchical modules.
 curryModulesInDir :: String -> IO [String]
@@ -1585,7 +1690,7 @@ curryModulesInDir dir = getModules "" dir
     exdir <- doesDirectoryExist d
     entries <- if exdir then getDirectoryContents d else return []
     let realentries = filter (\f -> length f >= 1 && head f /= '.') entries
-        newprogs    = filter (\f -> takeExtension f == ".curry") realentries
+        newprogs    = filter isCurryFile realentries
     subdirs <- mapM (\e -> do b <- doesDirectoryExist (d </> e)
                               return $ if b then [e] else [])
                     realentries
@@ -1593,7 +1698,18 @@ curryModulesInDir dir = getModules "" dir
     subdirentries <- mapM (\s -> getModules (p ++ s ++ ".") (d </> s)) subdirs
     return $ map ((p ++) . stripCurrySuffix) newprogs ++ concat subdirentries
 
+  isCurryFile f = takeExtension f `elem` [".curry",".lcurry"]
 
+-- Returns the names of all Curry modules in the source dirs of an
+-- installed package.
+-- The first argument is the installation directory of the package.
+getSourceModulesOfPkg :: String -> Package -> ErrorLogger [String]
+getSourceModulesOfPkg specdir pkg =
+  mapM (liftIOEL . curryModulesInDir) (map (specdir </>) (sourceDirsOf pkg))
+    >>= return . concat
+
+------------------------------------------------------------------------------
+-- `diff` command:
 diffCmd :: DiffOptions -> Config -> ErrorLogger ()
 diffCmd opts cfg = do
   specDir   <- getLocalPackageSpec cfg "."
@@ -1683,7 +1799,7 @@ computePackageLoadPath cfg pkgdir = do
   logDebug "Computing load path for package..."
   pkg <- loadPackageSpec pkgdir
   allpkgs <- resolveAndCopyDependenciesForPackage cfg pkgdir pkg
-  abs <- liftIOEL $ getAbsolutePath pkgdir
+  abs <- liftIOEL $ getRealPath pkgdir
   let srcdirs = map (abs </>) (sourceDirsOf pkg)
       -- remove 'base' package since it is in the compiler libraries:
       pkgs = filter (\p -> name p /= "base") allpkgs

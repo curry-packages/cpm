@@ -12,8 +12,7 @@ module CPM.PackageCache.Runtime
 
 import Data.List          ( intercalate, isPrefixOf, split )
 import System.Directory   ( createDirectoryIfMissing, copyFile, doesFileExist
-                          , getDirectoryContents, doesDirectoryExist
-                          , getAbsolutePath )
+                          , getDirectoryContents, doesDirectoryExist )
 import System.FilePath    ( (</>), (<.>), splitSearchPath, takeDirectory )
 
 import CPM.Config         ( Config, binInstallDir )
@@ -22,7 +21,7 @@ import CPM.PackageCache.Global (installedPackageDir)
 import CPM.Package        ( Package, packageId, PackageExecutable(..)
                           , sourceDirsOf, executableSpec, version
                           , configModule, showVersion )
-import CPM.FileUtil       ( copyDirectoryFollowingSymlinks, realPath
+import CPM.FileUtil       ( copyDirectoryFollowingSymlinks, getRealPath
                           , recreateDirectory )
 import CPM.PackageCache.Local as LocalCache
 import CPM.Repository     ( readPackageFromRepository )
@@ -86,10 +85,10 @@ writePackageConfig cfg pkgdir pkg loadpath =
            if null configmod
              then return ()
              else do
-               let binnames = map (\ (PackageExecutable n _ _) -> n)
+               let bins = map (\ (PackageExecutable n _ _) -> n)
                                   (executableSpec pkg)
-               realbins <- mapM (liftIOEL . realPath . (binInstallDir cfg </>))
-                                binnames
+               realbins <-
+                 mapM (liftIOEL . getRealPath . (binInstallDir cfg </>)) bins
                writeConfigFile configmod realbins)
         (configModule pkg)
  where
@@ -98,7 +97,7 @@ writePackageConfig cfg pkgdir pkg loadpath =
                             <.> ".curry"
     liftIOEL $ do
       createDirectoryIfMissing True (takeDirectory configfile)
-      abspkgdir <- getAbsolutePath pkgdir
+      abspkgdir <- getRealPath pkgdir
       writeFile configfile $ unlines $
         [ "module " ++ configmod ++ " where"
         , ""

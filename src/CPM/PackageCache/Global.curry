@@ -34,8 +34,8 @@ import System.IOExts    ( readCompleteFile )
 
 import CPM.Config       ( Config, packageInstallDir, packageTarFilesURLs )
 import CPM.ErrorLogger
-import CPM.FileUtil     ( cleanTempDir, copyDirectory, recreateDirectory
-                        , recreateDirectory, inDirectory
+import CPM.FileUtil     ( cleanTempDir, copyDirectory, getRealPath
+                        , recreateDirectory, recreateDirectory, inDirectory
                         , removeDirectoryComplete
                         , tempDir, whenFileExists
                         , checkAndGetVisibleDirectoryContents, quote )
@@ -168,7 +168,7 @@ installFromZip :: Config -> String -> ErrorLogger ()
 installFromZip cfg zip = do
   t <- liftIOEL tempDir
   liftIOEL $ recreateDirectory (t </> "installtmp")
-  absZip <- liftIOEL $ getAbsolutePath zip
+  absZip <- liftIOEL $ getRealPath zip
   c <- inTempDirEL $ showExecCmd $ "unzip -qq -d installtmp " ++ quote absZip
   if c == 0
     then do

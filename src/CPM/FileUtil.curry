@@ -8,7 +8,7 @@ module CPM.FileUtil
   , copyDirectory
   , createSymlink
   , removeSymlink
-  , isSymlink, linkTarget, realPath
+  , isSymlink, linkTarget, getRealPath
   , copyDirectoryFollowingSymlinks
   , quote
   , tempDir
@@ -33,6 +33,8 @@ import System.FilePath    ( FilePath, replaceFileName, (</>)
 import Data.List          ( intercalate, isPrefixOf, splitOn )
 import Control.Monad      ( when )
 import System.IOExts      ( evalCmd, readCompleteFile )
+
+import CPM.Helpers        ( strip )
 
 --- Joins a list of directories into a search path.
 joinSearchPath :: [FilePath] -> String
@@ -78,12 +80,13 @@ linkTarget link = do
   return $ if rc == 0 then replaceFileName link out
                       else ""
 
---- Returns the real path for a given file path by following all symlinks
---- in all path components.
-realPath :: String -> IO String
-realPath path = do
-  (rc, out, _) <- evalCmd "readlink" ["-fn", path] ""
-  return $ if rc == 0 then out else path
+--- Returns the absolute real path for a given file path
+--- by following all symlinks in all path components.
+getRealPath :: String -> IO String
+getRealPath path = do
+  (rc, out, _) <- evalCmd "realpath" [path] ""
+  if rc == 0 then return (strip out)
+             else getAbsolutePath path
 
 --- Puts a file argument into quotes to avoid problems with files containing
 --- blanks.

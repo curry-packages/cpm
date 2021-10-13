@@ -22,7 +22,7 @@ module CPM.PackageCache.Local
   ) where
 
 import Debug.Trace
-import System.Directory ( createDirectoryIfMissing, copyFile, getAbsolutePath
+import System.Directory ( createDirectoryIfMissing, copyFile
                         , getDirectoryContents, doesDirectoryExist
                         , doesFileExist )
 import System.FilePath  ( (</>) )
@@ -33,7 +33,8 @@ import System.IOExts    ( readCompleteFile )
 
 import CPM.Config       ( Config, packageInstallDir )
 import CPM.ErrorLogger
-import CPM.FileUtil     ( isSymlink, removeSymlink, createSymlink, linkTarget )
+import CPM.FileUtil     ( createSymlink, getRealPath, isSymlink, linkTarget
+                        , removeSymlink )
 import CPM.Package      ( Package, packageId, readPackageSpec )
 import CPM.PackageCache.Global ( installedPackageDir )
 
@@ -192,7 +193,7 @@ createLink pkgDir from name replace = do
     then return ()
     else do
       deleteIfLink target
-      fromabs <- liftIOEL $ getAbsolutePath from
+      fromabs <- liftIOEL $ getRealPath from
       rc <- liftIOEL $ createSymlink fromabs target
       if rc == 0
         then return ()

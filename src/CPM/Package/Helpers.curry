@@ -23,7 +23,7 @@ import Text.Pretty hiding ( (</>) )
 
 import CPM.Config   ( Config(..), homePackageDir )
 import CPM.ErrorLogger
-import CPM.FileUtil ( cleanTempDir, inDirectory, inTempDir, quote
+import CPM.FileUtil ( cleanTempDir, getRealPath, inDirectory, inTempDir, quote
                     , removeDirectoryComplete, tempDir, whenFileExists )
 import CPM.Helpers  ( strip )
 import CPM.Package
@@ -89,7 +89,7 @@ installPackageSourceTo pkg (Http url) installdir = do
 installPkgFromFile :: Package -> String -> String -> Bool -> ErrorLogger ()
 installPkgFromFile pkg pkgfile pkgDir rmfile = do
   let iszip = takeExtension pkgfile == ".zip"
-  absfile <- liftIOEL $ getAbsolutePath pkgfile
+  absfile <- liftIOEL $ getRealPath pkgfile
   liftIOEL $ createDirectory pkgDir
   c <- if iszip
          then inTempDirEL $ showExecCmd $ "unzip -qq -d " ++ quote pkgDir ++
@@ -285,7 +285,7 @@ renderPackageInfo allinfos plain installed pkg = pPrint doc
 --- current absolute path.
 getLocalPackageSpec :: Config -> String -> ErrorLogger String
 getLocalPackageSpec cfg dir = do
-  adir <- liftIOEL $ getAbsolutePath dir
+  adir <- liftIOEL $ getRealPath dir
   spec <- searchLocalSpec (length (splitPath adir)) dir
   maybe returnHomePackage return spec
  where

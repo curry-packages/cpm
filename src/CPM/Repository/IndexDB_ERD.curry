@@ -2,15 +2,15 @@
 --- ERD specification for the repository index database
 ---
 --- @author Michael Hanus
---- @version March 2018
+--- @version July 2021
 ------------------------------------------------------------------------------
 
 module CPM.Repository.IndexDB_ERD where
 
 import Database.ERD
 
-picERD :: ERD
-picERD =
+cpmIndexERD :: ERD
+cpmIndexERD =
  ERD "RepositoryDB"
    [Entity "IndexEntry"
      [Attribute "Name"                  (StringDom Nothing) NoKey False,
