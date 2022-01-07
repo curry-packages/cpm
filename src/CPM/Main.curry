@@ -72,7 +72,7 @@ cpmBanner = unlines [bannerLine, bannerText, bannerLine]
  where
   bannerText =
     "Curry Package Manager <curry-lang.org/tools/cpm> (Version " ++
-    packageVersion ++ ", 13/10/2021)"
+    packageVersion ++ ", 07/01/2022)"
   bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -1164,7 +1164,8 @@ installExecutable cfg pkg mbexec = do
   mapM_ (\ (PackageExecutable name mainmod eopts) -> do
            lvl <- getLogLevel
            path <- liftIOEL $ getEnv "PATH"
-           logInfo $ "Compiling main module: " ++ mainmod
+           logInfo $ "Compiling main module '" ++ mainmod ++
+                     "' to generate '" ++ name ++ "'..."
            let (cmpname,_,_,_) = compilerVersion cfg
                cmd = unwords $
                        [":set", if levelGte Debug lvl then "v1" else "v0"
