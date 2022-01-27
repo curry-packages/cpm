@@ -27,7 +27,7 @@ import System.Directory
 import System.FilePath
 import System.IO
 import System.IOExts    ( readCompleteFile )
-import System.Process   ( exitWith, system )
+import System.Process   ( exitWith )
 
 import CPM.Config        ( Config, repositoryDir )
 import CPM.ConfigPackage ( packageVersion )
@@ -204,8 +204,7 @@ cleanRepositoryCache :: Config -> ErrorLogger ()
 cleanRepositoryCache cfg = do
   logDebug $ "Cleaning repository cache '" ++
                  repositoryCacheFilePrefix cfg ++ "*'"
-  liftIOEL $ system $
-    "/bin/rm -f " ++ quote (repositoryCacheFilePrefix cfg) ++ "*"
+  showExecCmd $ "/bin/rm -f " ++ quote (repositoryCacheFilePrefix cfg) ++ "*"
   return ()
 
 ------------------------------------------------------------------------------

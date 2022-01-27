@@ -11,17 +11,17 @@ module CPM.Repository.Update
 
 import System.Directory
 import System.FilePath
-import System.Process   ( system )
-import Data.List        ( isSuffixOf )
+import Data.List         ( isSuffixOf )
 import Control.Monad
 
 import CPM.Config        ( Config, packageInstallDir, packageIndexURLs
                          , repositoryDir )
 import CPM.ErrorLogger
+import CPM.Executables        ( getCurlCmd )
 import CPM.Package
 import CPM.Package.Helpers    ( cleanPackage )
-import CPM.FileUtil           ( copyDirectory, inDirectory, quote
-                              , recreateDirectory, removeDirectoryComplete )
+import CPM.FileUtil           ( copyDirectory, quote, recreateDirectory
+                              , removeDirectoryComplete )
 import CPM.Repository
 import CPM.Repository.CacheDB ( tryInstallRepositoryDB )
 import CPM.Repository.Select  ( addPackageToRepositoryCache
@@ -64,33 +64,37 @@ updateRepository cfg cleancache download usecache writecsv = do
 
   downloadCommand piurl
     | ".git" `isSuffixOf` piurl
-    = execQuietCmd $ \q -> unwords ["git clone", q, quote piurl, "."]
+    = let qcmd q = unwords ["git clone", q, quote piurl, "."]
+      in execQuietCmd (qcmd "-q") (qcmd "")
     | ".tar" `isSuffixOf` piurl
     = do let tarfile = "INDEX.tar"
-         c1 <- showExecCmd $ unwords ["curl", "-s", "-o", tarfile, quote piurl]
+         curlcmd <- getCurlCmd
+         c1 <- showExecCmd $ unwords [curlcmd, "-o", tarfile, quote piurl]
          c2 <- showExecCmd $ unwords ["tar", "-xf", tarfile]
          liftIOEL $ removeFile tarfile
-         return (c1+c2)
+         return (c1 + c2)
     | ".tar.gz" `isSuffixOf` piurl
     = do let tarfile = "INDEX.tar.gz"
-         c1 <- showExecCmd $ unwords ["curl", "-s", "-o", tarfile, quote piurl]
+         curlcmd <- getCurlCmd
+         c1 <- showExecCmd $ unwords [curlcmd, "-o", tarfile, quote piurl]
          c2 <- showExecCmd $ unwords ["tar", "-xzf", tarfile]
          liftIOEL $ removeFile tarfile
-         return (c1+c2)
+         return (c1 + c2)
     | otherwise
     = do logError $ "Unknown kind of package index URL: " ++ piurl
          return 1
 
   finishUpdate = do
-    liftIOEL $ setLastUpdate cfg
+    setLastUpdate cfg
     cleanRepositoryCache cfg
     logInfo "Successfully downloaded repository index"
     tryInstallRepositoryDB cfg usecache writecsv
 
 --- Sets the date of the last update by touching README.md.
-setLastUpdate :: Config -> IO ()
-setLastUpdate cfg =
-  system (unwords ["touch", repositoryDir cfg </> "README.md"]) >> return ()
+setLastUpdate :: Config -> ErrorLogger ()
+setLastUpdate cfg = do
+  showExecCmd $ unwords ["touch", repositoryDir cfg </> "README.md"]
+  return ()
 
 ------------------------------------------------------------------------------
 --- Adds a package stored in the given directory to the repository index.

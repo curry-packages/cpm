@@ -21,11 +21,13 @@ import Prelude hiding     ( empty )
 import System.CurryPath   ( addCurrySubdir )
 import Text.Pretty hiding ( (</>) )
 
-import CPM.Config   ( Config(..), homePackageDir )
+import CPM.Config      ( Config(..), homePackageDir )
 import CPM.ErrorLogger
-import CPM.FileUtil ( cleanTempDir, getRealPath, inDirectory, inTempDir, quote
-                    , removeDirectoryComplete, tempDir, whenFileExists )
-import CPM.Helpers  ( strip )
+import CPM.Executables ( getCurlCmd )
+import CPM.FileUtil    ( cleanTempDir, getRealPath, inDirectory, inTempDir
+                       , quote, removeDirectoryComplete, tempDir
+                       , whenFileExists )
+import CPM.Helpers     ( strip )
 import CPM.Package
 
 ------------------------------------------------------------------------------
@@ -39,7 +41,8 @@ installPackageSourceTo :: Package -> PackageSource -> String -> ErrorLogger ()
 ---                     installed
 installPackageSourceTo pkg (Git url rev) installdir = do
   let pkgDir = installdir </> pkgid
-  c <- inDirectoryEL installdir $ execQuietCmd cloneCommand
+  c <- inDirectoryEL installdir $
+         execQuietCmd (cloneCommand "-q") (cloneCommand "")
   if c == 0
     then case rev of
       Nothing           -> checkoutGitRef pkgDir "HEAD"
@@ -74,10 +77,9 @@ installPackageSourceTo pkg (Http url) installdir = do
     else do
       tmpdir <- liftIOEL tempDir
       let tmppkgfile = tmpdir </> pkgfile
-      ll <- getLogLevel
+      curlcmd <- getCurlCmd
       c <- inTempDirEL $ showExecCmd $
-             "curl -f -s " ++ (if ll == Debug then "-S" else "")
-                           ++ " -o " ++ tmppkgfile ++ " " ++ quote url
+             curlcmd ++ " -f -o " ++ tmppkgfile ++ " " ++ quote url
       if c == 0
         then installPkgFromFile pkg tmppkgfile pkgDir True
         else do liftIOEL cleanTempDir
@@ -110,7 +112,8 @@ installPkgFromFile pkg pkgfile pkgDir rmfile = do
 --- @param ref - the ref to check out
 checkoutGitRef :: String -> String -> ErrorLogger ()
 checkoutGitRef dir ref = do
-  c <- inDirectoryEL dir $ execQuietCmd (\q -> unwords ["git checkout", q, ref])
+  let qcmd q = unwords ["git checkout", q, ref]
+  c <- inDirectoryEL dir $ execQuietCmd (qcmd "-q") (qcmd "")
   if c == 0
     then liftIOEL removeGitFiles >> return ()
     else liftIOEL (removeDirectoryComplete dir) >>

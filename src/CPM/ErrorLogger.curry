@@ -14,6 +14,7 @@ module CPM.ErrorLogger
   , inDirectoryEL, inTempDirEL
   ) where
 
+import Control.Monad    ( unless )
 import System.IO        ( hPutStrLn, stderr )
 import System.Process   ( exitWith, system )
 import System.Directory
@@ -74,6 +75,7 @@ instance Alternative ErrorLogger where
 
 instance Monad ErrorLogger where
   return a = ErrorLogger $ \l s -> return ((l, s), ([], Right a))
+
   m >>= f = ErrorLogger $ \l s -> do
     (st, (msgs, err)) <- runErrorLogger m l s
     let (glob, showTime) = st
@@ -181,49 +183,64 @@ fromErrorLogger l s a = do
     Right v -> return v
     Left  m -> showLogEntry glob m >> exitWith 1
 
---- Executes a system command and show the command as debug message.
-showExecCmd :: String -> ErrorLogger Int
-showExecCmd cmd = logDebug ("Executing: " ++ cmd) >>
-  liftIOEL (system cmd)
-
---- Executes a parameterized system command.
---- The parameter is set to `-q` unless the LogLevel is Debug.
-execQuietCmd :: (String -> String) -> ErrorLogger Int
-execQuietCmd cmd = logDebug ("Executing: " ++ cmd "") >>
-  ErrorLogger (\l s -> do i <- system $ cmd (if l == Debug then "" else "-q")
-                          return ((l, s), ([], Right i)))
-
+--- Returns the current log level.
 getLogLevel :: ErrorLogger LogLevel
 getLogLevel = ErrorLogger $ \ l s -> return ((l, s), ([], Right l))
 
-getWithShowTime :: ErrorLogger Bool
-getWithShowTime = ErrorLogger $ \ l s -> return ((l, s), ([], Right s))
-
+--- Sets the current log level.
 setLogLevel :: LogLevel -> ErrorLogger ()
 setLogLevel l = ErrorLogger $ \ _ s -> return ((l, s), ([], Right ()))
 
+--- Returns the current time-showing mode.
+getWithShowTime :: ErrorLogger Bool
+getWithShowTime = ErrorLogger $ \ l s -> return ((l, s), ([], Right s))
+
+--- Sets the current time-showing mode.
 setWithShowTime :: Bool -> ErrorLogger ()
 setWithShowTime s = ErrorLogger $ \ l _ -> return ((l, s), ([], Right ()))
 
+--- Lifts an IO action into the `ErrorLogger` monad.
 liftIOEL :: IO a -> ErrorLogger a
 liftIOEL ma = ErrorLogger (\l s -> do a <- ma
                                       return ((l, s), ([], Right a)))
 
 --- Tries to execute an EL action and returns either an error that
---- occurred or the value.
-tryEL :: ErrorLogger a -> ErrorLogger (Either LogEntry a)
-tryEL a = liftIOEL $ fmap (snd . snd) $ runErrorLogger a Quiet False
+--- occurred or the value. If the first argument is `True`, the execution
+--- will run quietly.
+tryEL :: Bool -> ErrorLogger a -> ErrorLogger (Either LogEntry a)
+tryEL quiet a = do
+  ll    <- if quiet then return Quiet else getLogLevel
+  stime <- getWithShowTime
+  liftIOEL $ fmap (snd . snd) $ runErrorLogger a ll stime
+
+--- Executes a system command and shows the command as debug message.
+showExecCmd :: String -> ErrorLogger Int
+showExecCmd cmd = do
+  logDebug $ "Executing: " ++ cmd
+  ec <- liftIOEL $ system cmd
+  unless (ec == 0) $
+    logDebug $ "Command terminated with non-zero exit code " ++ show ec
+  return ec
+
+--- Executes a command depending on the verbosity mode.
+--- If the log level is not `Debug`, the first (quiet) command is executed,
+--- otherwise the second (more verbose) command is executed.
+execQuietCmd :: String -> String -> ErrorLogger Int
+execQuietCmd quietcmd verbosecmd = do
+  l <- getLogLevel
+  showExecCmd $ if l == Debug then verbosecmd else quietcmd
 
 --- Executes an EL action with the current directory set to a specific
 --- directory.
 inDirectoryEL :: String -> ErrorLogger b -> ErrorLogger b
 inDirectoryEL dir b = do
   previous <- liftIOEL getCurrentDirectory
+  logDebug $ "Set current working directory to: " ++ dir
   liftIOEL $ setCurrentDirectory dir
   b' <- b
+  logDebug $ "Set current working directory to: " ++ previous
   liftIOEL $ setCurrentDirectory previous
   return b'
-
 
 --- Executes an EL action with the current directory set to  CPM's temporary
 --- directory.

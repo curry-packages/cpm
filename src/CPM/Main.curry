@@ -25,7 +25,7 @@ import System.FilePath     ( (</>), splitDirectories, splitSearchPath
 import System.FrontendExec ( defaultParams, setFullPath, setQuiet )
 import System.IO           ( hFlush, stdout )
 import System.Environment  ( getArgs, getEnv, setEnv, unsetEnv )
-import System.Process      ( exitWith, system, getPID )
+import System.Process      ( exitWith, getPID )
 import Control.Monad       ( when, unless, foldM )
 import System.IOExts       ( evalCmd, readCompleteFile )
 import Prelude hiding      ( (<|>) )
@@ -38,6 +38,7 @@ import System.Path         ( fileInPath, getFileInPath )
 import Text.CSV            ( readCSV, showCSV, writeCSVFile )
 
 import CPM.ErrorLogger
+import CPM.Executables     ( checkRequiredExecutables )
 import CPM.FileUtil ( cleanTempDir, getRealPath, joinSearchPath, safeReadFile
                     , whenFileExists, inDirectory, recreateDirectory
                     , removeDirectoryComplete, copyDirectory, quote, tempDir )
@@ -72,7 +73,7 @@ cpmBanner = unlines [bannerLine, bannerText, bannerLine]
  where
   bannerText =
     "Curry Package Manager <curry-lang.org/tools/cpm> (Version " ++
-    packageVersion ++ ", 07/01/2022)"
+    packageVersion ++ ", 27/01/2022)"
   bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -887,36 +888,6 @@ optionParser allargs = optParser
          (  metavar "PACKAGE"
          <> help "The package name (or directory for option '-p') to be added" )
 
--- Check if operating system executables we depend on are present on the
--- current system. Since this takes some time, it is only checked with
--- the `update` command.
-checkRequiredExecutables :: ErrorLogger ()
-checkRequiredExecutables = do
-  logDebug "Checking whether all required executables can be found..."
-  missingExecutables <- liftIOEL $ checkExecutables listOfExecutables
-  unless (null missingExecutables) $ do
-    logError $ "The following programs could not be found on the PATH " ++
-                   "(they are required for CPM to work):\n" ++
-                   intercalate ", " missingExecutables
-    liftIOEL $ exitWith 1
-  logDebug "All required executables found."
- where
-  listOfExecutables =
-    [ "curl"
-    , "git"
-    , "unzip"
-    , "tar"
-    , "cp"
-    , "rm"
-    , "ln"
-    , "readlink"
-    , "realpath" ]
-
-checkExecutables :: [String] -> IO [String]
-checkExecutables executables = do
-  present <- mapM fileInPath executables
-  return $ map fst $ filter (not . snd) (zip executables present)
-
 ------------------------------------------------------------------------------
 -- `config` command: show current CPM configuration
 configCmd :: ConfigOptions -> Config -> ErrorLogger ()
@@ -1430,13 +1401,13 @@ genPackageREADME _ specDir outputdir = do
           formatcmd1 = formatCmd1 readmefile
           formatcmd2 = formatCmd2 readmefile
       logDebug $ "Executing command: " ++ formatcmd1
-      rc1 <- inDirectoryEL specDir $ liftIOEL $ system formatcmd1
+      rc1 <- inDirectoryEL specDir $ showExecCmd formatcmd1
       logDebug $ "Executing command: " ++ formatcmd2
-      rc2 <- inDirectoryEL specDir $ liftIOEL $ system formatcmd2
+      rc2 <- inDirectoryEL specDir $ showExecCmd formatcmd2
       if rc1 == 0 && rc2 == 0
         then do
           -- make them readable:
-          liftIOEL $ system $
+          showExecCmd $
             unwords ["chmod -f 644 ", quote outfile1, quote outfile2]
           logInfo $
             "'" ++ readmefile ++ "' translated to '" ++ outfile1 ++ "'."
@@ -1466,12 +1437,12 @@ genPackageManual pkg specDir outputdir = case documentation pkg of
                            docmain ++ "' (unknown kind)"
         else do
           logDebug $ "Executing command: " ++ formatcmd
-          rc <- inDirectoryEL (specDir </> docdir) $ liftIOEL $ system formatcmd
+          rc <- inDirectoryEL (specDir </> docdir) $ showExecCmd formatcmd
           if rc == 0
             then do
               let outfile = outputdir </> replaceExtension docmain ".pdf"
                -- make it readable:
-              liftIOEL $ system ("chmod -f 644 " ++ quote outfile)
+              showExecCmd $ "chmod -f 644 " ++ quote outfile
               logInfo $
                 "Package documentation written to '" ++ outfile ++ "'."
             else fail $ "Error during execution of command:\n" ++ formatcmd
@@ -1933,7 +1904,7 @@ uploadCmd opts cfg = do
                 , "cypm", "-d bin_install_path="++bindir, "uninstall"
                 ]
     putStrLnELM $ "Testing package: '" ++ pkgid ++ "' with command:\n" ++ cmd
-    inDirectoryEL (instdir </> pkgid) $ liftIOEL $ system cmd
+    inDirectoryEL (instdir </> pkgid) $ showExecCmd cmd
 
 --- Set the package version as a tag in the local GIT repository and push it,
 --- if the package source is a GIT with tag `$version`.
@@ -1953,7 +1924,7 @@ setTagInGit pkg = do
       cmd    = unwords $ deltag ++ ["git tag -a",ts,"-m",ts,"&&",
                                     "git push --tags -f"]
   logInfo $ "Execute: " ++ cmd
-  ecode <- liftIOEL $ system cmd
+  ecode <- showExecCmd cmd
   if ecode == 0 then return ()
                 else fail $ "ERROR in setting the git tag"
 
