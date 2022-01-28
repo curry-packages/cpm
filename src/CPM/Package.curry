@@ -57,9 +57,10 @@ import DetParse
 
 import CPM.ErrorLogger
 
---- Data type representin a version number.
---- It is a tuple where the components are major, minor, patch, prerelease,
---- e.g., 3.1.1-rc5
+--- Data type representing a version number.
+--- It is a tuple where the components are the major, minor, patch numbers
+--- a possible prerelease string.
+--- For instance, `(3,1,0,Just "rc5")` denotes the version `3.1.0-rc5`.
 type Version = (Int, Int, Int, Maybe String)
 
 --- The initial version of a new package.
@@ -74,7 +75,10 @@ nextMajor (maj,_,_,_) = (maj + 1, 0, 0, Nothing)
 nextMinor :: Version -> Version
 nextMinor (maj,min,_,_) = (maj, min + 1, 0, Nothing)
 
+--- A conjunction of version constraints.
 type Conjunction = [VersionConstraint]
+
+--- A disjunction of conjunctions of version constraints.
 type Disjunction = [Conjunction]
 
 --- A dependency on another package. The disjunctive normal form of a boolean
@@ -320,7 +324,7 @@ packageSpecToJSON pkg = JObject $
   maybeStringToJSON fname = maybe [] (\s -> [(fname, JString s)])
 
 
---- Writes a basic package specification to a JSON file.
+--- Writes a package specification to a file in JSON format.
 ---
 --- @param pkg the package specification to write
 --- @param file the file name to write to
@@ -330,7 +334,7 @@ writePackageSpec pkg file = writeFile file $ ppJSON $ packageSpecToJSON pkg
 
 --- Loads a package specification from a package directory.
 ---
---- @param the directory containing the package.json file
+--- @param the directory containing the `package.json` file
 loadPackageSpec :: String -> ErrorLogger Package
 loadPackageSpec dir = do
   let packageFile = dir </> "package.json"

@@ -14,9 +14,9 @@ import System.Process      ( exitWith )
 import CPM.ErrorLogger
 
 ------------------------------------------------------------------------------
--- Check if operating system executables we depend on are present on the
--- current system. Since this takes some time, it is only checked with
--- the `update` command.
+--- Check whether all operating system executables required by CPM are present
+--- on the current system.
+--- Since this takes some time, it is only checked with CPM's `update` command.
 checkRequiredExecutables :: ErrorLogger ()
 checkRequiredExecutables = do
   logDebug "Checking whether all required executables can be found..."
@@ -39,6 +39,9 @@ checkRequiredExecutables = do
     , "readlink"
     , "realpath" ]
 
+--- Filters from a given list of executable names the executables
+--- that cannot be found in one of the directories of the environment
+--- variable `PATH`. 
 checkExecutables :: [String] -> IO [String]
 checkExecutables executables = do
   present <- mapM fileInPath executables
