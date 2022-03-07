@@ -46,7 +46,8 @@
                 },
                 "main": {
                     "type": "string",
-                    "description": "The Curry module containing the 'main' function."
+                    "description": "The Curry module containing the 'main' function.",
+                    "default": "Main"
                 },
                 "options": {
                     "type": "object",
@@ -83,7 +84,8 @@
                     "type": "string",
                     "description": "The path to the script."
                 }
-            }
+            },
+            "required": ["src-dir"]
         }
     },
     "type": "object",
@@ -249,7 +251,8 @@
                     "type": "string",
                     "description": "The command to build the documentation."
                 }
-            }
+            },
+            "required": ["src-dir", "main"]
         },
         "source": {
             "type": "object",
@@ -265,7 +268,8 @@
                         "$version"
                     ]
                 }
-            }
+            },
+            "required": ["git"]
         }
     },
     "required": [
