@@ -3,6 +3,23 @@
     "title": "CPM package specification",
     "description": "The specification file for a Curry package",
     "definitions": {
+        "user": {
+            "type": "string",
+            "description": "Name and email, e.g. \"John Doe <johndoe@example.com>\""
+        },
+        "users": {
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/user"
+                },
+                {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/user"
+                    }
+                }
+            ]
+        },
         "versionConstraint": {
             "type": "string",
             "description": "A version constraint, e.g. '^2.1.3', '>= 0.0.1, < 1.5.0' or '~1.2.3'"
@@ -68,9 +85,11 @@
             "type": "string",
             "description": "The version of the Curry package."
         },
+        "author": {
+            "$ref": "#/definitions/users"
+        },
         "maintainer": {
-            "type": "string",
-            "description": "Name and email of the package maintainer, e.g. \"John Doe <johndoe@example.com>\""
+            "$ref": "#/definitions/users"
         },
         "synopsis": {
             "type": "string",
@@ -197,6 +216,7 @@
     },
     "required": [
         "name",
+        "author",
         "version",
         "synopsis"
     ]
