@@ -56,6 +56,7 @@ data Command
   | Doc        DocOptions
   | Test       TestOptions
   | Diff       DiffOptions
+  | Init
   | New        NewOptions
   | Clean
   | Upload     UploadOptions
@@ -361,6 +362,9 @@ optionParser allargs = optParser
         <|> command "info" (help "Print package information")
                     (\a -> Right $ a { optCommand = PkgInfo (infoOpts a) })
                     infoArgs
+        <|> command "init"
+                    (help "Initialize the current directory as a package")
+                    (\a -> Right $ a { optCommand = Init }) []
         <|> command "install" (help "Install a package with its dependencies.")
                      (\a -> Right $ a { optCommand = Install (installOpts a) })
                      installArgs

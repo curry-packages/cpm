@@ -19,8 +19,8 @@ import System.Directory    ( doesFileExist, doesDirectoryExist
                            , getModificationTime
                            , renameFile, removeFile, setCurrentDirectory )
 import System.FilePath     ( (</>), splitDirectories, splitSearchPath
-                           , replaceExtension
-                           , takeExtension, pathSeparator, isPathSeparator )
+                           , replaceExtension, takeExtension, takeFileName
+                           , pathSeparator, isPathSeparator )
 import System.Environment  ( getArgs, getEnv, setEnv, unsetEnv )
 import System.Process      ( exitWith, getPID )
 import System.IOExts       ( evalCmd, readCompleteFile )
@@ -34,8 +34,9 @@ import Text.CSV            ( readCSV, showCSV, writeCSVFile )
 
 import CPM.ErrorLogger
 import CPM.Executables     ( checkRequiredExecutables )
-import CPM.FileUtil ( cleanTempDir, getRealPath, joinSearchPath, safeReadFile
-                    , whenFileExists, inDirectory, recreateDirectory
+import CPM.FileUtil ( cleanTempDir, getRealPath, ifFileExists, joinSearchPath
+                    , safeReadFile, whenFileExists, writeFileIfNotExists
+                    , inDirectory, recreateDirectory
                     , removeDirectoryComplete, copyDirectory, quote, tempDir )
 import CPM.Config   ( Config (..)
                     , readConfigurationWith, showCompilerVersion
@@ -69,7 +70,7 @@ cpmBanner = unlines [bannerLine, bannerText, bannerLine]
  where
   bannerText =
     "Curry Package Manager <curry-lang.org/tools/cpm> (Version " ++
-    packageVersion ++ ", 27/01/2022)"
+    packageVersion ++ ", 20/07/2022)"
   bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -118,6 +119,7 @@ runWithArgs opts = do
         PkgInfo   o -> infoCmd      o config
         Link o      -> linkCmd      o config
         Add  o      -> addCmd       o config
+        Init        -> initCmd
         New o       -> newCmd       o
         List      o -> listCmd      o config
         Search    o -> searchCmd    o config
@@ -1027,47 +1029,58 @@ computePackageLoadPath cfg pkgdir = do
   liftIOEL $ saveCurryPathToCache cfg pkgdir currypath
   return currypath
 
+------------------------------------------------------------------------------
+--- Implementation of the `init` command: initialize a new package inside
+--- the current directory.
+initCmd :: ErrorLogger ()
+initCmd = do
+  pname <- liftIOEL $ (getCurrentDirectory >>= return . takeFileName)
+  let pkgSpecFile = "package.json"
+  pkgexists <- liftIOEL $ doesFileExist pkgSpecFile
+  if pkgexists
+    then do
+      logError $
+        "There is already a package specification file '" ++ pkgSpecFile ++
+        "'.\nI cannot initialize a new package!"
+      liftIOEL $ exitWith 1
+    else liftIOEL $ initPackage pname $
+      "A new package '" ++ pname ++
+      "' has been created in the current directory.\n\nNow "
 
---- Implementation of the `new` command: create a new package.
-newCmd :: NewOptions -> ErrorLogger ()
-newCmd (NewOptions pname) = do
-  exists <- liftIOEL $ doesDirectoryExist pname
-  when exists $ do
-    logError $ "There is already a directory with the new project name.\n"
-                ++ "I cannot create new project!"
-    liftIOEL $ exitWith 1
-  liftIOEL $ do
-    let emptyAuthor   = "YOUR NAME <YOUR EMAIL ADDRESS>"
-        emptySynopsis = "PLEASE PROVIDE A ONE-LINE SUMMARY ABOUT THE PACKAGE"
-    createDirectory pname
-    let pkgSpec = emptyPackage { name            = pname
-                              , version         = initialVersion
-                              , author          = [emptyAuthor]
-                              , synopsis        = emptySynopsis
-                              , category        = ["Programming"]
-                              , dependencies    = [] 
-                              , exportedModules = []
-                              , license         = Just "BSD-3-Clause"
-                              , licenseFile     = Just "LICENSE"
-                              }
-    writePackageSpec pkgSpec (pname </> "package.json")
-    let licenseFile = packagePath </> "templates" </> "LICENSE"
-    whenFileExists licenseFile $ copyFile licenseFile (pname </> "LICENSE")
-    createDirectory (pname </> "src")
-    let cmain    = "Main.curry"
-        mainFile = packagePath </> "templates" </> cmain
-    whenFileExists mainFile $ copyFile mainFile (pname </> "src" </> cmain)
-    writeFile (pname </> "README.md") readme
-    writeFile (pname </> ".gitignore") gitignore
-    putStr $ unlines todo
+initPackage :: String -> String -> IO ()
+initPackage pname outheader = do
+  let emptyAuthor   = "YOUR NAME <YOUR EMAIL ADDRESS>"
+      emptySynopsis = "PLEASE PROVIDE A ONE-LINE SUMMARY ABOUT THE PACKAGE"
+  let pkgSpec = emptyPackage { name            = pname
+                             , version         = initialVersion
+                             , author          = [emptyAuthor]
+                             , synopsis        = emptySynopsis
+                             , category        = ["Programming"]
+                             , dependencies    = [] 
+                             , exportedModules = []
+                             , license         = Just "BSD-3-Clause"
+                             , licenseFile     = Just "LICENSE"
+                             }
+  writePackageSpec pkgSpec "package.json"
+  let licenseFile  = "LICENSE"
+      licenseTFile = packagePath </> "templates" </> licenseFile
+  whenFileExists licenseTFile $
+    ifFileExists licenseFile (return ()) (copyFile licenseTFile licenseFile)
+  createDirectoryIfMissing False "src"
+  let cmain     = "Main.curry"
+      mainTFile = packagePath </> "templates" </> cmain
+      mainSFile = "src" </> cmain
+  whenFileExists mainTFile $
+    ifFileExists mainSFile (return ()) (copyFile mainTFile mainSFile)
+  writeFileIfNotExists "README.md" readme
+  writeFileIfNotExists ".gitignore" gitignore
+  putStr $ outheader ++ unlines todo
  where
   readme = unlines [pname, take (length pname) (repeat '=')]
   gitignore = unlines ["*~", ".cpm", ".curry"]
 
   todo =
-    [ "A new package in the directory '" ++ pname ++ "' has been created!"
-    , ""
-    , "Please go into this directory and edit the file 'package.json':"
+    [ "edit the file 'package.json':"
     , "- enter correct values for the fields 'author', 'synopsis', 'category'"
     , "- add dependencies in the field 'dependencies'"
     , "- add further fields (e.g., 'description')"
@@ -1080,6 +1093,22 @@ newCmd (NewOptions pname) = do
     , "Run the main program with:"
     , "> cypm curry :load Main :eval main :quit"
     ]
+
+--- Implementation of the `new` command: create a new package.
+newCmd :: NewOptions -> ErrorLogger ()
+newCmd (NewOptions pname) = do
+  exists <- liftIOEL $ doesDirectoryExist pname
+  if exists
+    then do
+      logError $ "There is already a directory with the new project name.\n"
+                  ++ "I cannot create new project!"
+      liftIOEL $ exitWith 1
+    else liftIOEL $ do
+      createDirectory pname
+      setCurrentDirectory pname
+      initPackage pname $
+        "A new package has been created in the directory '" ++ pname ++
+        "'.\n\nGo into this directory and "
 
 ------------------------------------------------------------------------------
 --- Uploads the current package to the package server.

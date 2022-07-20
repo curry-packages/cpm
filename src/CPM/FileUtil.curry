@@ -18,7 +18,7 @@ module CPM.FileUtil
   , recreateDirectory
   , removeDirectoryComplete
   , safeReadFile, checkAndGetVisibleDirectoryContents
-  , whenFileExists, ifFileExists
+  , whenFileExists, ifFileExists, writeFileIfNotExists
   ) where
 
 import System.Directory   ( doesFileExist, doesDirectoryExist
@@ -161,14 +161,18 @@ checkAndGetVisibleDirectoryContents :: FilePath -> IO [FilePath]
 checkAndGetVisibleDirectoryContents dir =
   checkAndGetDirectoryContents dir >>= return . filter (not . isPrefixOf ".")
 
---- Performs an action when a file exists.
-whenFileExists :: FilePath -> IO () -> IO ()
-whenFileExists fname act = do
-  exfile <- doesFileExist fname
-  when exfile act
-
 --- Performs one of two actions depending on the existence of a file.
 ifFileExists :: FilePath -> IO a -> IO a -> IO a
 ifFileExists fname thenact elseact = do
   exfile <- doesFileExist fname
   if exfile then thenact else elseact
+
+--- Performs an action when a file exists.
+whenFileExists :: FilePath -> IO () -> IO ()
+whenFileExists fname act =
+  ifFileExists fname act (return ())
+
+--- Writes a file with a given contents if it does not exist.
+writeFileIfNotExists :: FilePath -> String -> IO ()
+writeFileIfNotExists fname cnt =
+  ifFileExists fname (return ()) (writeFile fname cnt)

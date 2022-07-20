@@ -1,156 +1,152 @@
 \begin{theindex}
 
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  \$version}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  \$version}, 
 		\hyperpage{13}
 
   \indexspace
 
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  add}, 
-		\hyperpage{8}, \hyperpage{12}, \hyperpage{21, 22}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  author}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  add}, \hyperpage{8}, 
+		\hyperpage{12}, \hyperpage{21, 22}
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  author}, 
 		\hyperpage{23}
 
   \indexspace
 
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  base}, 
-		\hyperpage{14}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  bugReports}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  base}, \hyperpage{14}
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  bugReports}, 
 		\hyperpage{24}
 
   \indexspace
 
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  category}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  category}, 
 		\hyperpage{23}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  check}, 
-		\hyperpage{12}, \hyperpage{18}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  checkout}, 
-		\hyperpage{6}, \hyperpage{19, 20}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  clean}, 
-		\hyperpage{22}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  compilerCompatibility}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  check}, \hyperpage{12}, 
+		\hyperpage{18}
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  checkout}, 
+		\hyperpage{7}, \hyperpage{19, 20}
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  clean}, \hyperpage{22}
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  compilerCompatibility}, 
 		\hyperpage{24}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  config}, 
-		\hyperpage{16}, \hyperpage{18}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  configModule}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  config}, 
+		\hyperpage{15}, \hyperpage{18}
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  configModule}, 
 		\hyperpage{24}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  copyright}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  copyright}, 
 		\hyperpage{23}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  curry}, 
-		\hyperpage{7}, \hyperpage{21}
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  curry}, \hyperpage{6}, 
+		\hyperpage{8}, \hyperpage{21}
 
   \indexspace
 
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  dependencies}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  dependencies}, 
 		\hyperpage{24}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  deps}, 
-		\hyperpage{20}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  description}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  deps}, \hyperpage{20}
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  description}, 
 		\hyperpage{23}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  diff}, 
-		\hyperpage{10}, \hyperpage{21}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  doc}, 
-		\hyperpage{20}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  documentation}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  diff}, \hyperpage{10}, 
+		\hyperpage{21}
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  doc}, \hyperpage{20}
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  documentation}, 
 		\hyperpage{26}
 
   \indexspace
 
   \item equivalence, \hyperpage{11}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  exec}, 
-		\hyperpage{21}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  executable}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  exec}, \hyperpage{21}
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  executable}, 
 		\hyperpage{24}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  executables}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  executables}, 
 		\hyperpage{25}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  exportedModules}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  exportedModules}, 
 		\hyperpage{24}
 
   \indexspace
 
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  homepage}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  homepage}, 
 		\hyperpage{23}
 
   \indexspace
 
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  info}, 
-		\hyperpage{4}, \hyperpage{18}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  install}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  info}, \hyperpage{4}, 
+		\hyperpage{18}
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  init}, \hyperpage{6}, 
+		\hyperpage{22}
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  install}, 
 		\hyperpage{6, 7}, \hyperpage{19}
 
   \indexspace
 
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  license}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  license}, 
 		\hyperpage{23}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  licenseFile}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  licenseFile}, 
 		\hyperpage{23}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  link}, 
-		\hyperpage{8}, \hyperpage{21}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  list}, 
-		\hyperpage{4}, \hyperpage{18}
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  link}, \hyperpage{9}, 
+		\hyperpage{21}
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  list}, \hyperpage{4}, 
+		\hyperpage{18}
 
   \indexspace
 
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  maintainer}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  maintainer}, 
 		\hyperpage{23}
 
   \indexspace
 
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  name}, 
-		\hyperpage{23}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  new}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  name}, \hyperpage{23}
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  new}, \hyperpage{6}, 
 		\hyperpage{22}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  NOCOMPARE}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  NOCOMPARE}, 
 		\hyperpage{11}
 
   \indexspace
 
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  package.json}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  package.json}, 
 		\hyperpage{6}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  Prelude}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  Prelude}, 
 		\hyperpage{14}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  PRODUCTIVE}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  PRODUCTIVE}, 
 		\hyperpage{11}
 
   \indexspace
 
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  repository}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  repository}, 
 		\hyperpage{24}
 
   \indexspace
 
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  search}, 
-		\hyperpage{4}, \hyperpage{18}
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  search}, \hyperpage{4}, 
+		\hyperpage{18}
   \item semantic versioning, \hyperpage{5}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  source}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  source}, 
 		\hyperpage{12}, \hyperpage{24}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  sourceDirs}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  sourceDirs}, 
 		\hyperpage{24}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  synopsis}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  synopsis}, 
 		\hyperpage{23}
 
   \indexspace
 
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  TERMINATE}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  TERMINATE}, 
 		\hyperpage{11}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  test}, 
-		\hyperpage{12}, \hyperpage{20}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  testsuite}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  test}, \hyperpage{12}, 
+		\hyperpage{20}
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  testsuite}, 
 		\hyperpage{25}
 
   \indexspace
 
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  uninstall}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  uninstall}, 
 		\hyperpage{19}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  update}, 
-		\hyperpage{4}, \hyperpage{19}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  upgrade}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  update}, \hyperpage{4}, 
+		\hyperpage{19}
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  upgrade}, 
 		\hyperpage{6}, \hyperpage{20}
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  upload}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  upload}, 
 		\hyperpage{22}
 
   \indexspace
 
-  \item {\fontencoding  {OT1}\fontfamily  {cmtt}\fontseries  {m}\fontshape  {n}\selectfont  \ignorespaces \selectfont  version}, 
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  version}, 
 		\hyperpage{23}
   \item version format, \hyperpage{5}
 
