@@ -1,0 +1,281 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema",
+    "title": "CPM package specification",
+    "description": "The specification file for a Curry package",
+    "definitions": {
+        "user": {
+            "type": "string",
+            "description": "Name and email.",
+            "examples": [
+                "First Last <firstlast@example.com>"
+            ]
+        },
+        "users": {
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/user"
+                },
+                {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/user"
+                    }
+                }
+            ]
+        },
+        "versionConstraint": {
+            "type": "string",
+            "description": "A version constraint.",
+            "examples": [
+                "^3.0.0",
+                ">= 3.0.0, < 4.0.0",
+                "~3.0.0"
+            ]
+        },
+        "module": {
+            "type": "string",
+            "description": "A Curry module name"
+        },
+        "executable": {
+            "type": "object",
+            "description": "An executable product of the package.",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "The name of the binary."
+                },
+                "main": {
+                    "type": "string",
+                    "description": "The Curry module containing the 'main' function.",
+                    "default": "Main"
+                },
+                "options": {
+                    "type": "object",
+                    "description": "Additional commands to perform per compiler.",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "testsuite": {
+            "type": "object",
+            "description": "A test suite of the package.",
+            "properties": {
+                "src-dir": {
+                    "type": "string",
+                    "description": "The path to the source directory of the test suite.",
+                    "examples": [
+                        "src"
+                    ]
+                },
+                "options": {
+                    "type": "string",
+                    "description": "Options to invoke the test suite with."
+                },
+                "modules": {
+                    "type": "array",
+                    "description": "The test suite's modules.",
+                    "items": {
+                        "$ref": "#/definitions/module"
+                    }
+                },
+                "script": {
+                    "type": "string",
+                    "description": "The path to the script."
+                }
+            },
+            "required": ["src-dir"]
+        }
+    },
+    "type": "object",
+    "properties": {
+        "name": {
+            "type": "string",
+            "description": "The name of the Curry package. By convention usually kebab-case."
+        },
+        "version": {
+            "type": "string",
+            "description": "The version of the Curry package."
+        },
+        "author": {
+            "$ref": "#/definitions/users"
+        },
+        "maintainer": {
+            "$ref": "#/definitions/users"
+        },
+        "synopsis": {
+            "type": "string",
+            "description": "A one-line summary of the package."
+        },
+        "category": {
+            "type": "array",
+            "description": "A list of categories for classification of the package.",
+            "items": {
+                "type": "string",
+                "description": "A package category.",
+                "$comment": "See https://www-ps.informatik.uni-kiel.de/~cpm/indexc.html for a list of categories.",
+                "examples": [
+                    "Analysis",
+                    "Compiler",
+                    "Constraints",
+                    "Control",
+                    "Data",
+                    "Database",
+                    "Debugging",
+                    "Documentation",
+                    "IO",
+                    "Logic",
+                    "Metaprogramming",
+                    "Narrowing",
+                    "Network",
+                    "Numeric",
+                    "Optimization",
+                    "Packaging",
+                    "Parsing",
+                    "Printing",
+                    "Programming",
+                    "Rewriting",
+                    "System",
+                    "Testing",
+                    "User Interface",
+                    "Verification",
+                    "Web"
+                ]
+            }
+        },
+        "license": {
+            "type": "string",
+            "description": "The package's license that specifies how people are permitted to use it.",
+            "examples": [
+                "BSD-3-Clause"
+            ]
+        },
+        "licenseFile": {
+            "type": "string",
+            "description": "The path to the file containing the license text.",
+            "examples": [
+                "LICENSE"
+            ]
+        },
+        "copyright": {
+            "type": "string",
+            "description": "Copyright information"
+        },
+        "homepage": {
+            "type": "string",
+            "format": "uri",
+            "description": "The URL of the package's website."
+        },
+        "bugReports": {
+            "type": "string",
+            "description": "The email or URL of the package's bug tracker."
+        },
+        "repository": {
+            "type": "string",
+            "description": "The (Git) URL of the repository."
+        },
+        "dependencies": {
+            "type": "object",
+            "description": "The packages that this package depends on.",
+            "additionalProperties": {
+                "$ref": "#/definitions/versionConstraint"
+            }
+        },
+        "compilerCompatibility": {
+            "type": "object",
+            "description": "The compiler versions that this package is compatible with.",
+            "additionalProperties": {
+                "$ref": "#/definitions/versionConstraint"
+            }
+        },
+        "sourceDirs": {
+            "type": "array",
+            "description": "The source directories.",
+            "items": {
+                "type": "string"
+            }
+        },
+        "exportedModules": {
+            "type": "array",
+            "description": "The package's exported modules.",
+            "items": {
+                "$ref": "#/definitions/module"
+            }
+        },
+        "configModule": {
+            "$ref": "#/definitions/module"
+        },
+        "executable": {
+            "$ref": "#/definitions/executable"
+        },
+        "executables": {
+            "type": "array",
+            "items": {
+                "$ref": "#/definitions/executable"
+            }
+        },
+        "testsuite": {
+            "description": "The package's test suites.",
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/testsuite"
+                },
+                {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/testsuite"
+                    }
+                }
+            ]
+        },
+        "documentation": {
+            "type": "object",
+            "description": "Documentation for the package.",
+            "properties": {
+                "src-dir": {
+                    "type": "string",
+                    "description": "The path to the docs directory.",
+                    "examples": [
+                        "docs"
+                    ]
+                },
+                "main": {
+                    "type": "string",
+                    "description": "The path to the main (e.g. .tex) file of the documentation",
+                    "examples": [
+                        "manual.tex"
+                    ]
+                },
+                "command": {
+                    "type": "string",
+                    "description": "The command to build the documentation."
+                }
+            },
+            "required": ["src-dir", "main"]
+        },
+        "source": {
+            "type": "object",
+            "properties": {
+                "git": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "URL of the Git repository."
+                },
+                "tag": {
+                    "type": "string",
+                    "examples": [
+                        "$version"
+                    ]
+                }
+            },
+            "required": ["git"]
+        }
+    },
+    "required": [
+        "name",
+        "author",
+        "version",
+        "synopsis"
+    ]
+}
