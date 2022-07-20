@@ -69,3 +69,22 @@ A good set of packages to start with is the following:
 - `karma-1.2.0` has 1,850 dependencies available in 24,264 different versions.
   Currently, the resolution algorithm is too slow and does not arrive at a 
   solution in a reasonable timeframe.
+
+
+## Contents of the repository (to be completed)
+
+- `compute-dependencies.txt`: Auxiliary script to compute the contents of
+  `dependencies.txt` (see below) if this package is installed by CPM.
+  This script is used in case of updates of this package.
+- `dependencies.txt`: A textual representation of all Curry packages used
+  by CPM. It is used by the script `fetch-dependencies.sh` to build
+  an initial version of CPM with `make` (and without another CPM executable).
+- `package.json`:
+  Since CPM is also implemented in the form of a Curry package,
+  this file contains the package specification for CPM.
+- `package.json.schema`:
+  A description of the format of package specification files used by CPM
+  in the format as a [JSON schema](https://json-schema.org/).
+  JSON schema is a widely adopted format that makes it easier
+  to external tooling such as IDEs to provide validation and
+  autocompletion in JSON documents.
