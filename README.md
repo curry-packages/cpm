@@ -82,7 +82,7 @@ A good set of packages to start with is the following:
 - `package.json`:
   Since CPM is also implemented in the form of a Curry package,
   this file contains the package specification for CPM.
-- `package.json.schema`:
+- `package.schema.json`:
   A description of the format of package specification files used by CPM
   in the format as a [JSON schema](https://json-schema.org/).
   JSON schema is a widely adopted format that makes it easier
