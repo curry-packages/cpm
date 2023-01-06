@@ -11,6 +11,7 @@ import Data.List        ( splitOn )
 
 import OptParse
 
+import CPM.Helpers      ( stripEnclosing )
 import CPM.Package      ( Version, readVersion )
 import CPM.ErrorLogger
 
@@ -279,7 +280,7 @@ readRcOption :: String -> Either String (String,String)
 readRcOption s =
   let (option,value) = break (=='=') s
   in if null value then Left $ "Error in option definition: '=' missing"
-                   else Right $ (option, tail value)
+                   else Right $ (option, stripEnclosing '"' '"' (tail value))
 
 readVersion' :: String -> Either String Version
 readVersion' s = case readVersion s of
