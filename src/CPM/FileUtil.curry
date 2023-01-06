@@ -34,7 +34,7 @@ import Data.List          ( intercalate, isPrefixOf, splitOn )
 import Control.Monad      ( when )
 import System.IOExts      ( evalCmd, readCompleteFile )
 
-import CPM.Helpers        ( strip )
+import CPM.Helpers        ( stripSpaces )
 
 --- Joins a list of directories into a search path.
 joinSearchPath :: [FilePath] -> String
@@ -85,7 +85,7 @@ linkTarget link = do
 getRealPath :: String -> IO String
 getRealPath path = do
   (rc, out, _) <- evalCmd "realpath" [path] ""
-  if rc == 0 then return (strip out)
+  if rc == 0 then return (stripSpaces out)
              else getAbsolutePath path
 
 --- Puts a file argument into quotes to avoid problems with files containing

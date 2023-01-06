@@ -1,8 +1,9 @@
 --- Some auxiliary operations that might fit better into system libraries.
 
-module CPM.Helpers ( strip ) where
+module CPM.Helpers ( stripSpaces ) where
 
 import Data.Char ( isSpace )
 
-strip :: String -> String
-strip = reverse . dropWhile isSpace . reverse . dropWhile isSpace
+-- Strips leading and tailing spaces:
+stripSpaces :: String -> String
+stripSpaces = reverse . dropWhile isSpace . reverse . dropWhile isSpace

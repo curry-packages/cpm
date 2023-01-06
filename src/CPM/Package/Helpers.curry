@@ -27,7 +27,7 @@ import CPM.Executables ( getCurlCmd )
 import CPM.FileUtil    ( cleanTempDir, getRealPath, inDirectory, inTempDir
                        , quote, removeDirectoryComplete, tempDir
                        , whenFileExists )
-import CPM.Helpers     ( strip )
+import CPM.Helpers     ( stripSpaces )
 import CPM.Package
 
 ------------------------------------------------------------------------------
@@ -175,7 +175,7 @@ renderPackageInfo allinfos plain installed pkg = pPrint doc
   ver       = fill maxLen (boldText "Version") <+>
               (text $ showVersion $ version pkg)
   auth      = fill maxLen (boldText "Author") <+>
-              indent 0 (fillSep (map (text . strip)
+              indent 0 (fillSep (map (text . stripSpaces)
                                      (concatMap (splitOn ",") $ author pkg)))
   synop     = fill maxLen (boldText "Synopsis") <+>
               indent 0 (fillSep (map text (words (synopsis pkg))))
@@ -185,7 +185,8 @@ renderPackageInfo allinfos plain installed pkg = pPrint doc
   maintnr = case maintainer pkg of
     [] -> empty
     xs -> fill maxLen (boldText "Maintainer") <+>
-          indent 0 (fillSep (map (text . strip) (concatMap (splitOn ",") xs)))
+          indent 0 (fillSep (map (text . stripSpaces)
+                                 (concatMap (splitOn ",") xs)))
 
   cats =
     if null (category pkg)

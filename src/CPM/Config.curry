@@ -28,7 +28,7 @@ import System.Path       ( getFileInPath )
 
 import CPM.ErrorLogger
 import CPM.FileUtil ( ifFileExists )
-import CPM.Helpers  ( strip )
+import CPM.Helpers  ( stripSpaces )
 
 --- The default URL prefix to the directory containing tar files of all packages
 packageTarFilesDefaultURLs :: [String]
@@ -165,9 +165,9 @@ setCompilerVersion cfg0 = do
     then return cfg { compilerVersion = currVersion
                     , compilerBaseVersion = Dist.baseVersion }
     else do (sname,svers,sbver) <- getCompilerVersion (curryExec cfg)
-            let cname = strip sname
-                cvers = strip svers
-                bvers = strip sbver
+            let cname = stripSpaces sname
+                cvers = stripSpaces svers
+                bvers = stripSpaces sbver
                 (majs:mins:revs:_) = split (=='.') cvers
             logDebug $ unwords ["Compiler version:",cname,cvers]
             logDebug $ "Base lib version: " ++ bvers
@@ -264,7 +264,8 @@ mergeConfigSettings cfg props = applyEither setters cfg
 ---
 --- @param opts - the options
 stripProps :: [(String, String)] -> [(String, String)]
-stripProps = map (\(a,b) -> ((map toUpper $ filter (/='_') $ strip a), strip b))
+stripProps =
+  map (\(a,b) -> (map toUpper $ filter (/='_') $ stripSpaces a, stripSpaces b))
 
 --- A map from option names to functions that will update a configuration
 --- record with a value for that option.
