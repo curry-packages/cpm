@@ -28,7 +28,8 @@ import System.IOExts       ( evalCmd, readCompleteFile )
 import Boxes               ( table, render )
 import Data.GraphViz       ( showDotGraph, viewDotGraph )
 import OptParse            ( parse, printUsage )
-import System.CurryPath    ( addCurrySubdir, stripCurrySuffix, sysLibPath )
+import System.CurryPath    ( addCurrySubdir, curryModulesInDirectory
+                           , stripCurrySuffix, sysLibPath )
 import System.Path         ( fileInPath, getFileInPath )
 import Text.CSV            ( readCSV, showCSV, writeCSVFile )
 
@@ -70,7 +71,7 @@ cpmBanner = unlines [bannerLine, bannerText, bannerLine]
  where
   bannerText =
     "Curry Package Manager <curry-lang.org/tools/cpm> (Version " ++
-    packageVersion ++ ", 06/01/2023)"
+    packageVersion ++ ", 30/01/2023)"
   bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()
@@ -244,7 +245,7 @@ checkCompleteDependencies (CheckOptions chkinfo) cfg aspecdir pkg = do
   -- filter load path w.r.t. the packages in the dependency list:
   let dloadpath = filter (isDepsDir pkgsdir deps) aloadpath
   logDebug $ unlines ("Source and dependency directories:" : dloadpath)
-  allmods <- mapM (\d -> liftIOEL (curryModulesInDir d) >>=
+  allmods <- mapM (\d -> liftIOEL (curryModulesInDirectory d) >>=
                            return . map (\m -> (m,d)))
                   (dloadpath ++ sysLibPath)
                >>= return . concat
@@ -903,31 +904,13 @@ combineCSVStatsOfPkg pkgid csvs outfile = do
     (header, map (uncurry (+)) (zip nums1 nums2), mods1 ++ " " ++ mods2)
 
 ------------------------------------------------------------------------------
---- Get the names of all Curry modules contained in a directory.
---- Modules in subdirectories are returned as hierarchical modules.
-curryModulesInDir :: String -> IO [String]
-curryModulesInDir dir = getModules "" dir
- where
-  getModules p d = do
-    exdir <- doesDirectoryExist d
-    entries <- if exdir then getDirectoryContents d else return []
-    let realentries = filter (\f -> length f >= 1 && head f /= '.') entries
-        newprogs    = filter isCurryFile realentries
-    subdirs <- mapM (\e -> do b <- doesDirectoryExist (d </> e)
-                              return $ if b then [e] else [])
-                    realentries
-               >>= return . concat
-    subdirentries <- mapM (\s -> getModules (p ++ s ++ ".") (d </> s)) subdirs
-    return $ map ((p ++) . stripCurrySuffix) newprogs ++ concat subdirentries
-
-  isCurryFile f = takeExtension f `elem` [".curry",".lcurry"]
-
 -- Returns the names of all Curry modules in the source dirs of an
 -- installed package.
 -- The first argument is the installation directory of the package.
 getSourceModulesOfPkg :: String -> Package -> ErrorLogger [String]
 getSourceModulesOfPkg specdir pkg =
-  mapM (liftIOEL . curryModulesInDir) (map (specdir </>) (sourceDirsOf pkg))
+  mapM (liftIOEL . curryModulesInDirectory)
+       (map (specdir </>) (sourceDirsOf pkg))
     >>= return . concat
 
 ------------------------------------------------------------------------------
