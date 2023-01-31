@@ -71,7 +71,7 @@ cpmBanner = unlines [bannerLine, bannerText, bannerLine]
  where
   bannerText =
     "Curry Package Manager <curry-lang.org/tools/cpm> (Version " ++
-    packageVersion ++ ", 30/01/2023)"
+    packageVersion ++ ", 31/01/2023)"
   bannerLine = take (length bannerText) (repeat '-')
 
 main :: IO ()

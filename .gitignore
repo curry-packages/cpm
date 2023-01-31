@@ -16,5 +16,7 @@ docs/*.pdf
 docs/*.toc
 docs/*.log
 docs/*.out
+docs/*.idx
+docs/*.ilg
 docs/*.synctex.gz
 cdoc/
