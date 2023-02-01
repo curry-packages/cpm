@@ -9,7 +9,7 @@ import Curry.Compiler.Distribution ( installDir )
 import Control.Monad       ( when, unless )
 import Data.List           ( (\\), delete, groupBy, intercalate, isPrefixOf
                            , isSuffixOf, nub, split, sortBy )
-import Data.Maybe          ( isJust )
+import Data.Maybe          ( isJust, isNothing )
 import Data.Time           ( calendarTimeToString, getLocalTime )
 import FlatCurry.Files     ( readFlatCurryInt )
 import FlatCurry.Goodies   ( progImports )
@@ -34,7 +34,8 @@ import System.Path         ( fileInPath, getFileInPath )
 import Text.CSV            ( readCSV, showCSV, writeCSVFile )
 
 import CPM.ErrorLogger
-import CPM.Executables     ( checkRequiredExecutables )
+import CPM.Executables     ( checkRequiredExecutables, getCurryCheck
+                           , getCurryDoc )
 import CPM.FileUtil ( cleanTempDir, getRealPath, ifFileExists, joinSearchPath
                     , safeReadFile, whenFileExists, writeFileIfNotExists
                     , inDirectory, recreateDirectory
@@ -288,7 +289,7 @@ checkCompleteDependencies (CheckOptions chkinfo) cfg aspecdir pkg = do
   isNotHierarchical mods m = all (\n -> not (('.':n) `isSuffixOf` m)) mods
 
   checkImports allowedimports mname = do
-    logInfo $ "Checking source module: " ++ mname
+    logInfo $ "Checking interface of " ++ mname
     imps <- liftIOEL (readFlatCurryInt mname) >>= return . progImports
     logDebug $ "Imports: " ++ unwords imps
     let addimports  = imps \\ map fst allowedimports
@@ -757,22 +758,11 @@ genDocForPrograms opts cfg docdir specDir pkg = do
  where
   apititle = "\"Package " ++ name pkg ++ "\""
 
-  getCurryDoc = do
-    mbf <- liftIOEL $ getFileInPath cdbin
-    maybe (do let cpmcurrydoc = binInstallDir cfg </> cdbin
-              cdex <- liftIOEL $ doesFileExist cpmcurrydoc
-              if cdex then return cpmcurrydoc
-                      else fail $ "Executable '" ++ cdbin ++ "' not found!"
-          )
-          return
-          mbf
-   where cdbin = "curry-doc"
-
   docModule currypath uses mod =
     runDocCmd currypath uses ["--noindexhtml", docdir, mod]
 
   runDocCmd currypath uses docparams = do
-    currydoc <- getCurryDoc
+    currydoc <- getCurryDoc cfg
     let useopts = if docGenImports opts
                     then []
                     else map (\ (d,u) -> "--use "++d++"@"++u) uses
@@ -805,7 +795,10 @@ testCmd opts cfg = do
   checkCompiler cfg pkg
   aspecDir  <- liftIOEL $ getRealPath specDir
   mainprogs <- getSourceModulesOfPkg aspecDir pkg
-  mbcc      <- if testCompile opts then return Nothing else getCurryCheck
+  mbcc      <- if testCompile opts then return Nothing
+                                   else getCurryCheck cfg
+  when (isNothing mbcc) $ logInfo $
+    "Executable 'curry-check' not found! No tests, just compiling..."
   let pkg'  = maybe (pkg { testSuite = Nothing }) (const pkg) mbcc
       tests = testSuites pkg' mainprogs
   stats <- if null tests
@@ -815,21 +808,6 @@ testCmd opts cfg = do
   unless (null (testFile opts)) $ liftIOEL $
     combineCSVStatsOfPkg (packageId pkg) (concat stats) (testFile opts)
  where
-  ccbin = "curry-check"
-
-  getCurryCheck = do
-    mbf <- liftIOEL $ getFileInPath ccbin
-    maybe (do let cpmcurrycheck = binInstallDir cfg </> ccbin
-              ccex <- liftIOEL $ doesFileExist cpmcurrycheck
-              if ccex
-                then return $ Just cpmcurrycheck
-                else do logInfo $ "Executable '" ++ ccbin ++
-                                  "' not found! No tests, just compiling..."
-                        return Nothing
-          )
-          (return . Just)
-          mbf
-
   execTest Nothing apkgdir (PackageTest dir mods _ _) = do
     logInfo $ "Compiling modules:" ++ concatMap (' ':) mods
     let cmpcmd = unwords $ [curryExec cfg] ++
