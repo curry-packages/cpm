@@ -995,6 +995,12 @@ which is not used, a warning is reported.
 The option \code{--info} shows some more information,
 e.g., the complete list of all Curry source modules.
 
+In addition to the interface checks, the static source code
+of all package modules are examined by CurryCheck in order to
+report unintended uses of some Curry functions,
+e.g., set functions or non-strict unification (\code{=:<=}).
+The latter checks can be suppressed by the option \code{--source}.
+
 \item[\fbox{\code{config}}]\pindex{config}
 Shows the current configuration of CPM
 (see also Section~\ref{sec:config}).

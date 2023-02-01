@@ -66,20 +66,26 @@ import CPM.Diff.API as APIDiff
 import qualified CPM.Diff.Behavior as BDiff
 import CPM.ConfigPackage        ( packagePath, packageVersion )
 
+-- Date of current version:
+cpmDate :: String
+cpmDate = "01/02/2023"
+
 -- Banner of this tool:
 cpmBanner :: String
 cpmBanner = unlines [bannerLine, bannerText, bannerLine]
  where
   bannerText =
     "Curry Package Manager <curry-lang.org/tools/cpm> (Version " ++
-    packageVersion ++ ", 31/01/2023)"
+    packageVersion ++ ", " ++ cpmDate ++ ")"
   bannerLine = take (length bannerText) (repeat '-')
+
 
 main :: IO ()
 main = do
   args <- getArgs
   if "-V" `elem` args || "--version" `elem` args
-    then putStrLn $ "Curry Package Manager, version " ++ packageVersion
+    then putStrLn $ "Curry Package Manager, version " ++ packageVersion ++
+                    " (" ++ cpmDate ++ ")"
     else do
       parseResult <- return $ parse (unwords args) (optionParser args) "cypm"
       case parseResult of
@@ -230,14 +236,26 @@ checkCmd chkopts cfg = do
   pkg     <- loadPackageSpec specDir
   checkCompiler cfg pkg
   aspecdir  <- liftIOEL $ getRealPath specDir
-  checkCompleteDependencies chkopts cfg aspecdir pkg
+  srcmods <- checkCompleteDependencies chkopts cfg aspecdir pkg
+  getCurryCheck cfg >>= maybe
+    (logInfo
+       "Executable 'curry-check' not found! No further source code checks...")
+    (\cc -> do
+       lvl <- getLogLevel
+       let cmd = unwords $
+                   [cc] ++ (if levelGte Debug lvl then [] else ["-q"]) ++
+                   ["--noprop", "--nospec", "--nodet", "--noproof"] ++
+                   srcmods
+       when (chkSource chkopts) $ do
+         logInfo "Checking all source modules of package..."
+         execWithPkgDir (ExecOptions cmd) cfg aspecdir)
 
 -- Check whether the source modules of the given package imports
 -- only modules from the direct dependencies or the base libraries.
 -- Additionally, warnings about unused packages are issued.
 checkCompleteDependencies :: CheckOptions -> Config -> String -> Package
-                          -> ErrorLogger ()
-checkCompleteDependencies (CheckOptions chkinfo) cfg aspecdir pkg = do
+                          -> ErrorLogger [String]
+checkCompleteDependencies chkopts cfg aspecdir pkg = do
   let deps    = map (\ (Dependency p _) -> p) (dependencies pkg)
       pkgsdir = aspecdir </> ".cpm" </> "packages"
   -- get the complete load path for this package:
@@ -254,7 +272,7 @@ checkCompleteDependencies (CheckOptions chkinfo) cfg aspecdir pkg = do
   -- compute the names of all source modules:
   allsrcmods <- getSourceModulesOfPkg aspecdir pkg
   let realsrcmods = filter (isNotHierarchical allsrcmods) allsrcmods
-  when chkinfo $ logInfo $
+  when (chkInfo chkopts) $ liftIOEL $ putStrLn $
     "Package source contains " ++ show (length realsrcmods) ++
     " Curry modules:\n" ++ unwords realsrcmods
   -- check all source modules:
@@ -269,6 +287,7 @@ checkCompleteDependencies (CheckOptions chkinfo) cfg aspecdir pkg = do
   mapM_ (\p -> logInfo $ "Warning: Package dependency '" ++ p ++
                          "' not used in source code.")
         unusedpkgs
+  return realsrcmods
  where
   isDepsDir pkgsdir depsnames dir =
     not (pkgsdir `isPrefixOf` dir) ||

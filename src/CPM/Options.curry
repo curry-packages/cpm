@@ -73,7 +73,8 @@ data DepsOptions = DepsOptions
   }
 
 data CheckOptions = CheckOptions
-  { chkInfo    :: Bool
+  { chkInfo    :: Bool  -- show more information
+  , chkSource  :: Bool  -- check source code with CurryCheck?
   }
 
 data CheckoutOptions = CheckoutOptions
@@ -187,7 +188,7 @@ depsOpts s = case optCommand s of
 checkOpts :: Options -> CheckOptions
 checkOpts s = case optCommand s of
   Check opts -> opts
-  _          -> CheckOptions False
+  _          -> CheckOptions False True
 
 checkoutOpts :: Options -> CheckoutOptions
 checkoutOpts s = case optCommand s of
@@ -425,12 +426,18 @@ optionParser allargs = optParser
              <> optional )
 
   checkArgs =
-     flag (\a -> Right $ a { optCommand = Check (checkOpts a)
-                                                { chkInfo = True } })
-          (  short "i"
-          <> long "info"
-          <> help "Show more information about the package"
-          <> optional )
+        flag (\a -> Right $ a { optCommand = Check (checkOpts a)
+                                                   { chkInfo = True } })
+             (  short "i"
+             <> long "info"
+             <> help "Show more information about the package"
+             <> optional )
+    <.> flag (\a -> Right $ a { optCommand = Check (checkOpts a)
+                                                   { chkSource = False } })
+             (  short "n"
+             <> long "nosource"
+             <> help "Do not check modules sources"
+             <> optional )
 
   checkoutArgs cmd =
         arg (\s a -> Right $ a { optCommand = cmd (checkoutOpts a)
