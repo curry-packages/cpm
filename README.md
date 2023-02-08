@@ -1,10 +1,19 @@
 # The Curry Package Manager
 
-This repository contains the Curry package manager (CPM). 
+This repository contains sources of the
+[Curry package manager CPM](http://www.curry-lang.org/tools/cpm).
+The Curry package manager is implemented in Curry
+It is already part of recent distributions of the Curry systems
+[PAKCS](https://www.informatik.uni-kiel.de/~pakcs/) (Version 1.15.0 or higher),
+[KiCS2](https://www-ps.informatik.uni-kiel.de/kics2/) (Version 0.6.0 or higher),
+and
+[Curry2Go](https://www-ps.informatik.uni-kiel.de/curry2go/).
 
 ## Quick Start
 
-To build the Curry package manager, you need to run `make` inside this 
+To build the Curry package manager without an already executable
+version of CPM as shipped with various Curry distributions (see above),
+you need to run `make` inside this 
 directory. The `Makefile` assumes that the `curry` executable and `git` are on
 your path. If the build was successful, a `cypm` binary will be placed in the 
 directory `~/.cpm/bin` (which is also the directory where CPM installs
