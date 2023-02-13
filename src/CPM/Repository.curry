@@ -178,7 +178,7 @@ tryReadRepositoryFrom path = do
   verDirs   <- liftIOEL $ mapM checkAndGetVisibleDirectoryContents pkgPaths
   verPaths  <- return $ concatMap (\ (d, p) -> map (d </>) p)
                      $ zip pkgPaths verDirs
-  specPaths <- return $ map (</> "package.json") verPaths
+  specPaths <- return $ map (</> packageSpecFile) verPaths
   logInfo "Reading repository index..."
   specs     <- liftIOEL $ mapM readPackageFile specPaths
   when (null (lefts specs)) $ logDebug "Finished reading repository"

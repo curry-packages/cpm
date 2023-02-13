@@ -127,8 +127,8 @@ addPackageToRepository cfg pkgdir force cpdir = do
     logInfo $ "Create directory: " ++ pkgRepositoryDir
     liftIOEL $ do
       createDirectoryIfMissing True pkgRepositoryDir
-      copyFile (pkgdir </> "package.json")
-               (pkgRepositoryDir </> "package.json")
+      copyFile (pkgdir </> packageSpecFile)
+               (pkgRepositoryDir </> packageSpecFile)
     when cpdir $ do
       liftIOEL $ copyDirectory pkgdir pkgInstallDir
       inDirectoryEL pkgInstallDir $ cleanPackage cfg Debug

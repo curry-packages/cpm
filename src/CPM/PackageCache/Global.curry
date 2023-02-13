@@ -269,7 +269,7 @@ readInstalledPackagesFromDir repo path = do
       Just p  -> return (Right p)
 
   readPackageSpecFromFile pkgdir = do
-    let f = path </> pkgdir </> "package.json"
+    let f = path </> pkgdir </> packageSpecFile
     logDebug $ "Reading package spec from '" ++ f ++ "'..."
     spec <- readPackageSpecIO $ readCompleteFile f
     return $ case spec of

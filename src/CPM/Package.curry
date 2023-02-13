@@ -34,11 +34,8 @@ module CPM.Package
   , showDependency
   , showCompilerDependency
   , showVersionConstraints
-  , loadPackageSpec
-  , writePackageSpec
-  , Conjunction
-  , Disjunction
-  , packageSpecToJSON
+  , Conjunction, Disjunction
+  , packageSpecFile, loadPackageSpec, writePackageSpec, packageSpecToJSON
   ) where
 
 import Data.Char
@@ -56,6 +53,9 @@ import Prelude hiding   ( (<$>), (<*>), (<*), (*>), (<|>), some, empty )
 import DetParse
 
 import CPM.ErrorLogger
+
+------------------------------------------------------------------------------
+-- Data types to represent package specifications.
 
 --- Data type representing a version number.
 --- It is a tuple where the components are the major, minor, patch numbers
@@ -232,6 +232,10 @@ execOfPackage p =
   unwords (map (\ (PackageExecutable e _ _) -> e) (executableSpec p))
 
 ------------------------------------------------------------------------------
+--- The name of the package specification file in JSON format.
+packageSpecFile :: String
+packageSpecFile = "package.json"
+
 --- Translates a package to a JSON object.
 packageSpecToJSON :: Package -> JValue
 packageSpecToJSON pkg = JObject $
@@ -337,7 +341,7 @@ writePackageSpec pkg file = writeFile file $ ppJSON $ packageSpecToJSON pkg
 --- @param the directory containing the `package.json` file
 loadPackageSpec :: String -> ErrorLogger Package
 loadPackageSpec dir = do
-  let packageFile = dir </> "package.json"
+  let packageFile = dir </> packageSpecFile
   exfile <- liftIOEL $ doesFileExist packageFile
   if exfile
     then do logDebug $ "Reading package specification '" ++ packageFile ++ "'..."

@@ -282,7 +282,7 @@ renderPackageInfo allinfos plain installed pkg = pPrint doc
 ------------------------------------------------------------------------------
 --- Tries to find a package specification in the given directory or one of its
 --- ancestors. If there is no package specifiction in these directories,
---- the home package specification (i.e., `~/.cpm/home-package/package.json`
+--- the home package specification (i.e., `~/.cpm/...-homepackage/package.json`
 --- is returned (and created if it does not exist).
 --- In order to avoid infinite loops due to cyclic file structures,
 --- the search is limited to the number of directories occurring in the
@@ -295,7 +295,7 @@ getLocalPackageSpec cfg dir = do
  where
   returnHomePackage = do
     let homepkgdir  = homePackageDir cfg
-        homepkgspec = homepkgdir </> "package.json"
+        homepkgspec = homepkgdir </> packageSpecFile
     specexists <- liftIOEL $ doesFileExist homepkgspec
     unless (specexists || null homepkgdir) $ do
       liftIOEL $ createDirectoryIfMissing True homepkgdir
@@ -312,7 +312,7 @@ getLocalPackageSpec cfg dir = do
     return homepkgdir
 
   searchLocalSpec m sdir = do
-    existsLocal <- liftIOEL $ doesFileExist $ sdir </> "package.json"
+    existsLocal <- liftIOEL $ doesFileExist $ sdir </> packageSpecFile
     if existsLocal
       then return (Just sdir)
       else do

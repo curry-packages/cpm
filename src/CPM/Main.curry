@@ -68,7 +68,7 @@ import CPM.ConfigPackage        ( packagePath, packageVersion )
 
 -- Date of current version:
 cpmDate :: String
-cpmDate = "01/02/2023"
+cpmDate = "13/02/2023"
 
 -- Banner of this tool:
 cpmBanner :: String
@@ -626,7 +626,7 @@ addDependencyCmd pkgname force config = do
                            (dependencies pkgSpec)
         newpkg    = pkgSpec { dependencies = newdeps }
     if force || not depexists
-      then do liftIOEL $ writePackageSpec newpkg (pkgdir </> "package.json")
+      then do liftIOEL $ writePackageSpec newpkg (pkgdir </> packageSpecFile)
               logInfo $ "Dependency '" ++ pkgname ++ " >= " ++
                             showVersion vers ++
                             "' added to package '" ++ pkgdir ++ "'"
@@ -1017,12 +1017,11 @@ computePackageLoadPath cfg pkgdir = do
 initCmd :: ErrorLogger ()
 initCmd = do
   pname <- liftIOEL $ (getCurrentDirectory >>= return . takeFileName)
-  let pkgSpecFile = "package.json"
-  pkgexists <- liftIOEL $ doesFileExist pkgSpecFile
+  pkgexists <- liftIOEL $ doesFileExist packageSpecFile
   if pkgexists
     then do
       logError $
-        "There is already a package specification file '" ++ pkgSpecFile ++
+        "There is already a package specification file '" ++ packageSpecFile ++
         "'.\nI cannot initialize a new package!"
       liftIOEL $ exitWith 1
     else liftIOEL $ initPackage pname $
@@ -1043,7 +1042,7 @@ initPackage pname outheader = do
                              , license         = Just "BSD-3-Clause"
                              , licenseFile     = Just "LICENSE"
                              }
-  writePackageSpec pkgSpec "package.json"
+  writePackageSpec pkgSpec packageSpecFile
   let licenseFile  = "LICENSE"
       licenseTFile = packagePath </> "templates" </> licenseFile
   whenFileExists licenseTFile $
@@ -1062,7 +1061,7 @@ initPackage pname outheader = do
   gitignore = unlines ["*~", ".cpm", ".curry"]
 
   todo =
-    [ "edit the file 'package.json':"
+    [ "edit the file '" ++ packageSpecFile ++ "':"
     , "- enter correct values for the fields 'author', 'synopsis', 'category'"
     , "- add dependencies in the field 'dependencies'"
     , "- add further fields (e.g., 'description')"
@@ -1130,7 +1129,7 @@ uploadCmd opts cfg = do
       logInfo "Uploading package to global repository..."
       -- remove package possibly existing in global package cache:
       liftIOEL $ removeDirectoryComplete (installedPackageDir cfg pkg)
-      uploadPackageSpec (instdir </> pkgid </> "package.json")
+      uploadPackageSpec (instdir </> pkgid </> packageSpecFile)
       addPackageToRepo pkgrepodir (instdir </> pkgid) pkg
       liftIOEL $ cleanTempDir
       logInfo $ "Package '" ++ pkgid ++ "' uploaded"
@@ -1141,7 +1140,7 @@ uploadCmd opts cfg = do
     logInfo $ "Create directory: " ++ pkgrepodir
     liftIOEL $ do
       createDirectoryIfMissing True pkgrepodir
-      copyFile (pkgdir </> "package.json") (pkgrepodir </> "package.json")
+      copyFile (pkgdir </> packageSpecFile) (pkgrepodir </> packageSpecFile)
     if exrepodir then updatePackageInRepositoryCache cfg pkg
                  else addPackageToRepositoryCache    cfg pkg
 
@@ -1256,7 +1255,7 @@ loadCurryPathFromCache cfg pkgdir = do
   if excache
     then do
       cftime <- liftIOEL $ getModificationTime cachefile
-      pftime <- liftIOEL $ getModificationTime (pkgdir </> "package.json")
+      pftime <- liftIOEL $ getModificationTime (pkgdir </> packageSpecFile)
       if cftime > pftime
         then do cnt <- liftIOEL $ safeReadFile cachefile
                 let ls = either (const []) lines cnt
