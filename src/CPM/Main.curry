@@ -68,7 +68,7 @@ import CPM.ConfigPackage        ( packagePath, packageVersion )
 
 -- Date of current version:
 cpmDate :: String
-cpmDate = "13/02/2023"
+cpmDate = "14/02/2023"
 
 -- Banner of this tool:
 cpmBanner :: String

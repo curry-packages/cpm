@@ -9,17 +9,12 @@ import Prelude hiding   ( (<|>) )
 import Data.Char        ( toLower )
 import Data.List        ( splitOn )
 
+import Language.Curry.Resources ( curryPackagesDocURL )
 import OptParse
 
 import CPM.Helpers      ( stripEnclosing )
 import CPM.Package      ( Version, readVersion )
 import CPM.ErrorLogger
-
-------------------------------------------------------------------------------
--- The default URL prefix where all repository packages are documented.
--- Can be overwritten with a doc command option.
-defaultBaseDocURL :: String
-defaultBaseDocURL = "https://www-ps.informatik.uni-kiel.de/~cpm/DOC"
 
 ------------------------------------------------------------------------------
 
@@ -258,7 +253,8 @@ execOpts s = case optCommand s of
 docOpts :: Options -> DocOptions
 docOpts s = case optCommand s of
   Doc opts -> opts
-  _        -> DocOptions Nothing Nothing True True True False defaultBaseDocURL
+  _        -> DocOptions Nothing Nothing True True True False
+                         curryPackagesDocURL
 
 testOpts :: Options -> TestOptions
 testOpts s = case optCommand s of
@@ -631,7 +627,7 @@ optionParser allargs = optParser
           (  long "url"
           <> short "u"
           <> help ("The URL prefix where all repository packages are " ++
-                   "documented. Default: " ++ defaultBaseDocURL)
+                   "documented. Default: " ++ curryPackagesDocURL)
           <> optional )
 
   testArgs =

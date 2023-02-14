@@ -23,8 +23,9 @@ import Data.List         ( split, splitOn, intercalate, intersperse )
 import Control.Monad     ( when )
 import System.IOExts     ( evalCmd )
 
-import Data.PropertyFile ( readPropertyFile )
-import System.Path       ( getFileInPath )
+import Data.PropertyFile        ( readPropertyFile )
+import Language.Curry.Resources ( curryPackagesURL )
+import System.Path              ( getFileInPath )
 
 import CPM.ErrorLogger
 import CPM.FileUtil ( ifFileExists )
@@ -32,8 +33,7 @@ import CPM.Helpers  ( stripSpaces )
 
 --- The default URL prefix to the directory containing tar files of all packages
 packageTarFilesDefaultURLs :: [String]
-packageTarFilesDefaultURLs =
-  ["https://www-ps.informatik.uni-kiel.de/~cpm/PACKAGES"]
+packageTarFilesDefaultURLs = [curryPackagesURL ++ "PACKAGES"]
 
 --- The default location of the central package index.
 packageIndexDefaultURLs :: [String]
