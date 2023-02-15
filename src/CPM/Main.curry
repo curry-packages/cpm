@@ -52,7 +52,7 @@ import CPM.PackageCache.Global ( acquireAndInstallPackage
 import CPM.Package
 import CPM.Package.Helpers ( cleanPackage, getLocalPackageSpec
                            , renderPackageInfo, installPackageSourceTo )
-import CPM.Resolution ( isCompatibleToCompiler, showResult
+import CPM.Resolution ( isCompatibleToCompiler, showResult, showShortResult
                       , dependenciesAsGraph )
 import CPM.Repository ( Repository, findVersion, listPackages
                       , findAllVersions, findLatestVersion
@@ -68,7 +68,7 @@ import CPM.ConfigPackage        ( packagePath, packageVersion )
 
 -- Date of current version:
 cpmDate :: String
-cpmDate = "14/02/2023"
+cpmDate = "15/02/2023"
 
 -- Banner of this tool:
 cpmBanner :: String
@@ -190,8 +190,8 @@ depsCmd opts cfg = do
         maybe printFailure
               (liftIOEL . viewDotGraph)
               (dependenciesAsGraph result)
-      unless (depsGraph opts || depsView opts) $
-        putStrLnELM (showResult result)
+      unless (depsGraph opts || depsView opts) $ putStrLnELM $
+        (if depsFull opts then showResult else showShortResult) result
  where
   printFailure = putStrLnELM "Dependency resolution failed."
 

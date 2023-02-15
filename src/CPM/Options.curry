@@ -63,6 +63,7 @@ data ConfigOptions = ConfigOptions
 
 data DepsOptions = DepsOptions
   { depsPath  :: Bool  -- show CURRYPATH only?
+  , depsFull  :: Bool  -- show full tree in textual representation?
   , depsGraph :: Bool  -- show dot graph instead of tree?
   , depsView  :: Bool  -- view dot graph with `dotviewcommand` of rc file?
   }
@@ -178,7 +179,7 @@ configOpts s = case optCommand s of
 depsOpts :: Options -> DepsOptions
 depsOpts s = case optCommand s of
   Deps opts -> opts
-  _         -> DepsOptions False False False
+  _         -> DepsOptions False False False False
 
 checkOpts :: Options -> CheckOptions
 checkOpts s = case optCommand s of
@@ -340,7 +341,7 @@ optionParser allargs = optParser
            (help "Load package spec and start Curry with correct dependencies.")
                  (\a -> Right $ a { optCommand = Compiler (execOpts a) })
                  curryArgs
-        <|> command "deps" (help "Calculate dependencies")
+        <|> command "deps" (help "Calculate and show dependencies")
                            (\a -> Right $ a { optCommand = Deps (depsOpts a) })
                            depsArgs
         <|> command "diff"
@@ -409,13 +410,19 @@ optionParser allargs = optParser
              <> help "Show value of CURRYPATH only"
              <> optional )
     <.> flag (\a -> Right $ a { optCommand = Deps (depsOpts a)
-                                              { depsGraph = True } })
+                                                  { depsFull = True } })
+             (  short "f"
+             <> long "full"
+             <> help "Show full dependency tree (with repeated packages)"
+             <> optional )
+    <.> flag (\a -> Right $ a { optCommand = Deps (depsOpts a)
+                                                  { depsGraph = True } })
              (  short "g"
              <> long "graph"
              <> help "Show dependencies as dot graph (in Graphviz format)"
              <> optional )
     <.> flag (\a -> Right $ a { optCommand = Deps (depsOpts a)
-                                              { depsView = True } })
+                                                  { depsView = True } })
              (  short "v"
              <> long "viewgraph"
              <> help "View dependency graph (with 'dotviewcommand')"

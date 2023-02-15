@@ -4,10 +4,10 @@
 
 module CPM.Resolution
   ( ResolutionResult
-  , showResult, dependenciesAsGraph
+  , showResult, showShortResult, dependenciesAsGraph
   , resolutionSuccess
   , resolvedPackages
-  , showDependencies
+  , showDependencies, showShortDependencies
   , showConflict
   , allTransitiveDependencies
   , transitiveDependencies
@@ -35,9 +35,10 @@ import CPM.Package
 resolveDependenciesFromLookupSet :: Config -> Package -> LookupSet
                                  -> ErrorLogger ResolutionResult
 resolveDependenciesFromLookupSet cfg pkg lookupSet =
-  let result = resolve cfg pkg lookupSet in if resolutionSuccess result
-    then return result
-    else fail $ showResult result
+  let result = resolve cfg pkg lookupSet
+  in if resolutionSuccess result
+       then return result
+       else fail $ showResult result
 
 --- Resolves the dependencies of a package using packages from a lookup set.
 --- The base package of the current compiler is removed from the result set.
@@ -74,6 +75,27 @@ showDependencies :: ResolutionResult -> String
 showDependencies (ResolutionSuccess pkg deps) =
   showTree . mapTree (text . packageId) $ dependencyTree deps pkg
 showDependencies (ResolutionFailure _) = "Resolution failed."
+
+--- Renders a dependency tree from a successful resolution in a short form
+--- where already shown packages are not fully shown again.
+showShortDependencies :: ResolutionResult -> String
+showShortDependencies (ResolutionSuccess pkg deps) =
+  showTree . mapTree text . shortenPackageTree $ dependencyTree deps pkg
+showShortDependencies (ResolutionFailure _) = "Resolution failed."
+
+-- Reduces a package tree so that duplicated nodes are removed.
+-- The resulting tree contains the `packageId`s of the packages.
+shortenPackageTree :: Tree Package -> Tree String
+shortenPackageTree = fst . shortenPT []
+ where
+  shortenPT pids (Node p ps) = let pid = packageId p in
+    if pid `elem` pids then (Node (pid ++ "...") [], pids)
+                       else let (pts, pids') = shortenPTs (pid:pids) ps
+                            in (Node pid pts, pids')
+  shortenPTs pids []     = ([],pids)
+  shortenPTs pids (p:ps) = let (pt, pids1) = shortenPT pids p
+                               (pts,pids2) = shortenPTs pids1 ps
+                           in (pt:pts, pids2)
 
 --- Renders a conflict resolution into a textual representation.
 showConflict :: ResolutionResult -> String
@@ -114,10 +136,12 @@ showLabelTree cfg =
   pkgId = text . packageId . actPackage . stActivation
   actId = text . packageId . actPackage
   labeler (s, Nothing) = pkgId s
-  labeler (s, Just (CompilerConflict _)) = red $ text "C" <+> pkgId s
-  labeler (s, Just (PrimaryConflict _)) = red $ text "P" <+> pkgId s
-  labeler (s, Just (SecondaryConflict a1 a2)) = red $ text "S" <+> pkgId s <+> actId a1 <+> actId a2
-  cutBelowConflict (Node (a, Nothing) cs) = Node (a, Nothing) $ map cutBelowConflict cs
+  labeler (s, Just (CompilerConflict _))      = red $ text "C" <+> pkgId s
+  labeler (s, Just (PrimaryConflict _))       = red $ text "P" <+> pkgId s
+  labeler (s, Just (SecondaryConflict a1 a2)) = red $
+    text "S" <+> pkgId s <+> actId a1 <+> actId a2
+  cutBelowConflict (Node (a, Nothing) cs) =
+    Node (a, Nothing) $ map cutBelowConflict cs
   cutBelowConflict (Node (a, Just  c)  _) = Node (a, Just  c) []
 
 resultConflict :: ResolutionResult -> Maybe Conflict
@@ -126,12 +150,20 @@ resultConflict (ResolutionFailure t) = case findRelevantConflict t of
   Nothing -> Nothing
   Just cs -> clConflict cs
 
---- Renders a resolution result into a textual representation for the user. In
---- case of success, the dependency tree is shown. In case of failure,
+--- Renders a resolution result into a textual representation for the user.
+--- In case of success, the dependency tree is shown. In case of failure,
 --- information on the cause of the conflict is shown.
 showResult :: ResolutionResult -> String
 showResult r@(ResolutionSuccess _ _) = showDependencies r
 showResult r@(ResolutionFailure _)   = showConflict r
+
+--- Renders a resolution result into a short textual representation
+--- (where already shown packages are not shown again) for the user.
+--- In case of success, the shortened dependency tree is shown.
+--- In case of failure, information on the cause of the conflict is shown.
+showShortResult :: ResolutionResult -> String
+showShortResult r@(ResolutionSuccess _ _) = showShortDependencies r
+showShortResult r@(ResolutionFailure _)   = showConflict r
 
 --- Result of a resolution run. In case of success, it contains the original
 --- package as well as a list of resolved packages. If the resolution failed, it

@@ -116,7 +116,7 @@ upgradeSinglePackage cfg dir pkgName = do
   result <- resolveDependenciesFromLookupSet cfg (setBaseDependency cfg pkgspec)
                         (LS.setLocallyIgnored originalLS transitiveDeps)
   GC.installMissingDependencies cfg gc (resolvedPackages result)
-  logInfo (showDependencies result)
+  logInfo (showShortDependencies result)
   copyDependencies cfg pkgspec (resolvedPackages result) dir
   return ()
 
@@ -135,7 +135,7 @@ installLocalDependenciesWithRepo cfg repo dir pkgSpec = do
   gc <- GC.readGlobalCache cfg repo
   result <- resolveDependenciesForPackageCopy cfg pkgSpec repo gc dir
   GC.installMissingDependencies cfg gc (resolvedPackages result)
-  logInfo (showDependencies result)
+  logInfo (showShortDependencies result)
   cpkgs <- copyDependencies cfg pkgSpec (resolvedPackages result) dir
   return (pkgSpec, cpkgs)
 
