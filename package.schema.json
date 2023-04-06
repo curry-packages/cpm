@@ -114,7 +114,7 @@
             "items": {
                 "type": "string",
                 "description": "A package category.",
-                "$comment": "See https://www-ps.informatik.uni-kiel.de/~cpm/indexc.html for a list of categories.",
+                "$comment": "See https://cpm.curry-lang.org/indexc.html for a list of categories.",
                 "examples": [
                     "Analysis",
                     "Compiler",

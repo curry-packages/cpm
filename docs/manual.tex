@@ -869,7 +869,7 @@ which is used by the \code{update} command to download the
 index of all repositories.
 Default value:
 \begin{lstlisting}
-https://www-ps.informatik.uni-kiel.de/~cpm/PACKAGES/INDEX.tar.gz
+https://cpm.curry-lang.org/PACKAGES/INDEX.tar.gz
 \end{lstlisting}
 One can also provide more than one URL which are tried in sequential order
 until one index could be downloaded.
@@ -883,12 +883,12 @@ the source of the package is downloaded from this location
 as file \code{$p$-$v$.tar.gz}.
 Default value:
 \begin{lstlisting}
-https://www-ps.informatik.uni-kiel.de/~cpm/PACKAGES/
+https://cpm.curry-lang.org/PACKAGES/
 \end{lstlisting}
-For instance, the package \code{cpm} with version \code{2.2.0}
+For instance, the package \code{cpm} with version \code{3.1.0}
 is downloaded from
 \begin{lstlisting}
-https://www-ps.informatik.uni-kiel.de/~cpm/PACKAGES/cpm-2.2.0.tar.gz
+https://cpm.curry-lang.org/PACKAGES/cpm-3.1.0.tar.gz
 \end{lstlisting}
 One can also provide more than one URL prefix
 which are tried in sequential order until the package could be downloaded
@@ -1209,7 +1209,7 @@ list of module names to be documented.
 In the default case, modules contained in packages used by the current package
 are not documented. Instead, it is assumed that these packages are
 already documented\footnote{See
-\url{http://www.informatik.uni-kiel.de/~curry/cpm/}
+\url{https://cpm.curry-lang.org/DOC/}
 for the documentation of all packages. This default location
 can be changed with the option \code{--url}.}
 so that links to these package documentations are generated.
@@ -1316,7 +1316,19 @@ by \ccode{cypm update}).
 For security reasons (this will be weakened in the future),
 the package must have a source specification
 (see Section~\ref{sec:publishing-a-package})
-of the following form:
+of one of the following forms:
+%
+\begin{lstlisting}
+{
+  ...,
+  "source": {
+    "git": "https://github.com/curry-packages/$\ldots$.git",
+    "tag": "$\$$version"
+  }
+}
+\end{lstlisting}
+%
+or
 %
 \begin{lstlisting}
 {
@@ -1329,7 +1341,7 @@ of the following form:
 \end{lstlisting}
 %
 Thus, the source is managed as a Git repository which is stored
-at the server \code{git.ps.informatik.uni-kiel.de}
+at the server \code{github.com} or \code{git.ps.informatik.uni-kiel.de}
 in group \code{curry-packages} and has an automatic version tag.
 Unless the option \code{--nottagging} is given,
 the version tag wil be automatically set in the local repository
