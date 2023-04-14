@@ -68,7 +68,7 @@ import CPM.ConfigPackage        ( packagePath, packageVersion )
 
 -- Date of current version:
 cpmDate :: String
-cpmDate = "15/02/2023"
+cpmDate = "14/04/2023"
 
 -- Banner of this tool:
 cpmBanner :: String
@@ -238,8 +238,7 @@ checkCmd chkopts cfg = do
   aspecdir  <- liftIOEL $ getRealPath specDir
   srcmods <- checkCompleteDependencies chkopts cfg aspecdir pkg
   getCurryCheck cfg >>= maybe
-    (logInfo
-       "Executable 'curry-check' not found! No further source code checks...")
+    (logInfo "No further source code checks...")
     (\cc -> do
        lvl <- getLogLevel
        let cmd = unwords $
@@ -816,8 +815,7 @@ testCmd opts cfg = do
   mainprogs <- getSourceModulesOfPkg aspecDir pkg
   mbcc      <- if testCompile opts then return Nothing
                                    else getCurryCheck cfg
-  when (isNothing mbcc) $ logInfo $
-    "Executable 'curry-check' not found! No tests, just compiling..."
+  when (isNothing mbcc) $ logInfo "No tests, just compiling..."
   let pkg'  = maybe (pkg { testSuite = Nothing }) (const pkg) mbcc
       tests = testSuites pkg' mainprogs
   stats <- if null tests

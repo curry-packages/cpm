@@ -63,13 +63,15 @@ getCurlCmd = do
 ------------------------------------------------------------------------------
 --- Returns the `curry-check` command, either from the current path
 --- or from CPM's bin directory, or `Nothing` if it does not exist.
+--- If it does not exist, report this also as an info.
 getCurryCheck :: Config -> ErrorLogger (Maybe String)
-getCurryCheck cfg = liftIOEL $ do
-  mbf <- getFileInPath ccbin
+getCurryCheck cfg = do
+  mbf <- liftIOEL $ getFileInPath ccbin
   maybe (do let cpmcurrycheck = binInstallDir cfg </> ccbin
-            ccex <- doesFileExist cpmcurrycheck
-            return $ if ccex then Just cpmcurrycheck
-                             else Nothing
+            ccex <- liftIOEL $ doesFileExist cpmcurrycheck
+            if ccex then return $ Just cpmcurrycheck
+                    else do logInfo "Executable 'curry-check' not found!"
+                            return Nothing
         )
         (return . Just)
         mbf
