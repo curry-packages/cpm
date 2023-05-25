@@ -10,6 +10,9 @@ TOOL = $(HOME)/.cpm/bin/cypm
 # The compiler name (e.g., pakcs or kics2):
 CURRYCOMPILER := $(shell $(CURRY) --compiler-name)
 
+# Executable of CurryPP (for generating CPM.Repository.Select):
+CURRYPP := $(shell which currypp)
+
 # Executable of CurryCheck (for testing):
 CURRYCHECK := $(shell which curry-check)
 
@@ -18,11 +21,11 @@ CURRYCHECK := $(shell which curry-check)
 ifeq ($(CURRYCOMPILER),kics2)
 export REPL_OPTS = --noreadline :set -time :set rts -T
 else
-export REPL_OPTS = --nocypm --noreadline :set -time
+export REPL_OPTS = --noreadline :set -time
 endif
 
 # Source modules of CPM:
-DEPS = src/CPM/*.curry src/CPM/*/*.curry
+DEPS = src/CPM/*.curry src/CPM/*/*.curry src/CPM/Repository/Select.curry
 
 .PHONY: build
 build: fetchdeps src/CPM/ConfigPackage.curry $(DEPS)
@@ -33,13 +36,14 @@ build: fetchdeps src/CPM/ConfigPackage.curry $(DEPS)
 		export CURRYPATH="$$CURRYPATH:`pwd`/vendor/$$i/src"; 	\
 	done; 								\
 	echo "Set CURRYPATH to $$CURRYPATH"; 				\
-	cd src && $(CURRY) $(REPL_OPTS) :l CPM.Main :save :quit
+	cd src && $(CURRY) --nocypm $(REPL_OPTS) :l CPM.Main :save :quit
 	mkdir -p $(dir $(TOOL))
 	rm -f $(TOOL)
 	cd $(dir $(TOOL)) && ln -s $(CURDIR)/src/CPM.Main $(notdir $(TOOL))
 	@echo Tool installed into: $(TOOL)
 	@echo Please add \"$(dir $(TOOL))\" to your path!
 
+# Create the ConfigPackage (which is usually created by `cypm install`)
 src/CPM/ConfigPackage.curry: Makefile
 	@echo "module CPM.ConfigPackage where" > $@
 	@echo "packagePath :: String" >> $@
@@ -47,6 +51,16 @@ src/CPM/ConfigPackage.curry: Makefile
 	@echo "packageVersion :: String" >> $@
 	@echo "packageVersion = \"3.1.0\"" >> $@
 	@echo "Curry configuration module '$@' written."
+
+# Generate pure Curry module CPM.Repository.Select with CurryPP:
+src/CPM/Repository/Select.curry: src/CPM/Repository/Select.curry.pp
+ifeq ($(CURRYPP),)
+	touch $@ # do not make since 'currypp' is missing
+else
+	rm -f $@ && cd src/CPM/Repository && ln -s Select.curry.pp Select.curry
+	cd src && $(CURRY) $(REPL_OPTS) :load CPM.Repository.Select :quit
+	rm $@ && mv src/CPM/Repository/Select.curry.CURRYPP $@
+endif
 
 .PHONY: buildperf
 buildperf: fetchdeps

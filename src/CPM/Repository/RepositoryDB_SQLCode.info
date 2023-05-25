@@ -1,4 +1,4 @@
-SQLParserInfoType.PInfo "REPOSITORY_CACHE.db"
+PInfo "REPOSITORY_CACHE.db"
  "CPM.Repository.RepositoryDB"
  []
  [("indexEntryKey",False)
