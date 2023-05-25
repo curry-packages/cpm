@@ -62,10 +62,11 @@ data ConfigOptions = ConfigOptions
   }
 
 data DepsOptions = DepsOptions
-  { depsPath  :: Bool  -- show CURRYPATH only?
-  , depsFull  :: Bool  -- show full tree in textual representation?
-  , depsGraph :: Bool  -- show dot graph instead of tree?
-  , depsView  :: Bool  -- view dot graph with `dotviewcommand` of rc file?
+  { depsPath   :: Bool  -- show CURRYPATH only?
+  , depsVSCode :: Bool  -- set the full import path in the VS Code settings file
+  , depsFull   :: Bool  -- show full tree in textual representation?
+  , depsGraph  :: Bool  -- show dot graph instead of tree?
+  , depsView   :: Bool  -- view dot graph with `dotviewcommand` of rc file?
   }
 
 data CheckOptions = CheckOptions
@@ -179,7 +180,7 @@ configOpts s = case optCommand s of
 depsOpts :: Options -> DepsOptions
 depsOpts s = case optCommand s of
   Deps opts -> opts
-  _         -> DepsOptions False False False False
+  _         -> DepsOptions False False False False False
 
 checkOpts :: Options -> CheckOptions
 checkOpts s = case optCommand s of
@@ -408,6 +409,12 @@ optionParser allargs = optParser
              (  short "p"
              <> long "path"
              <> help "Show value of CURRYPATH only"
+             <> optional )
+    <.> flag (\a -> Right $ a { optCommand = Deps (depsOpts a)
+                                                  { depsVSCode = True } })
+             (  short "c"
+             <> long "code"
+             <> help "Set full path in file '.vscode/settings.json'"
              <> optional )
     <.> flag (\a -> Right $ a { optCommand = Deps (depsOpts a)
                                                   { depsFull = True } })

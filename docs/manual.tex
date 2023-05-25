@@ -1148,8 +1148,23 @@ Does a dependency resolution run for the current
 package and prints the results. The result is either a list of all package
 versions chosen or a description of the conflict encountered during dependency
 resolution.
-Using the option \code{--path}, only the value of \code{CURRYPATH} required
-to load modules of this package is shown.
+In order to reduce the amount of information shown,
+only the first occurrence of a package is shown.
+If the option \code{--full} is given, then also repeated package
+dependencies are shown.
+
+If the option \code{--path} is set, only the value of \code{CURRYPATH}
+required to load modules of this package is shown.
+
+If the option \code{--code} is set, the full path containing
+all source directories is stored as property
+\code{curry.languageServer.importPaths}
+in the file \ccode{.vscode/settings.json}
+(which is updated if it already exists)
+so that all imported modules of the current package can be found
+by the Curry Language Server%
+\footnote{\url{https://github.com/fwcd/curry-language-server}}
+when it is used in the VS Code source-code editor.
 
 If the option \code{--graph} is provided, then the dependency
 graph is translated into a graph in
