@@ -72,7 +72,7 @@ import CPM.ConfigPackage        ( packagePath, packageVersion )
 
 -- Date of current version:
 cpmDate :: String
-cpmDate = "25/05/2023"
+cpmDate = "26/05/2023"
 
 -- Banner of this tool:
 cpmBanner :: String
@@ -184,9 +184,11 @@ depsCmd opts cfg = do
   checkCompiler cfg pkg
   when (depsVSCode opts) $ -- set full path in VSCode settings?
     setVSCodeImportPath cfg specDir
+  when (depsLangServer opts) $ -- set full path for language server?
+    setLanguageServerImportPath cfg specDir
   if depsPath opts -- show CURRYPATH only?
     then getCurryLoadPath cfg specDir >>= putStrLnELM
-    else unless (depsVSCode opts) $ showDeps specDir
+    else unless (depsVSCode opts || depsLangServer opts) $ showDeps specDir
  where
   showDeps specDir = do
     let printFailure = putStrLnELM "Dependency resolution failed."
@@ -1290,6 +1292,24 @@ updateJObjectKey key val jobject = case jobject of
                            (\i -> JObject (replace (key,val) i keyvals))
                            (findIndex ((==key) . fst) keyvals)
   _               -> JObject [(key,val)]
+
+--- Writes the full load path in JSON format (i.e., an array of strings)
+--- into the file `.curry/language-server/paths.json` so that
+--- the Curry Language Server has access to all imported modules.
+--- The directory of the `base` package is removed from the path
+--- and replaced by the libraries of the current Curry system.
+setLanguageServerImportPath :: Config -> String -> ErrorLogger ()
+setLanguageServerImportPath cfg pkgdir = do
+  mbp <- loadCurryPathFromCache cfg pkgdir
+  loadpath <- maybe (computePackageLoadPath cfg pkgdir) return mbp
+  let jdirs = JArray (map JString (splitSearchPath loadpath ++ sysLibPath))
+  liftIOEL $ do
+    createDirectoryIfMissing True lspDir
+    writeFile lspFile (ppJSON jdirs)
+  logInfo $ "File '" ++ lspFile ++ "' written."
+ where
+  lspDir  = ".curry" </> "language-server"
+  lspFile = lspDir </> "paths.json"
 
 --- Restores package CURRYPATH from local cache file in the given package dir,
 --- if it is still up-to-date, i.e., it exists and is newer than the package
