@@ -105,12 +105,13 @@ showConfiguration cfg = unlines
 showCompilerVersion :: Config -> String
 showCompilerVersion cfg =
   let (cname,cmaj,cmin,crev) = compilerVersion cfg
-  in cname ++ ' ' : showVersionNumber (cmaj,cmin,crev)
+  in cname ++ ' ' : showVersionNumber '.' (cmaj,cmin,crev)
 
---- Shows a version consisting of major/minor,revision number.
-showVersionNumber :: (Int,Int,Int) -> String
-showVersionNumber (maj,min,rev) =
-  show maj ++ "." ++ show min ++ "." ++ show rev
+--- Shows a version consisting of major/minor,revision number
+--- where the given character is put as a separator.
+showVersionNumber :: Char -> (Int,Int,Int) -> String
+showVersionNumber c (maj,min,rev) =
+  show maj ++ [c] ++ show min ++ [c] ++ show rev
 
 --- Sets an existing compiler executable in the configuration.
 --- Try to use the predefined CURRYBIN value.
@@ -141,7 +142,7 @@ setAppPackageDir cfg
   = do homedir <- getHomeDirectory
        let cpmdir = homedir </> ".cpm"
            (cname,cmaj,cmin,crev) = compilerVersion cfg
-           cmpname = cname ++ "_" ++ showVersionNumber (cmaj,cmin,crev)
+           cmpname = cname ++ "_" ++ showVersionNumber '.' (cmaj,cmin,crev)
        return cfg { appPackageDir = cpmdir </> "apps_" ++ cmpname }
   | otherwise = return cfg
 
@@ -152,7 +153,7 @@ setHomePackageDir cfg
   = do homedir <- getHomeDirectory
        let cpmdir = homedir </> ".cpm"
            (cname,cmaj,cmin,crev) = compilerVersion cfg
-           cvname     = cname ++ "-" ++ showVersionNumber (cmaj,cmin,crev)
+           cvname     = cname ++ "-" ++ showVersionNumber '_' (cmaj,cmin,crev)
            homepkgdir = cpmdir </> cvname ++ "-homepackage"
        return cfg { homePackageDir = homepkgdir }
   | otherwise = return cfg
