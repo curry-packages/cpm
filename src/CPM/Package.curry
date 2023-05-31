@@ -166,6 +166,12 @@ data GitRevision = Tag String
  deriving (Eq,Show)
 
 --- The data type for package specifications.
+--- The name of a package may contain any ASCII alphanumeric character
+--- as well as dashes (`-`) and underscores (`_`).
+--- It must start with an alphanumeric character.
+--- The suggested format of authors and maintainers is either
+--- a name (`John Doe`) or a name followed by an email address in angle brackets
+--- (`John Doe <john.doe@goldenstate.gov>`).
 data Package = Package {
     name                  :: String
   , version               :: Version
@@ -503,11 +509,11 @@ readPackageSpec s = case parseJSON s of
 --- Reads a package spec from the key-value-pairs of a JObject.
 packageSpecFromJObject :: [(String, JValue)] -> Either String Package
 packageSpecFromJObject kv =
-  mandatoryString "name" kv $ \name ->
+  mandatoryString "name" kv $ \nameS ->
   mandatoryString "version" kv $ \versionS ->
   getStringOrStringList True  "An author"    "author" $ \author ->
   getStringOrStringList False "A maintainer" "maintainer" $ \maintainer ->
-  mandatoryString "synopsis" kv $ \synopsis ->
+  mandatoryString "synopsis" kv $ \synopsisS ->
   optionalString "description" kv $ \description ->
   getStringList "A category" "category" $ \categories ->
   optionalString "license" kv $ \license ->
@@ -517,7 +523,9 @@ packageSpecFromJObject kv =
   optionalString "bugReports" kv $ \bugReports ->
   optionalString "repository" kv $ \repository ->
   optionalString "configModule" kv $ \configModule ->
+  mustBePackageName nameS $ \name ->
   mustBeVersion versionS $ \version ->
+  mustBeSynopsis synopsisS $ \synopsis ->
   getDependencies $ \dependencies ->
   getSource $ \source ->
   getStringList "A source directory" "sourceDirs" $ \sourcedirs ->
@@ -552,6 +560,16 @@ packageSpecFromJObject kv =
     , documentation   = docspec
     }
   where
+    mustBePackageName s@(c:cs) f =
+      if isAlphaNum c && all (\d -> isAlphaNum d || d == '-' || d == '_') cs
+        then f s
+        else Left $ "'" ++ s ++ "' is not a valid package name."
+    mustBePackageName [] _ = Left "Package name is empty."
+
+    mustBeSynopsis s f
+      | null s    = Left "Synopsis is empty: add a short description."
+      | otherwise = f s
+
     mustBeVersion :: String -> (Version -> Either String a) -> Either String a
     mustBeVersion s f = case readVersion s of
       Nothing -> Left $ "'" ++ s ++ "' is not a valid version specification."
