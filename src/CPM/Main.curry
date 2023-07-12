@@ -72,7 +72,7 @@ import CPM.ConfigPackage        ( packagePath, packageVersion )
 
 -- Date of current version:
 cpmDate :: String
-cpmDate = "31/05/2023"
+cpmDate = "12/07/2023"
 
 -- Banner of this tool:
 cpmBanner :: String
@@ -142,7 +142,7 @@ runWithArgs opts = do
         Install   o -> installCmd   o config
         Upload    o -> uploadCmd    o config
         Clean       -> cleanPackage config Info
-  mapM (showLogEntry ll) msgs
+  mapM (printLogEntry ll) msgs
   let allOk =  all (levelGte Info) (map logLevelOf msgs) &&
                either (\le -> levelGte Info (logLevelOf le))
                       (const True)

@@ -7,14 +7,15 @@ module CPM.ErrorLogger
   , LogEntry
   , LogLevel (..), logLevelOf
   , logAt, getLogLevel, setLogLevel, getWithShowTime, setWithShowTime
-  , logInfo, logDebug, logError, logCritical, showLogEntry, levelGte
+  , logInfo, logDebug, logError, logCritical, printLogEntry, levelGte
   , putStrELM, putStrLnELM
-  , fromErrorLogger
+  , fromErrorLogger, fromErrorLoggerMsgs
   , showExecCmd, execQuietCmd, liftIOEL, tryEL
   , inDirectoryEL, inTempDirEL
   ) where
 
 import Control.Monad    ( unless )
+import Data.Char        ( toUpper )
 import System.IO        ( hPutStrLn, stderr )
 import System.Process   ( exitWith, system )
 import System.Directory
@@ -46,7 +47,7 @@ data LogLevel = Quiet
               | Debug
               | Error
               | Critical
- deriving Eq
+ deriving (Eq, Show)
 
 ---------------------------------------------------------------------------
 
@@ -54,7 +55,7 @@ instance Functor ErrorLogger where
   fmap f e = ErrorLogger $ \l s -> do
     (st, (msgs, err)) <- runErrorLogger e l s
     let (glob, _) = st
-    mapM (showLogEntry glob) msgs
+    mapM (printLogEntry glob) msgs
     case err of
       Left  v -> return (st, ([], Left v))
       Right a -> return (st, ([], Right (f a)))
@@ -68,7 +69,7 @@ instance Alternative ErrorLogger where
   a <|> b = ErrorLogger $ \l s -> do
     (st, (msgs, a')) <- runErrorLogger a l s
     let (glob, showTime) = st
-    mapM (showLogEntry glob) msgs
+    mapM (printLogEntry glob) msgs
     case a' of
       Left  _ -> runErrorLogger b glob showTime
       Right v -> return (st, ([], Right v))
@@ -79,7 +80,7 @@ instance Monad ErrorLogger where
   m >>= f = ErrorLogger $ \l s -> do
     (st, (msgs, err)) <- runErrorLogger m l s
     let (glob, showTime) = st
-    mapM (showLogEntry glob) msgs
+    mapM (printLogEntry glob) msgs
     case err of
       Right v -> do
         (st', (msgs', err')) <- runErrorLogger (f v) glob showTime
@@ -91,8 +92,8 @@ instance MonadFail ErrorLogger where
     where logMsg = LogEntry Critical msg
 
 --- Renders a log entry to stderr.
-showLogEntry :: LogLevel -> LogEntry -> IO ()
-showLogEntry minLevel (LogEntry lvl msg) = do
+printLogEntry :: LogLevel -> LogEntry -> IO ()
+printLogEntry minLevel (LogEntry lvl msg) = do
   if levelGte lvl minLevel
     then mapM_ (\l -> hPutStrLn stderr $ pPrint $ lvlText <+> text l)
                (lines msg)
@@ -104,6 +105,15 @@ showLogEntry minLevel (LogEntry lvl msg) = do
     Debug    -> green $ text "DEBUG "
     Critical -> red   $ text "CRITICAL "
     Error    -> red   $ text "ERROR "
+
+--- Renders a log entry relative to the given `LogLevel`.
+showLogEntry :: LogLevel -> LogEntry -> String
+showLogEntry minLevel (LogEntry lvl msg) =
+  if levelGte lvl minLevel
+    then unlines $ map (\l -> pPrint $ lvlText <+> text l) (lines msg)
+    else ""
+ where
+  lvlText = text (map toUpper (show lvl) ++ ":")
 
 --- Compares two log levels.
 levelGte :: LogLevel -> LogLevel -> Bool
@@ -178,10 +188,23 @@ putStrLnELM = liftIOEL . putStrLn
 fromErrorLogger :: LogLevel -> Bool -> ErrorLogger a -> IO a
 fromErrorLogger l s a = do
   ((glob, _), (msgs, err)) <- runErrorLogger a l s
-  mapM (showLogEntry glob) msgs
+  mapM (printLogEntry glob) msgs
   case err of
     Right v -> return v
-    Left  m -> showLogEntry glob m >> exitWith 1
+    Left  m -> printLogEntry glob m >> exitWith 1
+
+--- Transforms an error logger action into a standard IO action
+--- where all messages and the result (or `Nothing` in case of a failure)
+--- are returned.
+--- The first argument specifies the logging level for messages.
+fromErrorLoggerMsgs :: LogLevel -> ErrorLogger a -> IO (String, Maybe a)
+fromErrorLoggerMsgs lvl a = do
+  ((glob, _), (msgs, err)) <- runErrorLogger a lvl False
+  let msgstxt = unlines $ map (showLogEntry glob) msgs
+  case err of
+    Right v -> return (msgstxt, Just v)
+    Left  m -> do let errtxt = showLogEntry glob m
+                  return (msgstxt ++ '\n' : errtxt, Nothing)
 
 --- Returns the current log level.
 getLogLevel :: ErrorLogger LogLevel
