@@ -1156,15 +1156,23 @@ dependencies are shown.
 If the option \code{--path} is set, only the value of \code{CURRYPATH}
 required to load modules of this package is shown.
 
-If the option \code{--code} is set, the full path containing
-all source directories is stored as property
+If the option \code{--language-server} is set, the full path containing
+all source directories is written into the file
+in the file \ccode{.curry/language-server/paths.json}.
+This file is used by the Curry Language Server%
+\footnote{\url{https://github.com/fwcd/curry-language-server}}
+to find all imported modules of the current package
+when it is used in the VS Code source-code editor.
+When starting the Curry Language Server with VS Code,
+the language server invokes CPM with this option in order to
+set its import path.
+
+For older version of the Curry Language Server,
+one can also use the option \code{--code} to set the full path
+of all source directories as property
 \code{curry.languageServer.importPaths}
 in the file \ccode{.vscode/settings.json}
-(which is updated if it already exists)
-so that all imported modules of the current package can be found
-by the Curry Language Server%
-\footnote{\url{https://github.com/fwcd/curry-language-server}}
-when it is used in the VS Code source-code editor.
+(which is updated if it already exists).
 
 If the option \code{--graph} is provided, then the dependency
 graph is translated into a graph in
