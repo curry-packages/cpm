@@ -5,9 +5,11 @@
 
 module PerformanceTest where
 
+import Prelude hiding ( (<|>) )
 import ReadShowTerm
 import System.IO
 import System.Directory
+import System.Environment ( getArgs )
 import System.FilePath ((</>))
 import System.Process
 import System.IOExts
@@ -63,18 +65,18 @@ optionParser :: ParseSpec (Options -> Options)
 optionParser = optParser
   (   commands (metavar "COMMAND")
         (   command "behavior" (help "Run behavior diff performance test.") (\a -> a { optCommand = BehaviorDiff })
-              (   option (\s a -> a { bdTypeNesting = readInt s })
+              (   option (\s a -> a { bdTypeNesting = read s })
                     (  metavar "TYPE-NESTING"
                     <> help "Depth of nested type"
                     <> long "type-nesting"
                     <> short "t" )
-              <.> option (\s a -> a { bdNumberOfFuncs = readInt s })
+              <.> option (\s a -> a { bdNumberOfFuncs = read s })
                     (  metavar "NUMBER-OF-FUNCS"
                     <> help "Number of functions to generate"
                     <> long "functions"
                     <> short "f" ) )
         <|> command "api" (help "Run API diff performance test.") (\a -> a { optCommand = APIDiff })
-              (   option (\s a -> a { adNumberOfEach = readInt s })
+              (   option (\s a -> a { adNumberOfEach = read s })
                     (  metavar "NUMBER-OF-EACH"
                     <> help "Number of added, removed, changed functions and types to generate."
                     <> long "number"
@@ -118,7 +120,7 @@ behaviorDiffPerformance o = do
   putStrLn $ "Running behavior diff performance test with " ++ (show $ bdNumberOfFuncs o) ++ " functions and a type nesting depth of " ++ (show $ bdTypeNesting o)
   types <- return $ genNestedType (bdTypeNesting o)
   funcs <- return $ map (genCompareFunc (bdTypeNesting o)) [1..(bdNumberOfFuncs o)]
-  prog <- return $ CurryProg "Sample" [] types funcs []
+  prog <- return $ CurryProg "Sample" [] Nothing [] [] types funcs []
   recreateDirectory "/tmp/verA"
   recreateDirectory "/tmp/verA/src"
   recreateDirectory "/tmp/verB"
@@ -134,12 +136,15 @@ behaviorDiffPerformance o = do
   profileTime genTestProgram
   putStrLn "DONE"
 
-genTestProgram :: ErrorLogger ()
-genTestProgram = preparePackageDirs defaultConfig emptyRepository GC.emptyCache "/tmp/verA" "/tmp/verB" |>=
-    \info -> findFunctionsToCompare defaultConfig emptyRepository GC.emptyCache (infSourceDirA info) (infSourceDirB info) False Nothing |>=
+fromEOL = fromErrorLogger Info False
+
+genTestProgram :: IO ()
+genTestProgram = fromEOL $
+  preparePackageDirs defaultConfig emptyRepository GC.emptyCache "/tmp/verA" "/tmp/verB" >>=
+    \info -> findFunctionsToCompare defaultConfig emptyRepository GC.emptyCache (infSourceDirA info) (infSourceDirB info) False Nothing >>=
     \(acyCache, loadpath, funcs, _) ->
     genCurryCheckProgram defaultConfig emptyRepository GC.emptyCache funcs
-                         info True acyCache loadpath |>
+                         info True acyCache loadpath >>
     return ()
 
 apiDiffPerformance :: Options -> IO ()
@@ -155,13 +160,14 @@ apiDiffPerformance o = do
   writeFile "/tmp/verA/package.json" (ppJSON $ packageSpecToJSON samplePackageA)
   writeFile "/tmp/verB/package.json" (ppJSON $ packageSpecToJSON samplePackageB)
   putStrLn "Files written, now starting test."
-  profileTime (id $!! compareModulesInDirs defaultConfig emptyRepository GC.emptyCache "/tmp/verA" "/tmp/verB" Nothing)
-  profileTime (id $!! compareModulesInDirs defaultConfig emptyRepository GC.emptyCache "/tmp/verA" "/tmp/verB" Nothing)
-  profileTime (id $!! compareModulesInDirs defaultConfig emptyRepository GC.emptyCache "/tmp/verA" "/tmp/verB" Nothing)
-  profileTime (id $!! compareModulesInDirs defaultConfig emptyRepository GC.emptyCache "/tmp/verA" "/tmp/verB" Nothing)
-  profileTime (id $!! compareModulesInDirs defaultConfig emptyRepository GC.emptyCache "/tmp/verA" "/tmp/verB" Nothing)
+  profTime (id $!! compareModulesInDirs defaultConfig emptyRepository GC.emptyCache "/tmp/verA" "/tmp/verB" Nothing)
+  profTime (id $!! compareModulesInDirs defaultConfig emptyRepository GC.emptyCache "/tmp/verA" "/tmp/verB" Nothing)
+  profTime (id $!! compareModulesInDirs defaultConfig emptyRepository GC.emptyCache "/tmp/verA" "/tmp/verB" Nothing)
+  profTime (id $!! compareModulesInDirs defaultConfig emptyRepository GC.emptyCache "/tmp/verA" "/tmp/verB" Nothing)
+  profTime (id $!! compareModulesInDirs defaultConfig emptyRepository GC.emptyCache "/tmp/verA" "/tmp/verB" Nothing)
   putStrLn "DONE"
  where
+  profTime = profileTime . fromEOL
   n = adNumberOfEach o
 
 readPackageSpecs :: Options -> IO LookupSet
@@ -184,13 +190,14 @@ resolutionPerformance o = do
   ls <- readPackageSpecs o
   pkgs <- return $ map (fromJust . (uncurry $ findVersion ls)) $ parsePkgs $ resPackages o
   putStrLn $ "Running resolution algorithm on " ++ intercalate ", " (map packageId pkgs)
-  forIO pkgs $ \pkg -> do
+  let cfg = defaultConfig
+  (flip mapM) pkgs $ \pkg -> do
     putStrLn $ "Resolving '" ++ packageId pkg ++ "'"
-    profileTime (putStrLn $ showResult $ resolve pkg ls)
-    profileTime (putStrLn $ showResult $ resolve pkg ls)
-    profileTime (putStrLn $ showResult $ resolve pkg ls)
-    profileTime (putStrLn $ showResult $ resolve pkg ls)
-    profileTime (putStrLn $ showResult $ resolve pkg ls)
+    profileTime (putStrLn $ showResult $ resolve cfg pkg ls)
+    profileTime (putStrLn $ showResult $ resolve cfg pkg ls)
+    profileTime (putStrLn $ showResult $ resolve cfg pkg ls)
+    profileTime (putStrLn $ showResult $ resolve cfg pkg ls)
+    profileTime (putStrLn $ showResult $ resolve cfg pkg ls)
   return ()
  where
   parsePkgs s = map parsePkg $ splitOn "," s
@@ -221,10 +228,10 @@ readLS :: String -> IO LookupSet
 readLS path = do
   pkgDirs <- getDirectoryContents path
   pkgPaths <- return $ map (path </>) $ filter (not . isPrefixOf ".") pkgDirs
-  verDirs <- mapIO getDirectoryContents pkgPaths
+  verDirs <- mapM getDirectoryContents pkgPaths
   verPaths <- return $ concat $ map (\(d, p) -> map (d </>) (filter (not . isPrefixOf ".") p)) $ zip pkgPaths verDirs
   specPaths <- return $ map (</> "package.json") verPaths
-  specs <- mapIO (readPackageSpecIO specPaths) specPaths
+  specs <- mapM (readPackageSpecIO specPaths) specPaths
   return $!! addPackages emptySet (rights specs) FromRepository
     where
       readPackageSpecIO _ p = do
@@ -245,10 +252,10 @@ samplePackageA :: Package
 samplePackageA = Package {
     name = "sample"
   , version = (0, 0, 1, Nothing)
-  , author = "author"
+  , author = ["author"]
   , synopsis = "JSON library for Curry"
   , dependencies = []
-  , maintainer = Nothing
+  , maintainer = []
   , description = Nothing
   , license = Nothing
   , licenseFile = Nothing
@@ -346,3 +353,7 @@ genNestedType n | n == 0    = [CType ("Sample", "Nested0") Public [] [CCons ("Sa
 genCompareFunc :: Int -> Int -> CFuncDecl
 genCompareFunc tn n = cfunc ("Sample", "f" ++ (show n)) 1 Public (CFuncType (CTCons ("Sample", "Nested" ++ (show tn)) []) (CTCons ("Sample", "Nested" ++ (show tn)) [])) [
   simpleRule (pVars 1) (toVar 0) ]
+
+--- Apply a function to both components of a tuple.
+both :: (a -> b) -> (a, a) -> (b, b)
+both f (x, y) = (f x, f y)

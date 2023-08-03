@@ -7,11 +7,12 @@ module CPM.Main ( main )
 
 import Curry.Compiler.Distribution ( installDir )
 import Control.Monad       ( when, unless )
+import Crypto.Hash         ( getHash )
 import Data.List           ( (\\), delete, findIndex, groupBy, init
-                           , intercalate, isPrefixOf, isSuffixOf, nub, replace
-                           , split, sortBy )
+                           , intercalate, isInfixOf, isPrefixOf, isSuffixOf
+                           , nub, replace, split, sortBy )
 import Data.Maybe          ( isJust, isNothing )
-import Data.Time           ( calendarTimeToString, getLocalTime )
+import Data.Time           ( calendarTimeToString, getClockTime, toUTCTime )
 import FlatCurry.Files     ( readFlatCurryInt )
 import FlatCurry.Goodies   ( progImports )
 import JSON.Data
@@ -26,7 +27,7 @@ import System.FilePath     ( (</>), joinPath, splitDirectories, splitSearchPath
                            , replaceExtension, takeExtension, takeFileName
                            , pathSeparator, isPathSeparator )
 import System.Environment  ( getArgs, getEnv, setEnv, unsetEnv )
-import System.Process      ( exitWith, getPID )
+import System.Process      ( exitWith, getPID, system )
 import System.IOExts       ( evalCmd, readCompleteFile, updateFile )
 
 import Boxes               ( table, render )
@@ -72,7 +73,7 @@ import CPM.ConfigPackage        ( packagePath, packageVersion )
 
 -- Date of current version:
 cpmDate :: String
-cpmDate = "12/07/2023"
+cpmDate = "03/08/2023"
 
 -- Banner of this tool:
 cpmBanner :: String
@@ -893,7 +894,7 @@ testCmd opts cfg = do
 -- into one file in CSV format by accumulating all numbers and modules.
 combineCSVStatsOfPkg :: String -> [[[String]]] -> String -> IO ()
 combineCSVStatsOfPkg pkgid csvs outfile = do
-  ltime <- getLocalTime
+  ltime <- fmap toUTCTime getClockTime
   let results = foldr addStats ([], take 6 (repeat 0), "") (map fromCSV csvs)
   writeCSVFile outfile (showStats (calendarTimeToString ltime) results)
  where
@@ -1133,10 +1134,12 @@ uploadCmd opts cfg = do
     then do liftIOEL cleanTempDir
             logCritical "ERROR in package, package not uploaded!"
     else do
-      logInfo "Uploading package to global repository..."
+      logInfo $ take 70 (repeat '=')
+      logInfo "Uploading package to global Masala repository..."
       -- remove package possibly existing in global package cache:
       liftIOEL $ removeDirectoryComplete (installedPackageDir cfg pkg)
-      uploadPackageSpec (instdir </> pkgid </> packageSpecFile)
+      --uploadPackageSpec (instdir </> pkgid </> packageSpecFile)
+      uploadPackageSpec2Masala opts (instdir </> pkgid </> packageSpecFile)
       addPackageToRepo pkgrepodir (instdir </> pkgid) pkg
       liftIOEL $ cleanTempDir
       logInfo $ "Package '" ++ pkgid ++ "' uploaded"
@@ -1144,14 +1147,13 @@ uploadCmd opts cfg = do
   -- add package to local copy of repository:
   addPackageToRepo pkgrepodir pkgdir pkg = do
     exrepodir <- liftIOEL $ doesDirectoryExist pkgrepodir
-    logInfo $ "Create directory: " ++ pkgrepodir
+    logDebug $ "Create directory: " ++ pkgrepodir
     liftIOEL $ do
       createDirectoryIfMissing True pkgrepodir
       copyFile (pkgdir </> packageSpecFile) (pkgrepodir </> packageSpecFile)
     if exrepodir then updatePackageInRepositoryCache cfg pkg
                  else addPackageToRepositoryCache    cfg pkg
 
-  -- TODO: check url
   installPkg pkg instdir = case source pkg of
     Nothing            -> fail $ "No source specified for package"
     Just (Git url rev) -> installPackageSourceTo pkg (Git url rev) instdir
@@ -1195,6 +1197,7 @@ setTagInGit pkg = do
 
 -- Uploads a package specification stored in a file (first argument,
 -- like `.../package.json`) with the web script specified by `uploadURL`.
+-- This upload method is deprecated and replaced by Masala upload (see below).
 uploadPackageSpec :: String -> ErrorLogger ()
 uploadPackageSpec pkgspecfname = do
   pkgspec <- liftIOEL $ readFile pkgspecfname
@@ -1210,6 +1213,73 @@ uploadPackageSpec pkgspecfname = do
 -- URL of cpm-upload script.
 uploadURL :: String
 uploadURL = "https://www-ps.informatik.uni-kiel.de/~cpm/cpm-upload.cgi"
+
+-- Uploads a package specification stored in a file (first argument,
+-- like `.../package.json`) to Masala via URL uploading.
+uploadPackageSpec2Masala :: UploadOptions -> String -> ErrorLogger ()
+uploadPackageSpec2Masala opts pkgspecfname = do
+  pkgspec <- liftIOEL $ readFile pkgspecfname
+  (login,cryptpass) <- liftIOEL getLoginData
+  if null login
+    then fail "Package not uploaded to global Masala repository!"
+    else do
+      let uploadurl = masalaUploadURL login cryptpass (uploadPublish opts)
+                                      (forceUpdate opts) pkgspec
+          curlopts  = ["-s", uploadurl]
+      logDebug $ unwords ("curl" : curlopts) ++ "\n" ++ pkgspec
+      (rc,out,err) <- liftIOEL $ evalCmd "curl" curlopts ""
+      unless (null out) $ logInfo out
+      if rc == 0 && not ("ERROR" `isInfixOf` out)
+        then return ()
+        else do logInfo err
+                logInfo "UPLOAD TO GLOBAL MASALA REPOSITORY FAILED!"
+                liftIOEL $ putStrLn
+                  "\nYou can try to upload again with new login / password:"
+                let newopts = opts { uploadLogin = "", uploadPasswd = ""}
+                uploadPackageSpec2Masala newopts pkgspecfname
+ where
+  getLoginData = do
+    login <- if null (uploadLogin opts)
+               then do putStr "Your Masala login name (leave empty to stop): "
+                       getLine
+               else return $ uploadLogin opts
+    pass <- if not (null login) && null (uploadPasswd opts)
+              then do putStr $ "Masala password of '" ++ login ++ "': "
+                      system "stty -echo"
+                      realpasswd <- getLine
+                      system "stty echo"
+                      putChar '\n'
+                      return realpasswd
+              else return $ uploadPasswd opts
+    cryptpasswd <- getHash (login ++ pass ++ "3masala25")
+    putStrLn ""
+    return (login,cryptpasswd)
+
+-- URL of cpm-upload script.
+-- The arguments are the login name, the password (encrypted by the method
+-- used in Masala), the publish and force flags, and the text of the
+-- package specification.
+masalaUploadURL :: String -> String -> Bool -> Bool -> String -> String
+masalaUploadURL login cryptpass publish force pkgtxt =
+  --"http://localhost/~mh/masala2/run.cgi?UploadBy/" ++
+  "https://cpm.curry-lang.org/masala/run.cgi?UploadBy/" ++
+  intercalate "/"
+    (map string2urlencoded
+         [login, cryptpass, show publish, show force, pkgtxt])
+ where
+  --- Translates arbitrary strings into equivalent URL encoded strings.
+  --- Taken from HTML.Base to avoid inclusion of package html2.
+  string2urlencoded :: String -> String
+  string2urlencoded [] = []
+  string2urlencoded (c:cs)
+    | isAlphaNum c = c : string2urlencoded cs
+    | c == ' '     = '+' : string2urlencoded cs
+    | otherwise = let oc = ord c
+      in '%' : int2hex(oc `div` 16) : int2hex(oc `mod` 16) : string2urlencoded cs
+   where
+     int2hex i = if i<10 then chr (ord '0' + i)
+                         else chr (ord 'A' + i - 10)
+
 
 ------------------------------------------------------------------------------
 --- Fail with a "package not found" message.

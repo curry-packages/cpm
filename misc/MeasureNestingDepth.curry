@@ -4,6 +4,8 @@ import System.Directory
 import Debug.Trace
 import Data.List
 import Curry.Compiler.Distribution
+import System.CurryPath ( stripCurrySuffix )
+import System.FrontendExec
 import System.FilePath
 import AbstractCurry.Types
 import AbstractCurry.Select
@@ -26,16 +28,17 @@ main = do
   putStrLn $ show $ take 40 orderedDepths
 
 typeDepths :: [(String, CurryProg)] -> CurryProg -> [(QName, Int)]
-typeDepths progs (CurryProg _ _ ts _ _) = zip (map typeName ts) (map (typeDepth [] progs) ts)
+typeDepths progs (CurryProg _ _ _ _ _ ts _ _) =
+  zip (map typeName ts) (map (typeDepth [] progs) ts)
 
 typeDepth :: [QName] -> [(String, CurryProg)] -> CTypeDecl -> Int
-typeDepth seen progs (CType n _ _ cs) = if n `elem` seen
+typeDepth seen progs (CType n _ _ _ cs) = if n `elem` seen
   then 0
   else 1 + (foldl max 0 $ map (typeConsDepth (n:seen) progs) cs)
 typeDepth seen progs (CTypeSyn n _ _ e) = if n `elem` seen
   then 0
   else 1 + (typeExprDepth (n:seen) progs e)
-typeDepth seen progs (CNewType n _ _ c) = if n `elem` seen
+typeDepth seen progs (CNewType n _ _ _ c) = if n `elem` seen
   then 0
   else 1 + (typeConsDepth (n:seen) progs c)
 
@@ -60,12 +63,12 @@ typeExprDepth seen progs e@(CTCons n@(mod, _) es) = typeDepth seen progs ity
   ity = instantiateType e ty
 
 instantiateType :: CTypeExpr -> CTypeDecl -> CTypeDecl
-instantiateType (CTCons _ es) (CType nt v vs cs) =
-  CType nt v vs ics
+instantiateType (CTCons _ es) (CType nt v vs cs drvs) =
+  CType nt v vs ics drvs
  where
   ics = map (instantiateConstructor $ zip vs es) cs
-instantiateType _ a@(CTypeSyn _ _ _ _) = a
-instantiateType _ a@(CNewType _ _ _ _) = a
+instantiateType _ a@(CTypeSyn _ _ _ _)   = a
+instantiateType _ a@(CNewType _ _ _ _ _) = a
 
 instantiateConstructor :: [(CTVarIName, CTypeExpr)] -> CConsDecl -> CConsDecl
 instantiateConstructor vs (CCons n v es) = CCons n v $ map (\e -> foldl (flip replaceVar) e vs) es
@@ -77,12 +80,13 @@ replaceVar :: (CTVarIName, CTypeExpr) -> CTypeExpr -> CTypeExpr
 replaceVar (b, e) (CTVar a) | a == b    = e
                             | otherwise = CTVar a
 replaceVar v (CFuncType e1 e2) = CFuncType (replaceVar v e1) (replaceVar v e2)
-replaceVar v (CTCons n es) = CTCons n $ map (replaceVar v) es
+replaceVar v (CTCons n)        = CTCons n
+replaceVar v (CTApply e1 e2)   = CTApply (replaceVar v e1) (replaceVar v e2)
 
 readAllStandardModules :: IO [(String, CurryProg)]
 readAllStandardModules = do
   entries <- getDirectoryContents sysLibPath
-  mods <- mapIO (readMods "" sysLibPath) $ filter (not . isIrrelevant) entries
+  mods <- mapM (readMods "" sysLibPath) $ filter (not . isIrrelevant) entries
   return $ concat mods
  where
   readMods :: String -> String -> String -> IO [(String, CurryProg)]
@@ -91,7 +95,7 @@ readAllStandardModules = do
     if isDir
       then do
         entries <- getDirectoryContents $ base </> f
-        mods <- mapIO (readMods (prefixIt prefix f) $ base </> f) $ filter (not . isIrrelevant) entries
+        mods <- mapM (readMods (prefixIt prefix f) $ base </> f) $ filter (not . isIrrelevant) entries
         return $ concat mods
       else do
         callFrontendWithParams ACY (setQuiet True defaultParams) $ stripCurrySuffix $ prefixIt prefix f

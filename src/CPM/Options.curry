@@ -136,8 +136,11 @@ data UpdateOptions = UpdateOptions
   }
 
 data UploadOptions = UploadOptions
-  { setTag      :: Bool  -- set the tag in the current repository?
-  , forceUpdate :: Bool  -- force update if package with same version exists
+  { setTag        :: Bool   -- set the tag in the current repository?
+  , forceUpdate   :: Bool   -- force update if package with same version exists
+  , uploadPublish :: Bool   -- publish (if allowed) the uploaded package?
+  , uploadLogin   :: String -- Masala login name of the uploader
+  , uploadPasswd  :: String -- Masala password of the uploader
   }
 
 data ExecOptions = ExecOptions
@@ -246,7 +249,7 @@ updateOpts s = case optCommand s of
 uploadOpts :: Options -> UploadOptions
 uploadOpts s = case optCommand s of
   Upload opts -> opts
-  _           -> UploadOptions True False
+  _           -> UploadOptions True False True "" ""
 
 execOpts :: Options -> ExecOptions
 execOpts s = case optCommand s of
@@ -391,7 +394,7 @@ optionParser allargs = optParser
                     (\a -> Right $ a { optCommand = Update (updateOpts a) })
                     updateArgs
         <|> command "upload"
-                    (help "Upload current package to package server")
+                    (help "Upload current package to Masala/CPM package server")
                     (\a -> Right $ a { optCommand = Upload (uploadOpts a) })
                     uploadArgs
         ) )
@@ -568,6 +571,23 @@ optionParser allargs = optParser
             (  short "f"
             <> long "force"
             <> help "Force, i.e., overwrite existing package version" )
+   <.> flag (\a -> Right $ a { optCommand =
+                                 Upload (uploadOpts a) { uploadPublish = False } })
+            (  short "n"
+            <> long "nopublish"
+            <> help "Do not publish the uploaded package version" )
+   <.> option (\s a -> Right $ a { optCommand =
+                                    Upload (uploadOpts a) { uploadLogin = s } })
+              (  long "login"
+              <> short "l"
+              <> help "The login name to Masala"
+              <> optional )
+   <.> option (\s a -> Right $ a { optCommand =
+                                    Upload (uploadOpts a) { uploadPasswd = s } })
+              (  long "password"
+              <> short "p"
+              <> help "The password for the Masala login"
+              <> optional )
 
   execArgs =
     rest (\_ a -> Right $ a { optCommand = Exec (execOpts a)
