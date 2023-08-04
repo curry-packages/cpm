@@ -4,6 +4,7 @@ cass https://git.ps.informatik.uni-kiel.de/curry-packages/cass.git v3.0.1
 cass-analysis https://git.ps.informatik.uni-kiel.de/curry-packages/cass-analysis.git v3.0.1
 cdbi https://git.ps.informatik.uni-kiel.de/curry-packages/cdbi.git v3.2.0
 containers https://git.ps.informatik.uni-kiel.de/curry-packages/containers.git v3.0.0
+cryptohash https://git.ps.informatik.uni-kiel.de/curry-packages/cryptohash.git v3.0.0
 csv https://git.ps.informatik.uni-kiel.de/curry-packages/csv.git v3.0.0
 curry-resources https://git.ps.informatik.uni-kiel.de/curry-packages/curry-resources.git v1.0.0
 currypath https://git.ps.informatik.uni-kiel.de/curry-packages/currypath.git v3.0.0
