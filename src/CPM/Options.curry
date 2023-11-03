@@ -249,7 +249,7 @@ updateOpts s = case optCommand s of
 uploadOpts :: Options -> UploadOptions
 uploadOpts s = case optCommand s of
   Upload opts -> opts
-  _           -> UploadOptions True False True "" ""
+  _           -> UploadOptions False False True "" ""
 
 execOpts :: Options -> ExecOptions
 execOpts s = case optCommand s of
@@ -562,10 +562,10 @@ optionParser allargs = optParser
 
   uploadArgs =
        flag (\a -> Right $ a { optCommand =
-                                 Upload (uploadOpts a) { setTag = False } })
+                                 Upload (uploadOpts a) { setTag = True } })
             (  short "t"
-            <> long "notagging"
-            <> help "Do not tag git repository with current version" )
+            <> long "tag"
+            <> help "Tag the git repository with current version" )
    <.> flag (\a -> Right $ a { optCommand =
                                  Upload (uploadOpts a) { forceUpdate = True } })
             (  short "f"

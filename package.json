@@ -48,7 +48,8 @@
     },
     "documentation": {
         "src-dir": "docs",
-        "main": "manual.tex"
+        "main": "manual.tex",
+        "command": "pdflatex -output-directory=OUTDIR manual.tex && pdflatex -output-directory=OUTDIR manual.tex && makeindex manual.idx && pdflatex -output-directory=OUTDIR manual.tex && pdflatex -output-directory=OUTDIR manual.tex"
     },
     "source": {
         "git": "https://git.ps.informatik.uni-kiel.de/curry-packages/cpm.git",

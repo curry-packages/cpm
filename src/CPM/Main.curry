@@ -8,6 +8,7 @@ module CPM.Main ( main )
 import Curry.Compiler.Distribution ( installDir )
 import Control.Monad       ( when, unless )
 import Crypto.Hash         ( getHash )
+import Data.Char           ( toLower )
 import Data.List           ( (\\), delete, findIndex, groupBy, init
                            , intercalate, isInfixOf, isPrefixOf, isSuffixOf
                            , nub, replace, split, sortBy )
@@ -28,6 +29,7 @@ import System.FilePath     ( (</>), joinPath, splitDirectories, splitSearchPath
                            , pathSeparator, isPathSeparator )
 import System.Environment  ( getArgs, getEnv, setEnv, unsetEnv )
 import System.Process      ( exitWith, getPID, system )
+import System.IO           ( hFlush, stdout )
 import System.IOExts       ( evalCmd, readCompleteFile, updateFile )
 
 import Boxes               ( table, render )
@@ -73,7 +75,7 @@ import CPM.ConfigPackage        ( packagePath, packageVersion )
 
 -- Date of current version:
 cpmDate :: String
-cpmDate = "03/08/2023"
+cpmDate = "03/11/2023"
 
 -- Banner of this tool:
 cpmBanner :: String
@@ -1135,10 +1137,10 @@ uploadCmd opts cfg = do
             logCritical "ERROR in package, package not uploaded!"
     else do
       logInfo $ take 70 (repeat '=')
-      logInfo "Uploading package to global Masala repository..."
+      logInfo $ "Uploading package '" ++ pkgid ++
+                "' to global Masala repository..."
       -- remove package possibly existing in global package cache:
       liftIOEL $ removeDirectoryComplete (installedPackageDir cfg pkg)
-      --uploadPackageSpec (instdir </> pkgid </> packageSpecFile)
       uploadPackageSpec2Masala opts (instdir </> pkgid </> packageSpecFile)
       addPackageToRepo pkgrepodir (instdir </> pkgid) pkg
       liftIOEL $ cleanTempDir
@@ -1174,13 +1176,33 @@ uploadCmd opts cfg = do
     inDirectoryEL (instdir </> pkgid) $ showExecCmd cmd
 
 --- Set the package version as a tag in the local GIT repository and push it,
---- if the package source is a GIT with tag `$version`.
+--- if the package source is a GIT with tag `$version` and the option `setTag`
+--- is `True`. If the option `setTag` is `False`, ask the user whether
+--- to set the tag.
 setTagInGitIfNecessary :: UploadOptions -> Package -> ErrorLogger ()
 setTagInGitIfNecessary opts pkg
-  | not (setTag opts) = return ()
-  | otherwise = case source pkg of
-                  Just (Git _ (Just VersionAsTag)) -> setTagInGit pkg
-                  _                                -> return ()
+  | setTag opts && hasGitVersionSource = setTagInGit pkg
+  | setTag opts = putStrLnELM $ "Repository not tagged since the source is not"
+                    ++ "\nis not a git repository with tag '$version'."
+  | not hasGitVersionSource = return ()
+  | otherwise -- ask the user for tagging:
+  = do answer <- liftIOEL ask
+       if answer then setTagInGit pkg else return ()
+ where
+  ask = do
+    putStr $ "Should I tag the git repository with tag '" ++ tag ++
+             "'? (Yes|no) "
+    hFlush stdout
+    answer <- fmap (map toLower) getLine
+    if answer `elem` ["", "y", "n", "yes", "no"]
+      then return (null answer || answer == "y")
+      else ask -- again
+
+  hasGitVersionSource = case source pkg of
+    Just (Git _ (Just VersionAsTag)) -> True
+    _                                -> False
+
+  tag = 'v' : showVersion (version pkg)
 
 setTagInGit :: Package -> ErrorLogger ()
 setTagInGit pkg = do
@@ -1194,25 +1216,6 @@ setTagInGit pkg = do
   ecode <- showExecCmd cmd
   if ecode == 0 then return ()
                 else fail $ "ERROR in setting the git tag"
-
--- Uploads a package specification stored in a file (first argument,
--- like `.../package.json`) with the web script specified by `uploadURL`.
--- This upload method is deprecated and replaced by Masala upload (see below).
-uploadPackageSpec :: String -> ErrorLogger ()
-uploadPackageSpec pkgspecfname = do
-  pkgspec <- liftIOEL $ readFile pkgspecfname
-  let curlopts = ["--data-binary", "@-", uploadURL ]
-  logDebug $ unwords ("curl" : curlopts) ++ "\n" ++ pkgspec
-  (rc,out,err) <- liftIOEL $ evalCmd "curl" curlopts pkgspec
-  unless (null out) $ logInfo out
-  if rc == 0
-    then return ()
-    else do logInfo err
-            fail "Adding to global repository failed!"
-
--- URL of cpm-upload script.
-uploadURL :: String
-uploadURL = "https://www-ps.informatik.uni-kiel.de/~cpm/cpm-upload.cgi"
 
 -- Uploads a package specification stored in a file (first argument,
 -- like `.../package.json`) to Masala via URL uploading.
@@ -1261,7 +1264,6 @@ uploadPackageSpec2Masala opts pkgspecfname = do
 -- package specification.
 masalaUploadURL :: String -> String -> Bool -> Bool -> String -> String
 masalaUploadURL login cryptpass publish force pkgtxt =
-  --"http://localhost/~mh/masala2/run.cgi?UploadBy/" ++
   "https://cpm.curry-lang.org/masala/run.cgi?UploadBy/" ++
   intercalate "/"
     (map string2urlencoded

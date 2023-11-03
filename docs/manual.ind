@@ -6,64 +6,64 @@
   \indexspace
 
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  add}, \hyperpage{8}, 
-		\hyperpage{12}, \hyperpage{21, 22}
+		\hyperpage{12}, \hyperpage{22}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  author}, 
-		\hyperpage{23}
+		\hyperpage{24}
 
   \indexspace
 
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  base}, \hyperpage{14}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  bugReports}, 
-		\hyperpage{24}
+		\hyperpage{25}
 
   \indexspace
 
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  category}, 
-		\hyperpage{23}
+		\hyperpage{24}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  check}, \hyperpage{12}, 
 		\hyperpage{18}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  checkout}, 
-		\hyperpage{7}, \hyperpage{19, 20}
+		\hyperpage{7}, \hyperpage{20}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  clean}, \hyperpage{22}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  compilerCompatibility}, 
-		\hyperpage{24}
+		\hyperpage{25}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  config}, 
 		\hyperpage{15}, \hyperpage{18}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  configModule}, 
-		\hyperpage{24}
+		\hyperpage{25}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  copyright}, 
-		\hyperpage{23}
+		\hyperpage{24}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  curry}, \hyperpage{6}, 
-		\hyperpage{8}, \hyperpage{21}
+		\hyperpage{8}, \hyperpage{22}
 
   \indexspace
 
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  dependencies}, 
-		\hyperpage{24}
+		\hyperpage{25}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  deps}, \hyperpage{20}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  description}, 
-		\hyperpage{23}
+		\hyperpage{24}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  diff}, \hyperpage{10}, 
 		\hyperpage{21}
-  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  doc}, \hyperpage{20}
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  doc}, \hyperpage{21}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  documentation}, 
-		\hyperpage{26}
+		\hyperpage{27}
 
   \indexspace
 
   \item equivalence, \hyperpage{11}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  exec}, \hyperpage{21}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  executable}, 
-		\hyperpage{24}
-  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  executables}, 
 		\hyperpage{25}
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  executables}, 
+		\hyperpage{26}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  exportedModules}, 
-		\hyperpage{24}
+		\hyperpage{25}
 
   \indexspace
 
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  homepage}, 
-		\hyperpage{23}
+		\hyperpage{24}
 
   \indexspace
 
@@ -77,22 +77,23 @@
   \indexspace
 
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  license}, 
-		\hyperpage{23}
+		\hyperpage{24}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  licenseFile}, 
-		\hyperpage{23}
+		\hyperpage{24}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  link}, \hyperpage{9}, 
-		\hyperpage{21}
+		\hyperpage{22}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  list}, \hyperpage{4}, 
 		\hyperpage{18}
 
   \indexspace
 
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  maintainer}, 
-		\hyperpage{23}
+		\hyperpage{24}
+  \item Masala, \hyperpage{22}
 
   \indexspace
 
-  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  name}, \hyperpage{23}
+  \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  name}, \hyperpage{24}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  new}, \hyperpage{6}, 
 		\hyperpage{22}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  NOCOMPARE}, 
@@ -110,19 +111,19 @@
   \indexspace
 
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  repository}, 
-		\hyperpage{24}
+		\hyperpage{25}
 
   \indexspace
 
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  search}, \hyperpage{4}, 
-		\hyperpage{18}
+		\hyperpage{19}
   \item semantic versioning, \hyperpage{5}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  source}, 
-		\hyperpage{12}, \hyperpage{24}
+		\hyperpage{12}, \hyperpage{25}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  sourceDirs}, 
-		\hyperpage{24}
+		\hyperpage{25}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  synopsis}, 
-		\hyperpage{23}
+		\hyperpage{24}
 
   \indexspace
 
@@ -131,7 +132,7 @@
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  test}, \hyperpage{12}, 
 		\hyperpage{20}
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  testsuite}, 
-		\hyperpage{25}
+		\hyperpage{26}
 
   \indexspace
 
@@ -147,7 +148,7 @@
   \indexspace
 
   \item {\usefont  {OT1}{cmtt}{m}{n}\selectfont  version}, 
-		\hyperpage{23}
+		\hyperpage{24}
   \item version format, \hyperpage{5}
 
 \end{theindex}
