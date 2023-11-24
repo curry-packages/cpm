@@ -52,9 +52,9 @@
         "command": "pdflatex -output-directory=OUTDIR manual.tex && pdflatex -output-directory=OUTDIR manual.tex && makeindex manual.idx && pdflatex -output-directory=OUTDIR manual.tex && pdflatex -output-directory=OUTDIR manual.tex"
     },
     "source": {
-        "git": "https://git.ps.informatik.uni-kiel.de/curry-packages/cpm.git",
+        "git": "https://github.com/curry-packages/cpm.git",
         "tag": "$version"
     },
     "homepage": "http://www.curry-lang.org/tools/cpm",
-    "repository": "https://git.ps.informatik.uni-kiel.de/curry-packages/cpm.git"
+    "repository": "https://github.com/curry-packages/cpm.git"
 }
