@@ -54,7 +54,7 @@ data Command
   | Diff       DiffOptions
   | Init
   | New        NewOptions
-  | Clean
+  | Clean      CleanOptions
   | Upload     UploadOptions
 
 data ConfigOptions = ConfigOptions
@@ -126,6 +126,9 @@ data AddOptions = AddOptions
 
 data NewOptions = NewOptions
   { projectName :: String }
+
+data CleanOptions = CleanOptions
+  { cleanDeps   :: Bool }
 
 data UpdateOptions = UpdateOptions
   { indexURLs     :: [String]   -- the URLs of additional index repositories
@@ -241,6 +244,11 @@ newOpts s = case optCommand s of
   New opts -> opts
   _        -> NewOptions ""
 
+cleanOpts :: Options -> CleanOptions
+cleanOpts s = case optCommand s of
+  Clean opts -> opts
+  _          -> CleanOptions False
+
 updateOpts :: Options -> UpdateOptions
 updateOpts s = case optCommand s of
   Update opts -> opts
@@ -337,7 +345,8 @@ optionParser allargs = optParser
         <|> command "checkout" (help "Checkout a package") Right
                     (checkoutArgs Checkout)
         <|> command "clean" (help "Clean the current package")
-                            (\a -> Right $ a { optCommand = Clean }) []
+                    (\a -> Right $ a { optCommand = Clean (cleanOpts a)})
+                    cleanArgs
         <|>  command "config"
                     (help "Show current configuration of CPM")
                     (\a -> Right $ a { optCommand = ConfigCmd (configOpts a) })
@@ -399,6 +408,14 @@ optionParser allargs = optParser
                     uploadArgs
         ) )
  where
+  cleanArgs =
+    flag (\a -> Right $ a { optCommand = Clean (cleanOpts a)
+                                               { cleanDeps = True } })
+         (  short "d"
+         <> long "dependencies"
+         <> help "Remove also dependencies in current package"
+         <> optional )
+
   configArgs =
     flag (\a -> Right $ a { optCommand = ConfigCmd (configOpts a)
                                                    { configAll = True } })

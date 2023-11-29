@@ -97,7 +97,7 @@ data Dependency = Dependency String Disjunction
 --- @cons VMinCompatible - version must be larger or equal and
 ---                        within same minor version
 --- @cons VMajCompatible - version must be larger or equal and
----                        within same minor version
+---                        within same major version
 data VersionConstraint = VExact         Version  
                        | VGt            Version
                        | VLt            Version
@@ -264,16 +264,16 @@ packageSpecToJSON pkg = JObject $
   maybeStringToJSON "repository"  (repository  pkg) ++
   [ ("dependencies", dependenciesToJSON $ dependencies pkg) ] ++
   compilerCompatibilityToJSON (compilerCompatibility pkg) ++
-  maybeSourceToJSON (source pkg) ++
-  stringListToJSON "sourceDirs"      (sourceDirs pkg) ++
   stringListToJSON "exportedModules" (exportedModules pkg) ++
+  stringListToJSON "sourceDirs"      (sourceDirs pkg) ++
   maybeStringToJSON "configModule" (configModule pkg) ++
   (case executableSpec pkg of
      []  -> []
      [e] -> [("executable", execToJSON e)]
      es  -> [("executables", JArray $ map execToJSON es)]) ++
   maybeTestToJSON (testSuite pkg) ++
-  maybeDocuToJSON (documentation pkg)
+  maybeDocuToJSON (documentation pkg) ++
+  maybeSourceToJSON (source pkg)
  where
   dependenciesToJSON deps = JObject $ map dependencyToJSON deps
    where dependencyToJSON (Dependency p vc) =

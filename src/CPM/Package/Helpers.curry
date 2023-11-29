@@ -21,7 +21,7 @@ import Prelude hiding     ( empty )
 import System.CurryPath   ( addCurrySubdir )
 import Text.Pretty hiding ( (</>) )
 
-import CPM.Config      ( Config(..), homePackageDir )
+import CPM.Config      ( Config(..), homePackageDir, compilerBaseVersion )
 import CPM.ErrorLogger
 import CPM.Executables ( getCurlCmd )
 import CPM.FileUtil    ( cleanTempDir, getRealPath, inDirectory, inTempDir
@@ -137,13 +137,15 @@ cleanPackage cfg ll = do
                      (maybe []
                             (map (\ (PackageTest m _ _ _) -> m))
                             (testSuite pkg))
-      rmdirs   = nub (dotcpm : map (</> compilerSubdir) (srcdirs ++ testdirs))
-  logAt ll $ "Removing directories: " ++ unwords rmdirs
-  showExecCmd (unwords $ ["rm", "-rf"] ++ rmdirs)
-  return ()
+      cldirs   = nub (dotcpm : map (</> compilerSubdir) (srcdirs ++ testdirs))
+  rmdirs <- filterM (liftIOEL . doesDirectoryExist) cldirs
+  unless (null rmdirs) $ do
+    logAt ll $ "Removing directories: " ++ unwords rmdirs
+    showExecCmd (unwords $ ["rm", "-rf"] ++ rmdirs)
+    return ()
  where
   --- Name of the sub directory where auxiliary files (.fint, .fcy, etc)
-  --- are stored, e.g., ".curry/pakcs-3.4.0".
+  --- are stored, e.g., ".curry/pakcs-3.6.0".
   compilerSubdir =
     let (cname,cmaj,cmin,crev) = compilerVersion cfg
     in ".curry" </>
@@ -297,6 +299,9 @@ getLocalPackageSpec cfg dir = do
     let homepkgdir  = homePackageDir cfg
         homepkgspec = homepkgdir </> packageSpecFile
     specexists <- liftIOEL $ doesFileExist homepkgspec
+    let basedeps = maybe []
+                         (\v -> [Dependency "base" [[VMajCompatible v]]])
+                         (readVersion (compilerBaseVersion cfg))
     unless (specexists || null homepkgdir) $ do
       liftIOEL $ createDirectoryIfMissing True homepkgdir
       let newpkg  = emptyPackage
@@ -304,7 +309,7 @@ getLocalPackageSpec cfg dir = do
                       , version         = initialVersion
                       , author          = ["CPM"]
                       , synopsis        = "Default home package"
-                      , dependencies    = []
+                      , dependencies    = basedeps
                       }
       liftIOEL $ writePackageSpec newpkg homepkgspec
       logInfo $ "New empty package specification '" ++ homepkgspec ++

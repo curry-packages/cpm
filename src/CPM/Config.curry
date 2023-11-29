@@ -185,13 +185,15 @@ setCompilerVersion cfg0 = do
       else case lines s of
         [sname,svers,sbver] -> return (sname,svers,sbver)
         _ -> do logDebug $ "Query version information again..."
-                (c1,sname,e1) <- liftIOEL $ evalCmd currybin ["--compiler-name"] ""
-                (c2,svers,e2) <- liftIOEL $ evalCmd currybin ["--numeric-version"] ""
-                (c3,sbver,e3) <- liftIOEL $ evalCmd currybin ["--base-version"] ""
+                (c1,sname,e1) <- getCompilerInfo "--compiler-name"
+                (c2,svers,e2) <- getCompilerInfo "--numeric-version"
+                (c3,sbver,e3) <- getCompilerInfo "--base-version"
                 when (c1 > 0 || c2 > 0 || c3 > 0) $
                   error $ "Cannot determine compiler version:\n" ++
                           unlines (filter (not . null) [e1,e2,e3])
                 return (sname,svers,sbver)
+   where
+    getCompilerInfo infopt = liftIOEL $ evalCmd currybin [infopt] ""
 
   currVersion = (Dist.curryCompiler, Dist.curryCompilerMajorVersion,
                                      Dist.curryCompilerMinorVersion
@@ -239,11 +241,9 @@ replaceHome cfg = do
   replaceHome' h s = concat $ intersperse h $ splitOn "$HOME" s
 
 createDirectories :: Config -> IO ()
-createDirectories cfg = do
-  createDirectoryIfMissing True (packageInstallDir cfg)
-  createDirectoryIfMissing True (binInstallDir cfg)
-  createDirectoryIfMissing True (repositoryDir cfg)
-  createDirectoryIfMissing True (appPackageDir cfg)
+createDirectories cfg =
+  mapM_ (\df -> createDirectoryIfMissing True (df cfg))
+        [packageInstallDir, binInstallDir, repositoryDir, appPackageDir]
 
 --- Merges configuration options from a configuration file or argument options
 --- into a configuration record. May return an error using Left.

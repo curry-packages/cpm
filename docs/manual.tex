@@ -1312,14 +1312,19 @@ the new dependencies. Thus, this abbreviates the two commands
 cypm add $package$ && cypm install
 \end{lstlisting}
 
-\item[\fbox{\code{clean}}]\pindex{clean}
+\item[\fbox{\code{clean [--dependencies]}}]\pindex{clean}
 Cleans the current package from the
 generated auxiliary files, e.g., intermediate Curry files,
 installed dependent packages, etc.
 Note that a binary installed in the CPM \code{bin} directory
 (by the \code{install} command) will not be removed.
-Hence, this command can be used to clean an application package
+For instance, this command can be used to clean an application package
 after installing the application.
+
+If the option \code{-d} or \code{--dependencies} is provided,
+then \emph{all} dependencies in the package specification are removed.
+This might be reasonable in the ``homepackage'' to remove
+locally installed packages.
 
 \item[\fbox{\code{new $project$}}]\pindex{new}
 Creates a new project package with the given name and some template files

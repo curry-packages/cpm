@@ -24,9 +24,9 @@ import System.Directory    ( doesFileExist, doesDirectoryExist
                            , getCurrentDirectory, getDirectoryContents
                            , getModificationTime
                            , renameFile, removeFile, setCurrentDirectory )
-import System.FilePath     ( (</>), joinPath, splitDirectories, splitSearchPath
-                           , replaceExtension, takeExtension, takeFileName
-                           , pathSeparator, isPathSeparator )
+import System.FilePath     ( (</>), equalFilePath, joinPath, splitDirectories
+                           , splitSearchPath, replaceExtension, takeExtension
+                           , takeFileName, pathSeparator, isPathSeparator )
 import System.Environment  ( getArgs, getEnv, setEnv, unsetEnv )
 import System.Process      ( exitWith, getPID, system )
 import System.IO           ( hFlush, stdout )
@@ -72,10 +72,11 @@ import CPM.PackageCopy
 import CPM.Diff.API as APIDiff
 import qualified CPM.Diff.Behavior as BDiff
 import CPM.ConfigPackage        ( packagePath, packageVersion )
+import CPM.Helpers ( askYesNo )
 
 -- Date of current version:
 cpmDate :: String
-cpmDate = "03/11/2023"
+cpmDate = "29/11/2023"
 
 -- Banner of this tool:
 cpmBanner :: String
@@ -134,8 +135,8 @@ runWithArgs opts = do
         PkgInfo   o -> infoCmd      o config
         Link o      -> linkCmd      o config
         Add  o      -> addCmd       o config
-        Init        -> initCmd
-        New o       -> newCmd       o
+        Init        -> initCmd        config
+        New o       -> newCmd       o config
         List      o -> listCmd      o config
         Search    o -> searchCmd    o config
         Upgrade   o -> upgradeCmd   o config
@@ -144,7 +145,7 @@ runWithArgs opts = do
         Checkout  o -> checkoutCmd  o config
         Install   o -> installCmd   o config
         Upload    o -> uploadCmd    o config
-        Clean       -> cleanPackage config Info
+        Clean     o -> cleanCmd     o config
   mapM (printLogEntry ll) msgs
   let allOk =  all (levelGte Info) (map logLevelOf msgs) &&
                either (\le -> levelGte Info (logLevelOf le))
@@ -1024,8 +1025,8 @@ computePackageLoadPath cfg pkgdir = do
 ------------------------------------------------------------------------------
 --- Implementation of the `init` command: initialize a new package inside
 --- the current directory.
-initCmd :: ErrorLogger ()
-initCmd = do
+initCmd :: Config -> ErrorLogger ()
+initCmd cfg = do
   pname <- liftIOEL $ (getCurrentDirectory >>= return . takeFileName)
   pkgexists <- liftIOEL $ doesFileExist packageSpecFile
   if pkgexists
@@ -1034,20 +1035,23 @@ initCmd = do
         "There is already a package specification file '" ++ packageSpecFile ++
         "'.\nI cannot initialize a new package!"
       liftIOEL $ exitWith 1
-    else liftIOEL $ initPackage pname $
+    else liftIOEL $ initPackage cfg pname $
       "A new package '" ++ pname ++
       "' has been created in the current directory.\n\nNow "
 
-initPackage :: String -> String -> IO ()
-initPackage pname outheader = do
+initPackage :: Config -> String -> String -> IO ()
+initPackage cfg pname outheader = do
   let emptyAuthor   = "YOUR NAME <YOUR EMAIL ADDRESS>"
       emptySynopsis = "PLEASE PROVIDE A ONE-LINE SUMMARY ABOUT THE PACKAGE"
+      basedeps      = maybe []
+                            (\v -> [Dependency "base" [[VMajCompatible v]]])
+                            (readVersion (compilerBaseVersion cfg))
   let pkgSpec = emptyPackage { name            = pname
                              , version         = initialVersion
                              , author          = [emptyAuthor]
                              , synopsis        = emptySynopsis
                              , category        = ["Programming"]
-                             , dependencies    = [] 
+                             , dependencies    = basedeps
                              , exportedModules = []
                              , license         = Just "BSD-3-Clause"
                              , licenseFile     = Just "LICENSE"
@@ -1086,8 +1090,8 @@ initPackage pname outheader = do
     ]
 
 --- Implementation of the `new` command: create a new package.
-newCmd :: NewOptions -> ErrorLogger ()
-newCmd (NewOptions pname) = do
+newCmd :: NewOptions -> Config -> ErrorLogger ()
+newCmd (NewOptions pname) cfg = do
   exists <- liftIOEL $ doesDirectoryExist pname
   if exists
     then do
@@ -1097,9 +1101,37 @@ newCmd (NewOptions pname) = do
     else liftIOEL $ do
       createDirectory pname
       setCurrentDirectory pname
-      initPackage pname $
+      initPackage cfg pname $
         "A new package has been created in the directory '" ++ pname ++
         "'.\n\nGo into this directory and "
+
+------------------------------------------------------------------------------
+--- Implementation of the `clean` command: clean the current package.
+cleanCmd :: CleanOptions -> Config -> ErrorLogger ()
+cleanCmd opts config = do
+  cleanPackage config Info
+  when (cleanDeps opts) cleanDepsInLocalPackage
+ where
+  cleanDepsInLocalPackage = do
+    pkgdir  <- getLocalPackageSpec config "."
+    pkgSpec <- loadPackageSpec pkgdir
+    let pkgfile     = pkgdir </> packageSpecFile
+        pkgbakfile  = pkgfile ++ ".BAK"
+        homepkgspec = homePackageDir config </> packageSpecFile
+        newpkg      = pkgSpec { dependencies = [] }
+    unless (null (dependencies pkgSpec)) $ do
+      confirm <- if equalFilePath pkgfile homepkgspec
+                   then return True -- do not ask to clean home package
+                   else fmap (/="no") $ liftIOEL $ askYesNo $
+                          "Really remove dependencies in '" ++ pkgfile ++
+                          "'? (Yes|no) "
+      if confirm
+        then do
+          liftIOEL $ do renameFile pkgfile pkgbakfile
+                        writePackageSpec newpkg pkgfile
+          logInfo $ "Dependencies deleted in package '" ++ pkgdir ++ "'"
+          logInfo $ "(old package file saved into '" ++ pkgbakfile ++ "')"
+        else logInfo "Dependencies not removed"
 
 ------------------------------------------------------------------------------
 --- Uploads the current package to the package server.
@@ -1186,17 +1218,11 @@ setTagInGitIfNecessary opts pkg
                     ++ "\nis not a git repository with tag '$version'."
   | not hasGitVersionSource = return ()
   | otherwise -- ask the user for tagging:
-  = do answer <- liftIOEL ask
-       if answer then setTagInGit pkg else return ()
+  = do answer <- liftIOEL $ askYesNo tagQuestion
+       if null answer || answer == "yes" then setTagInGit pkg else return ()
  where
-  ask = do
-    putStr $ "Should I tag the git repository with tag '" ++ tag ++
-             "'? (Yes|no) "
-    hFlush stdout
-    answer <- fmap (map toLower) getLine
-    if answer `elem` ["", "y", "n", "yes", "no"]
-      then return (null answer || answer == "y")
-      else ask -- again
+  tagQuestion = "Should I tag the git repository with tag '" ++ tag ++
+                "'? (Yes|no) "
 
   hasGitVersionSource = case source pkg of
     Just (Git _ (Just VersionAsTag)) -> True
