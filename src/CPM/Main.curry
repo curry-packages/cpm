@@ -1200,7 +1200,7 @@ uploadCmd opts cfg = do
     let cmd = unwords
                 [ -- install possible binaries in bindir:
                   "cypm", "-d bin_install_path="++bindir, "install", "&&"
-                , "export PATH="++bindir++":$PATH", "&&"
+                , "export PATH=" ++ bindir ++ ":$PATH", "&&"
                 , "cypm", "test", "&&"
                 , "cypm", "-d bin_install_path="++bindir, "uninstall"
                 ]
@@ -1270,10 +1270,12 @@ uploadPackageSpec2Masala opts pkgspecfname = do
   getLoginData = do
     login <- if null (uploadLogin opts)
                then do putStr "Your Masala login name (leave empty to stop): "
+                       hFlush stdout
                        getLine
                else return $ uploadLogin opts
     pass <- if not (null login) && null (uploadPasswd opts)
               then do putStr $ "Masala password of '" ++ login ++ "': "
+                      hFlush stdout
                       system "stty -echo"
                       realpasswd <- getLine
                       system "stty echo"
