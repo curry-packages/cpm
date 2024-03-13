@@ -38,10 +38,8 @@ packageTarFilesDefaultURLs = [curryPackagesURL ++ "PACKAGES"]
 --- The default location of the central package index.
 packageIndexDefaultURLs :: [String]
 packageIndexDefaultURLs =
-  map  (++"/INDEX.tar.gz") packageTarFilesDefaultURLs ++
-  ["https://git.ps.informatik.uni-kiel.de/curry-packages/cpm-index.git"]
--- If you have an ssh access to git.ps.informatik.uni-kiel.de:
---["ssh://git@git.ps.informatik.uni-kiel.de:55055/curry-packages/cpm-index.git"]
+  map  (++"/INDEX.tar.gz") packageTarFilesDefaultURLs
+  -- ["https://git.ps.informatik.uni-kiel.de/curry-packages/cpm-index.git"]
 
 --- Data type containing the main configuration of CPM.
 data Config = Config {
