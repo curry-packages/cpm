@@ -28,8 +28,10 @@ done <dependencies.txt
 CASSCONFIG=vendor/cass/src/CASS/PackageConfig.curry
 echo "module CASS.PackageConfig where" > $CASSCONFIG
 echo "packageVersion :: String"       >> $CASSCONFIG
-echo "packageVersion = \"3.0.0\""     >> $CASSCONFIG
+echo "packageVersion = \"3.0.1 \""     >> $CASSCONFIG
 echo "packagePath :: String"          >> $CASSCONFIG
 echo "packagePath = \"`pwd`/vendor/cass\"" >> $CASSCONFIG
+echo "getPackagePath :: IO String"         >> $CASSCONFIG
+echo "getPackagePath = return packagePath" >> $CASSCONFIG
 echo "packageExecutable :: String"    >> $CASSCONFIG
 echo "packageExecutable = \"\""       >> $CASSCONFIG
