@@ -133,7 +133,11 @@ acquireAndInstallPackage cfg pkg = do
              installPackageSourceTo pkg (Http stdurl) (packageInstallDir cfg)
     case err of
       Left  _ -> if null urls
-                   then fail downloadError
+                   then do -- Try to download the source repo of the package:
+                           pkgspec <- readPackageFromRepository cfg pkg
+                           maybe (fail downloadError)
+                                 (installFromSource cfg pkgspec)
+                                 (source pkgspec)
                    else tryInstallFromURLs urls
       Right _ -> acquireAndInstallPackageFromSource cfg pkg
 
@@ -143,12 +147,12 @@ acquireAndInstallPackage cfg pkg = do
 --- Acquires a package from the source specified in its specification and 
 --- installs it to the global package cache.
 acquireAndInstallPackageFromSource :: Config -> Package -> ErrorLogger ()
-acquireAndInstallPackageFromSource cfg reppkg =
-  readPackageFromRepository cfg reppkg >>= \pkg ->
+acquireAndInstallPackageFromSource cfg reppkg = do
+  pkg <- readPackageFromRepository cfg reppkg
   case source pkg of
     Nothing -> fail $ "No source specified for " ++ packageId pkg
-    Just  s -> logInfo ("Installing package '" ++ packageId pkg ++ "'...") >> 
-               installFromSource cfg pkg s
+    Just  s -> do logInfo $ "Installing package '" ++ packageId pkg ++ "'..."
+                  installFromSource cfg pkg s
 
 ------------------------------------------------------------------------------
 --- Installs a package from the given package source to the global package
