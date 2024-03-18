@@ -4,7 +4,8 @@
 ------------------------------------------------------------------------------
 
 module CPM.Executables
-  ( checkRequiredExecutables, getCurlCmd, getCurryCheck, getCurryDoc )
+  ( checkRequiredExecutables, getCurlCmd, getCurlCmdOpts
+  , getCurryCheck, getCurryDoc )
  where
 
 import Control.Monad       ( unless )
@@ -53,12 +54,24 @@ checkExecutables executables = do
   return $ map fst $ filter (not . snd) (zip executables present)
 
 ------------------------------------------------------------------------------
---- Returns the `curl` command. If the log level is not `Debug`,
---- the option `-s` is added so that `curl` works in silent mode.
-getCurlCmd :: ErrorLogger String
-getCurlCmd = do
+--- Returns the `curl` command (first component of the result)
+--- together with some standard options. If the log level is not `Debug`,
+--- the options `--silent --show-error` are added so that
+--- `curl` works in silent mode. Moreover, a max-time is used to avoid
+--- hanging forever if a server cannot be reached.
+getCurlCmdOpts :: ErrorLogger (String,[String])
+getCurlCmdOpts = do
   ll <- getLogLevel
-  return $ "curl" ++ (if ll == Debug then "" else " -s")
+  return $ ("curl",
+            ["--max-time", "30"] ++
+            (if ll == Debug then [] else ["--silent", "--show-error"]))
+
+--- Returns the `curl` command with some standard options as a string.
+--- If the log level is not `Debug`, the options `--silent --show-error`
+--- are added so that `curl` works in silent mode. Moreover, a max-time
+--- is used to avoid hanging forever if a server cannot be reached.
+getCurlCmd :: ErrorLogger String
+getCurlCmd = fmap (\(c,os) -> unwords (c:os)) getCurlCmdOpts
 
 ------------------------------------------------------------------------------
 --- Returns the `curry-check` command, either from the current path

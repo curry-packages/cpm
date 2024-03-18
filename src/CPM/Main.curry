@@ -41,8 +41,8 @@ import System.Path         ( fileInPath, getFileInPath )
 import Text.CSV            ( readCSV, showCSV, writeCSVFile )
 
 import CPM.ErrorLogger
-import CPM.Executables     ( checkRequiredExecutables, getCurryCheck
-                           , getCurryDoc )
+import CPM.Executables     ( checkRequiredExecutables, getCurlCmdOpts
+                           , getCurryCheck, getCurryDoc )
 import CPM.FileUtil ( cleanTempDir, getRealPath, ifFileExists, joinSearchPath
                     , safeReadFile, whenFileExists, writeFileIfNotExists
                     , inDirectory, recreateDirectory
@@ -1252,11 +1252,12 @@ uploadPackageSpec2Masala opts pkgspecfname = do
   if null login
     then fail "Package not uploaded to global Masala repository!"
     else do
+      (curlcmd,copts) <- getCurlCmdOpts
       let uploadurl = masalaUploadURL login cryptpass (uploadPublish opts)
                                       (forceUpdate opts) pkgspec
-          curlopts  = ["-s", uploadurl]
-      logDebug $ unwords ("curl" : curlopts) ++ "\n" ++ pkgspec
-      (rc,out,err) <- liftIOEL $ evalCmd "curl" curlopts ""
+          curlopts  = copts ++ [uploadurl]
+      logDebug $ unwords (curlcmd : curlopts) ++ "\n" ++ pkgspec
+      (rc,out,err) <- liftIOEL $ evalCmd curlcmd curlopts ""
       unless (null out) $ logInfo out
       if rc == 0 && not ("ERROR" `isInfixOf` out)
         then return ()
