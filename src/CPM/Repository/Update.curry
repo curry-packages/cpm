@@ -14,14 +14,14 @@ import System.FilePath
 import Data.List         ( isSuffixOf )
 import Control.Monad
 
-import CPM.Config        ( Config, packageInstallDir, packageIndexURLs
-                         , repositoryDir )
+import CPM.Config             ( Config, packageInstallDir, packageIndexURLs
+                              , repositoryDir )
 import CPM.ErrorLogger
 import CPM.Executables        ( getCurlCmd )
 import CPM.Package
 import CPM.Package.Helpers    ( cleanPackage )
 import CPM.FileUtil           ( copyDirectory, quote, recreateDirectory
-                              , removeDirectoryComplete )
+                              , removeDirectoryComplete, whenFileExists )
 import CPM.Repository
 import CPM.Repository.CacheDB ( tryInstallRepositoryDB )
 import CPM.Repository.Select  ( addPackageToRepositoryCache
@@ -40,27 +40,31 @@ import CPM.Repository.Select  ( addPackageToRepositoryCache
 --- database entries is written.
 updateRepository :: Config -> Bool -> Bool -> Bool -> Bool -> ErrorLogger ()
 updateRepository cfg cleancache download usecache writecsv = do
-  cleanRepositoryCache cfg
+  let repodir    = repositoryDir cfg
+      repodirbak = repodir ++ ".BAK"
+  logDebug $ "Recreating package index: '" ++ repodir ++ "'"
+  if download
+    then do
+      liftIOEL $ do removeDirectoryComplete repodirbak
+                    renameDirectory repodir repodirbak -- save old repo
+                    recreateDirectory repodir
+      c <- inDirectoryEL repodir (tryDownload (packageIndexURLs cfg))
+      if c == 0
+        then finishUpdate >> liftIOEL (removeDirectoryComplete repodirbak)
+        else do logDebug "Keeping old package index"
+                liftIOEL $ do removeDirectoryComplete repodir
+                              renameDirectory repodirbak repodir
+                fail $ "Failed to update package index, return code " ++ show c
+    else tryInstallRepositoryDB cfg usecache writecsv
   when cleancache $ do
     logDebug $ "Deleting global package cache: '" ++
                packageInstallDir cfg ++ "'"
     liftIOEL $ removeDirectoryComplete $ packageInstallDir cfg
-  logDebug $ "Recreating package index: '" ++ repositoryDir cfg ++ "'"
-  if download
-    then do
-      liftIOEL $ recreateDirectory $ repositoryDir cfg
-      c <- inDirectoryEL (repositoryDir cfg)
-                         (tryDownload (packageIndexURLs cfg))
-      if c == 0
-        then finishUpdate
-        else fail $ "Failed to update package index, return code " ++ show c
-    else tryInstallRepositoryDB cfg usecache writecsv
  where
   tryDownload []         = return 1
-  tryDownload (url:urls) = do
-    c <- downloadCommand url
-    if c == 0 then return 0
-              else tryDownload urls
+  tryDownload (url:urls) = do c <- downloadCommand url
+                              if c == 0 then return 0
+                                        else tryDownload urls
 
   downloadCommand piurl
     | ".git" `isSuffixOf` piurl
@@ -71,14 +75,14 @@ updateRepository cfg cleancache download usecache writecsv = do
          curlcmd <- getCurlCmd
          c1 <- showExecCmd $ unwords [curlcmd, "-o", tarfile, quote piurl]
          c2 <- showExecCmd $ unwords ["tar", "-xf", tarfile]
-         liftIOEL $ removeFile tarfile
+         liftIOEL $ whenFileExists tarfile $ removeFile tarfile
          return (c1 + c2)
     | ".tar.gz" `isSuffixOf` piurl
     = do let tarfile = "INDEX.tar.gz"
          curlcmd <- getCurlCmd
          c1 <- showExecCmd $ unwords [curlcmd, "-o", tarfile, quote piurl]
          c2 <- showExecCmd $ unwords ["tar", "-xzf", tarfile]
-         liftIOEL $ removeFile tarfile
+         liftIOEL $ whenFileExists tarfile $ removeFile tarfile
          return (c1 + c2)
     | otherwise
     = do logError $ "Unknown kind of package index URL: " ++ piurl

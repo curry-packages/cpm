@@ -75,11 +75,11 @@ tryDownloadFromURLs :: String -> [String] -> String -> ErrorLogger Int
 tryDownloadFromURLs _      []                 _    = return 1
 tryDownloadFromURLs target (baseurl:baseurls) file = do
   let sourceurl = baseurl ++ "/" ++ file
+  logDebug $ "Trying to download '" ++ sourceurl ++ "'"
   curlcmd <- getCurlCmd
   rc <- showExecCmd $ unwords [curlcmd, "-f -o", quote target, quote sourceurl]
-  if rc == 0
-    then return 0
-    else tryDownloadFromURLs target baseurls file
+  if rc == 0 then return 0
+             else tryDownloadFromURLs target baseurls file
 
 --- Writes the repository database with the current repository index.
 --- It is generated either from the CSV file `REPOSITORY_CACHE.csv`
@@ -136,19 +136,20 @@ addPackagesToRepositoryDB cfg quiet pkgs =
         hFlush stdout
         return ()
   
-  newEntry (Left p) = newIndexEntry
-    (name p)
-    (showTerm (version p))
-    (showTerm (dependencies p))
-    (showTerm (compilerCompatibility p))
-    (synopsis p)
-    (showTerm (category p))
-    (showTerm (sourceDirs p))
-    (showTerm (exportedModules p))
-    (showTerm (listToMaybe (executableSpec  p)))
-  newEntry (Right [pn,pv,deps,cc,syn,cat,dirs,mods,exe]) =
-    newIndexEntry pn pv deps cc syn cat dirs mods exe
-
+  newEntry (Left p) =
+    newIndexEntry (name p)
+                  (showTerm (version p))
+                  (showTerm (dependencies p))
+                  (showTerm (compilerCompatibility p))
+                  (synopsis p)
+                  (showTerm (category p))
+                  (showTerm (sourceDirs p))
+                  (showTerm (exportedModules p))
+                  (showTerm (listToMaybe (executableSpec  p)))
+  newEntry (Right row) = case row of
+    [pn,pv,deps,cc,syn,cat,dirs,mods,exe] ->
+      newIndexEntry pn pv deps cc syn cat dirs mods exe
+    _ -> error $ "CPM.Repository.CacheDB: internal format error"  
 
 --- Saves complete database as term files into an existing directory
 --- provided as a parameter.
