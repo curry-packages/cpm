@@ -3,7 +3,7 @@
 --- a package.
 ---
 --- For this purpose, copies of these packages and a main "comparison"
---- module (with name "Compare") are generated in the temporary
+--- module (with name `Compare`) are generated in the temporary
 --- directory `/tmp/CPM/bdiff` and then CurryCheck is executed on `Compare`.
 --------------------------------------------------------------------------------
 
@@ -18,14 +18,12 @@ module CPM.Diff.Behavior
   , findFunctionsToCompare
   ) where
 
-import System.Directory   ( createDirectory, doesDirectoryExist, getTemporaryDirectory )
-import System.FilePath    ( (</>), joinPath )
-import System.Environment ( getEnv, setEnv, unsetEnv )
-import Data.Char          ( isAlphaNum )
-import Data.List          ( intercalate, intersect, nub, splitOn, isPrefixOf
-                          , isInfixOf, find, delete, (\\), nubBy )
-import Data.Maybe         ( isJust, fromJust, fromMaybe, listToMaybe )
 import Control.Monad
+import Data.Char            ( isAlphaNum )
+import Data.List            ( intercalate, intersect, nub, splitOn, isPrefixOf
+                            , isInfixOf, find, delete, (\\), nubBy )
+import Data.Maybe           ( isJust, fromJust, fromMaybe, listToMaybe )
+import System.Environment   ( getEnv, setEnv, unsetEnv )
 
 import AbstractCurry.Build
 import AbstractCurry.Pretty ( defaultOptions, ppCTypeExpr, showCProg )
@@ -45,6 +43,10 @@ import Analysis.Termination ( productivityAnalysis, Productivity(..) )
 import Analysis.TypeUsage   ( typesInValuesAnalysis )
 import CASS.Server          ( analyzeGeneric )
 import System.CurryPath     ( lookupModuleSource )
+import System.Directory     ( createDirectory, doesDirectoryExist
+                            , getTemporaryDirectory )
+import System.FilePath      ( (</>), joinPath )
+import System.Path          ( getFileInPath )
 import Text.Pretty          ( pPrint, text, indent, vcat, (<+>), (<$$>) )
 
 import CPM.AbstractCurry ( readAbstractCurryFromDeps, loadPathForPackage )
@@ -215,16 +217,23 @@ renderRemoved rs =
 
 --- Runs CurryCheck on the generated program.
 callCurryCheck :: Config -> ComparisonInfo -> String -> ErrorLogger ()
-callCurryCheck cfg info baseTmp = do
+callCurryCheck _ info baseTmp = do
   oldPath <- liftIOEL $ getEnv "CURRYPATH"
-  let currybin  = curryExec cfg
   let currypath = infDirA info ++ ":" ++ infDirB info
-  liftIOEL $ setEnv "CURRYPATH" currypath
-  logDebug $ "Run `curry check Compare' in `" ++ baseTmp ++ "' with"
-  logDebug $ "CURRYPATH=" ++ currypath
-  ecode <- inDirectoryEL baseTmp $ showExecCmd (currybin ++ " check Compare")
-  liftIOEL $ setEnv "CURRYPATH" oldPath
-  logDebug "CurryCheck finished"
+  mbccfile <- liftIOEL $ getFileInPath "curry-check"
+  ecode <-
+    maybe
+      (do logInfo "CurryCheck not found, no comparison performed"
+          return 0)
+      (\cc -> do
+        liftIOEL $ setEnv "CURRYPATH" currypath
+        logDebug $ "Run `curry-check Compare' in `" ++ baseTmp ++ "' with"
+        logDebug $ "CURRYPATH=" ++ currypath
+        ec <- inDirectoryEL baseTmp $ showExecCmd (cc ++ " Compare")
+        liftIOEL $ setEnv "CURRYPATH" oldPath
+        logDebug "CurryCheck finished"
+        return ec)
+      mbccfile
   if ecode==0
     then return ()
     else logError "CurryCheck detected behavior error!"
@@ -276,7 +285,7 @@ genCurryCheckProgram cfg repo gc prodfuncs info groundequiv acyCache loadpath = 
     , packageId (infPackageA info) ++
       " and " ++ packageId (infPackageB info) ++ "."
     , ""
-    , "It should be processed by 'curry check Compare' with setting"
+    , "It should be processed by 'curry-check Compare' with setting"
     , "export CURRYPATH=" ++ infDirA info ++ ":" ++ infDirB info
     ]
 

@@ -77,8 +77,8 @@ compareModulesFromPackages cfg repo gc nameA verA nameB verB onlyMods = do
 --- @param verB - the version of package version B
 --- @param onlyMods - a list of modules to compare
 compareModulesFromPackageAndDir :: Config -> Repository -> GC.GlobalCache
-                               -> String -> String -> Version -> Maybe [String]
-                               -> ErrorLogger [(String, Differences)]
+                                -> String -> String -> Version -> Maybe [String]
+                                -> ErrorLogger [(String, Differences)]
 compareModulesFromPackageAndDir cfg repo gc dirA nameB verB onlyMods = do
   baseTmp <- liftIOEL getBaseTemp
   pkgB <- GC.tryFindPackage gc nameB verB
