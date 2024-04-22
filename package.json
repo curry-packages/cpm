@@ -49,7 +49,7 @@
     "documentation": {
         "src-dir": "docs",
         "main": "manual.tex",
-        "command": "pdflatex -output-directory=OUTDIR manual.tex && pdflatex -output-directory=OUTDIR manual.tex && makeindex manual.idx && pdflatex -output-directory=OUTDIR manual.tex && pdflatex -output-directory=OUTDIR manual.tex"
+        "command": "pdflatex -output-directory=OUTDIR manual.tex && pdflatex -output-directory=OUTDIR manual.tex && cp OUTDIR/manual.idx manual.idx && makeindex manual.idx && mv manual.ind OUTDIR/manual.ind && rm -f manual.idx manual.ilg && pdflatex -output-directory=OUTDIR manual.tex && pdflatex -output-directory=OUTDIR manual.tex"
     },
     "source": {
         "git": "https://github.com/curry-packages/cpm.git",
