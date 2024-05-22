@@ -130,9 +130,15 @@ findVersion repo pn v =
  where maybeHead []    = Nothing
        maybeHead (x:_) = Just x
 
+------------------------------------------------------------------------------
+-- Check status of repository index.
+
 --- Prints a warning if the repository index is older than 10 days.
+--- Abort with an error message if the repository index is not initialized
+--- (e.g., by the command `cypm update`).
 warnIfRepositoryOld :: Config -> ErrorLogger ()
 warnIfRepositoryOld cfg = do
+  logDebug "Check last update time of repository index..."
   let updatefile = repositoryDir cfg </> "README.md"
   updexists <- liftIOEL $ doesFileExist updatefile
   if updexists
@@ -146,8 +152,10 @@ warnIfRepositoryOld cfg = do
             days = timediff `div` (60*60*24)
         logInfo $ "Warning: your repository index is older than " ++
                       show days ++ " days.\n" ++ useUpdateHelp
-    else logInfo $ "Warning: your repository index is not up-to-date.\n" ++
-                       useUpdateHelp
+    else do
+      logError $ "It seems that the repository of CPM is not initialized.\n" ++
+                 useUpdateHelp
+      liftIOEL $ exitWith 1
 
 useUpdateHelp :: String
 useUpdateHelp = "Use 'cypm update' to download the newest package index."
