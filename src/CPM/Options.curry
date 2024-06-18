@@ -78,7 +78,8 @@ data CheckOptions = CheckOptions
 data CheckoutOptions = CheckoutOptions
   { coPackage    :: String
   , coVersion    :: Maybe Version
-  , coPrerelease :: Bool }
+  , coPrerelease :: Bool
+  , coOutput     :: String }
 
 data InstallOptions = InstallOptions
   { instTarget     :: Maybe String
@@ -197,7 +198,7 @@ checkOpts s = case optCommand s of
 checkoutOpts :: Options -> CheckoutOptions
 checkoutOpts s = case optCommand s of
   Checkout opts -> opts
-  _             -> CheckoutOptions "" Nothing False
+  _             -> CheckoutOptions "" Nothing False ""
 
 installOpts :: Options -> InstallOptions
 installOpts s = case optCommand s of
@@ -487,6 +488,12 @@ optionParser allargs = optParser
           (  metavar "VERSION"
           <> help "The package version"
           <> optional)
+    <.> option (\s a -> Right $ a { optCommand =
+                                     cmd (checkoutOpts a) { coOutput = s } })
+          (  long "output"
+          <> short "o"
+          <> help "The directory to store the package (default: PACKAGE)"
+          <> optional )
     <.> flag (\a -> Right $ a { optCommand = cmd (checkoutOpts a)
                                                  { coPrerelease = True } })
           (  short "p"

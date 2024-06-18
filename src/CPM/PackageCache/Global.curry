@@ -203,23 +203,23 @@ missingPackages :: GlobalCache -> [Package] -> [Package]
 missingPackages gc = filter (not . isPackageInstalled gc)
 
 --- Checkout a package from the global package cache.
-checkoutPackage :: Config -> Package -> ErrorLogger ()
-checkoutPackage cfg pkg = do
+checkoutPackage :: Config -> Package -> String -> ErrorLogger ()
+checkoutPackage cfg pkg outdir = do
   sexists <- liftIOEL $ doesDirectoryExist pkgDir
+  let codir = if null outdir then name pkg else outdir
   texists <- liftIOEL $ doesDirectoryExist codir
   if texists
     then logError $
            "Local package directory '" ++ codir ++ "' already exists."
     else if sexists
            then do liftIOEL $ copyDirectory pkgDir codir
-                   logInfo logmsg
+                   logInfo (logmsg codir)
            else logError $ "Package '" ++ pkgId ++ "' is not installed."
  where
-  pkgId  = packageId pkg
-  pkgDir = installedPackageDir cfg pkg
-  codir  = name pkg
-  logmsg = "Package '" ++ pkgId ++ "' checked out into directory '" ++
-           codir ++ "'."
+  pkgId    = packageId pkg
+  pkgDir   = installedPackageDir cfg pkg
+  logmsg d = "Package '" ++ pkgId ++ "' checked out into directory '" ++
+             d ++ "'."
 
 --- Removes a package from the global package cache.
 uninstallPackage :: Config -> String -> Version -> ErrorLogger ()
