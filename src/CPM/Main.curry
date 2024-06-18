@@ -76,7 +76,7 @@ import CPM.Helpers ( askYesNo )
 
 -- Date of current version:
 cpmDate :: String
-cpmDate = "22/05/2024"
+cpmDate = "18/06/2024"
 
 -- Banner of this tool:
 cpmBanner :: String
@@ -332,20 +332,20 @@ checkCompleteDependencies chkopts cfg aspecdir pkg = do
 ------------------------------------------------------------------------------
 -- `checkout` command:
 checkoutCmd :: CheckoutOptions -> Config -> ErrorLogger ()
-checkoutCmd (CheckoutOptions pkgname Nothing pre) cfg = do
+checkoutCmd (CheckoutOptions pkgname Nothing pre codir) cfg = do
  repo <- getRepoForPackages cfg [pkgname]
  case findAllVersions repo pkgname pre of
   [] -> packageNotFoundFailure pkgname
   ps -> case filter (isCompatibleToCompiler cfg) ps of
     []    -> compatPackageNotFoundFailure cfg pkgname useUpdateHelp
     (p:_) -> do acquireAndInstallPackageWithDependencies cfg repo p
-                checkoutPackage cfg p
-checkoutCmd (CheckoutOptions pkgname (Just ver) _) cfg = do
+                checkoutPackage cfg p codir
+checkoutCmd (CheckoutOptions pkgname (Just ver) _ codir) cfg = do
  repo <- getRepoForPackages cfg [pkgname]
  case findVersion repo pkgname ver of
   Nothing -> packageNotFoundFailure $ pkgname ++ "-" ++ showVersion ver
   Just  p -> do acquireAndInstallPackage cfg p
-                checkoutPackage cfg p
+                checkoutPackage cfg p codir
 
 ------------------------------------------------------------------------------
 -- `install` command:
@@ -368,7 +368,7 @@ installCmd (InstallOptions (Just pkg) vers pre _ False) cfg = do
   fileExists <- liftIOEL $ doesFileExist pkg
   if fileExists
     then installFromZip cfg pkg
-    else installApp (CheckoutOptions pkg vers pre) cfg
+    else installApp (CheckoutOptions pkg vers pre "") cfg
 installCmd (InstallOptions Nothing (Just _) _ _ False) _ =
   fail "Must specify package name"
 
