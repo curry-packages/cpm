@@ -42,6 +42,7 @@ import Analysis.ProgInfo    ( ProgInfo, emptyProgInfo, combineProgInfo
 import Analysis.Termination ( productivityAnalysis, Productivity(..) )
 import Analysis.TypeUsage   ( typesInValuesAnalysis )
 import CASS.Server          ( analyzeGeneric )
+import RW.Base              ( ReadWrite )
 import System.CurryPath     ( lookupModuleSource )
 import System.Directory     ( createDirectory, doesDirectoryExist
                             , getTemporaryDirectory )
@@ -917,7 +918,7 @@ terminationFilter pkgA dirA depsA True (acy, funcs, rm) = do
 -- Analyze a list of modules with some static program analysis in a given
 -- load path. Returns the combined analysis information.
 -- Raises an error if something goes wrong.
-analyzeModules :: (Read a, Show a)
+analyzeModules :: (Read a, Show a, ReadWrite a)
                => String -> Analysis a -> [String] -> [String]
                -> ErrorLogger (ProgInfo a)
 analyzeModules ananame analysis currypath mods = do
@@ -930,7 +931,7 @@ analyzeModules ananame analysis currypath mods = do
 
 -- Analyze a module with some static program analysis in a given
 -- load path. Raises an error if something goes wrong.
-analyzeModule :: (Read a, Show a)
+analyzeModule :: (Read a, Show a, ReadWrite a)
               => Analysis a -> [String] -> String -> IO (ProgInfo a)
 analyzeModule analysis currypath mod = do
   setEnv "CURRYPATH" (joinSearchPath currypath)

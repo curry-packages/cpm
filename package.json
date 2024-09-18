@@ -1,6 +1,6 @@
 {
     "name": "cpm",
-    "version": "3.2.0",
+    "version": "3.3.0",
     "author": "Jonas Oberschweiber <jonas@oberschweiber.com>, Michael Hanus <mh@informatik.uni-kiel.de>",
     "maintainer": "Michael Hanus <mh@informatik.uni-kiel.de>",
     "synopsis": "Curry Package Manager: a tool to distribute and install Curry libraries and applications",
@@ -9,10 +9,10 @@
     "licenseFile": "LICENSE",
     "dependencies": {
         "base"           : ">= 3.0.0, < 4.0.0",
-        "abstract-curry" : ">= 3.0.0, < 4.0.0",
+        "abstract-curry" : ">= 3.0.0, < 5.0.0",
         "boxes"          : ">= 3.0.0, < 4.0.0",
-        "cass-analysis"  : ">= 3.0.0, < 4.0.0",
-        "cass"           : ">= 3.0.0, < 4.0.0",
+        "cass-analysis"  : ">= 4.0.0, < 5.0.0",
+        "cass"           : ">= 4.0.0, < 5.0.0",
         "cdbi"           : ">= 3.2.0, < 4.0.0",
         "csv"            : ">= 3.0.0, < 4.0.0",
         "cryptohash"     : ">= 3.0.0, < 4.0.0",
@@ -22,7 +22,7 @@
         "directory"      : ">= 3.0.0, < 4.0.0",
         "execpath"       : ">= 3.0.0, < 4.0.0",
         "filepath"       : ">= 3.0.0, < 4.0.0",
-        "flatcurry"      : ">= 3.0.0, < 4.0.0",
+        "flatcurry"      : ">= 3.1.0, < 5.0.0",
         "frontend-exec"  : ">= 3.0.0, < 4.0.0",
         "graphviz"       : ">= 3.0.0, < 4.0.0",
         "io-extra"       : ">= 3.0.0, < 4.0.0",
@@ -33,6 +33,7 @@
         "propertyfile"   : ">= 3.0.0, < 4.0.0",
         "read-legacy"    : ">= 3.0.0, < 4.0.0",
         "redblacktree"   : ">= 3.0.0, < 4.0.0",
+        "rw-data"        : ">= 1.0.0",
         "time"           : ">= 3.0.0, < 4.0.0",
         "wl-pprint"      : ">= 3.0.0, < 4.0.0"
     },
