@@ -86,7 +86,7 @@ type Disjunction = [Conjunction]
 --- version constraint. Each inner list of version constraints is a conjunction,
 --- the outer list is a disjunction.
 data Dependency = Dependency String Disjunction
- deriving (Eq,Show)
+ deriving (Eq,Show,Read)
 
 --- A version constraint.
 --- @cons VExact - versions must match exactly
@@ -105,13 +105,13 @@ data VersionConstraint = VExact         Version
                        | VLte           Version
                        | VMinCompatible Version
                        | VMajCompatible Version
- deriving (Eq,Show)
+ deriving (Eq,Show,Read)
 
 --- Compiler compatibility constraint, takes the name of the compiler (kics2 or
 --- pakcs), as well as a disjunctive normal form combination of version
 --- constraints (see Dependency).
 data CompilerCompatibility = CompilerCompatibility String Disjunction
- deriving (Eq,Show)
+ deriving (Eq,Show,Read)
 
 --- A package id consisting of the package name and version.
 data PackageId = PackageId String Version
@@ -122,7 +122,7 @@ data PackageId = PackageId String Version
 --- of options for various compilers (i.e., pairs of compiler name and
 --- options for this compiler).
 data PackageExecutable = PackageExecutable String String [(String,String)]
- deriving (Eq,Show)
+ deriving (Eq,Show,Read)
 
 --- The specification of a single test suite for a package.
 --- It consists of a directory, a list of modules, options (for CurryCheck),

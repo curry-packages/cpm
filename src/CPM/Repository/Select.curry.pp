@@ -2,7 +2,7 @@
 --- Some queries on the repository cache.
 ---
 --- @author Michael Hanus
---- @version April 2021
+--- @version October 2024
 ------------------------------------------------------------------------------
 {-# OPTIONS_CYMAKE -F --pgmF=currypp --optF=foreigncode --optF=-o #-}
 
@@ -273,7 +273,9 @@ queryDBorCache cfg large dbaction = do
               else readRepository cfg large
 
 --- Reads an unqualified Curry term w.r.t. the module `CPM.Package`.
-pkgRead :: Data a => String -> a
+-- Note: the type signature is omitted since KiCS2 has no `Data` context
+-- due to efficiency reasons.
+--pkgRead :: Data a => String -> a
 pkgRead = readUnqualifiedTerm ["CPM.Package","Prelude"]
 
 ------------------------------------------------------------------------------
