@@ -26,9 +26,10 @@ queue https://github.com/curry-packages/queue.git v3.0.0
 random https://github.com/curry-packages/random.git v3.0.0
 read-legacy https://github.com/curry-packages/read-legacy.git v3.0.0
 redblacktree https://github.com/curry-packages/redblacktree.git v3.0.0
-rw-data https://github.com/curry-packages/rw-data.git v1.0.0
+rw-data https://github.com/curry-packages/rw-data.git v1.1.0
 scc https://github.com/curry-packages/scc.git v3.0.0
 socket https://github.com/curry-packages/socket.git v3.0.0
+string-trie https://github.com/curry-packages/string-trie.git v0.0.1
 time https://github.com/curry-packages/time.git v3.0.0
 transformers https://github.com/curry-packages/transformers.git v3.0.0
 wl-pprint https://github.com/curry-packages/wl-pprint.git v3.0.0
