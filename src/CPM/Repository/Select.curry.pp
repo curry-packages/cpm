@@ -2,9 +2,10 @@
 --- Some queries on the repository cache.
 ---
 --- @author Michael Hanus
---- @version October 2024
+--- @version November 2024
 ------------------------------------------------------------------------------
 {-# OPTIONS_CYMAKE -F --pgmF=currypp --optF=foreigncode --optF=-o #-}
+{-# OPTIONS_FRONTEND -Wno-missing-signatures #-}
 
 module CPM.Repository.Select
   ( searchNameSynopsisModules
