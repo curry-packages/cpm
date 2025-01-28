@@ -64,7 +64,7 @@ data ConfigOptions = ConfigOptions
 data DepsOptions = DepsOptions
   { depsPath       :: Bool  -- show CURRYPATH only?
   , depsVSCode     :: Bool  -- set the full import path in the VS Code settings file
-  , depsLangServer :: Bool -- set the full import path into file .curry/language-server/paths.json
+  , depsLangServer :: Bool  -- set the full import path into file .curry/language-server/paths.json
   , depsFull       :: Bool  -- show full tree in textual representation?
   , depsGraph      :: Bool  -- show dot graph instead of tree?
   , depsView       :: Bool  -- view dot graph with `dotviewcommand` of rc file?
