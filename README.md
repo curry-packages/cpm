@@ -4,10 +4,10 @@ This repository contains sources of the
 [Curry package manager CPM](http://www.curry-lang.org/tools/cpm).
 The Curry package manager is implemented in Curry
 It is already part of recent distributions of the Curry systems
-[PAKCS](https://www.informatik.uni-kiel.de/~pakcs/) (Version 1.15.0 or higher),
-[KiCS2](https://www-ps.informatik.uni-kiel.de/kics2/) (Version 0.6.0 or higher),
+[PAKCS](https://www.curry-lang.org/pakcs/) (Version 1.15.0 or higher),
+[KiCS2](https://www.curry-lang.org/kics2/) (Version 0.6.0 or higher),
 and
-[Curry2Go](https://www-ps.informatik.uni-kiel.de/curry2go/).
+[Curry2Go](https://www.curry-lang.org/curry2go/).
 
 ## Quick Start
 
