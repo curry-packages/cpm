@@ -1,9 +1,10 @@
 abstract-curry https://github.com/curry-packages/abstract-curry.git v4.0.0
 boxes https://github.com/curry-packages/boxes.git v3.0.0
-cass https://github.com/curry-packages/cass.git v4.0.0
+cass https://github.com/curry-packages/cass.git v4.1.0
 cass-analysis https://github.com/curry-packages/cass-analysis.git v4.0.0
 cdbi https://github.com/curry-packages/cdbi.git v3.2.0
 containers https://github.com/curry-packages/containers.git v3.0.0
+cpm-query https://github.com/curry-packages/cpm-query.git v0.1.0
 cryptohash https://github.com/curry-packages/cryptohash.git v3.0.0
 csv https://github.com/curry-packages/csv.git v3.0.0
 curry-resources https://github.com/curry-packages/curry-resources.git v1.0.0
