@@ -41,7 +41,8 @@
     "executable": {
         "name": "cypm",
         "main": "CPM.Main",
-        "options": { "kics2" : ":set rts -T" }
+        "options": { "kics2" : ":set rts -T",
+                     "kmcc"  : ":set rts -T" }
     },
     "testsuite": {
         "src-dir": "src",
