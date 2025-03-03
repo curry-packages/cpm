@@ -76,7 +76,7 @@ import CPM.Helpers ( askYesNo )
 
 -- Date of current version:
 cpmDate :: String
-cpmDate = "18/06/2024"
+cpmDate = "03/03/2025"
 
 -- Banner of this tool:
 cpmBanner :: String

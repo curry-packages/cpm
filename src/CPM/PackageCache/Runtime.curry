@@ -115,10 +115,12 @@ writePackageConfig cfg pkgdir pkg loadpath =
         , ""
         , "--- Returns the load path for the package (if it is the main package)."
         , "getPackageLoadPath :: IO [String]"
-        , "getPackageLoadPath = do"
-        , "  pp <- getPackagePath"
-        , "  return " ++ showLoadPath abspkgdir
-        , ""
+        , "getPackageLoadPath = do" ] ++
+        (let (slpath,usepp) = showLoadPath abspkgdir
+         in if usepp then [ "  pp <- getPackagePath"
+                          , "  return " ++ slpath ]
+                     else [ "  return " ++ slpath ]) ++
+        [ ""
         , "--- Load path for the package (deprecated, use 'getPackageLoadPath')."
         , "packageLoadPath :: String"
         , "packageLoadPath = " ++ show loadpath
@@ -127,15 +129,14 @@ writePackageConfig cfg pkgdir pkg loadpath =
     logDebug $ "Config module '" ++ configfile ++ "' written."
 
   showLoadPath pdir =
-    "[" ++
-    intercalate ", "
-      (map replacePackagePath
-        (splitSearchPath loadpath)) ++ "]"
+    let (lppath,usepp) = unzip
+                           (map replacePackagePath (splitSearchPath loadpath))
+    in ("[" ++ intercalate ", " lppath ++ "]", or usepp)
    where
     replacePackagePath d =
       if pdir `isPrefixOf` d
-        then "pp ++ " ++ show (drop (length pdir) d)
-        else show d
+        then ("pp ++ " ++ show (drop (length pdir) d), True)
+        else (show d, False)
 
   showExecutables bins = case length bins of
     0 -> []
