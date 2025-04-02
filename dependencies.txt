@@ -12,6 +12,7 @@ currypath https://github.com/curry-packages/currypath.git v3.0.0
 det-parse https://github.com/curry-packages/det-parse.git v3.0.0
 directory https://github.com/curry-packages/directory.git v3.0.0
 execpath https://github.com/curry-packages/execpath.git v3.0.0
+extra https://github.com/curry-packages/extra.git v3.0.0
 filepath https://github.com/curry-packages/filepath.git v3.0.0
 flatcurry https://github.com/curry-packages/flatcurry.git v4.0.0
 frontend-exec https://github.com/curry-packages/frontend-exec.git v3.3.0
@@ -30,8 +31,9 @@ redblacktree https://github.com/curry-packages/redblacktree.git v3.0.0
 rw-data https://github.com/curry-packages/rw-data.git v1.1.0
 scc https://github.com/curry-packages/scc.git v3.0.0
 socket https://github.com/curry-packages/socket.git v3.0.0
-string-trie https://github.com/curry-packages/string-trie.git v0.0.1
+string-trie https://github.com/curry-packages/string-trie.git v0.0.2
 time https://github.com/curry-packages/time.git v3.0.0
 transformers https://github.com/curry-packages/transformers.git v3.0.0
+url-base https://github.com/curry-packages/url-base.git v0.1.0
 wl-pprint https://github.com/curry-packages/wl-pprint.git v3.0.0
 xml https://github.com/curry-packages/xml.git v3.0.0

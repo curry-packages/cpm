@@ -19,6 +19,7 @@ import FlatCurry.Goodies   ( progImports )
 import JSON.Data
 import JSON.Parser         ( parseJSON )
 import JSON.Pretty         ( ppJSON )
+import Network.URL         ( string2urlencoded )
 import System.Directory    ( doesFileExist, doesDirectoryExist
                            , copyFile, createDirectory, createDirectoryIfMissing
                            , getCurrentDirectory, getDirectoryContents
@@ -76,7 +77,7 @@ import CPM.Helpers ( askYesNo )
 
 -- Date of current version:
 cpmDate :: String
-cpmDate = "03/03/2025"
+cpmDate = "02/04/2025"
 
 -- Banner of this tool:
 cpmBanner :: String
@@ -1295,22 +1296,7 @@ masalaUploadURL :: String -> String -> Bool -> Bool -> String -> String
 masalaUploadURL login cryptpass publish force pkgtxt =
   "https://cpm.curry-lang.org/masala/run.cgi?UploadBy/" ++
   intercalate "/"
-    (map string2urlencoded
-         [login, cryptpass, show publish, show force, pkgtxt])
- where
-  --- Translates arbitrary strings into equivalent URL encoded strings.
-  --- Taken from HTML.Base to avoid inclusion of package html2.
-  string2urlencoded :: String -> String
-  string2urlencoded [] = []
-  string2urlencoded (c:cs)
-    | isAlphaNum c = c : string2urlencoded cs
-    | c == ' '     = '+' : string2urlencoded cs
-    | otherwise = let oc = ord c
-      in '%' : int2hex(oc `div` 16) : int2hex(oc `mod` 16) : string2urlencoded cs
-   where
-     int2hex i = if i<10 then chr (ord '0' + i)
-                         else chr (ord 'A' + i - 10)
-
+    (map string2urlencoded [login, cryptpass, show publish, show force, pkgtxt])
 
 ------------------------------------------------------------------------------
 --- Fail with a "package not found" message.
