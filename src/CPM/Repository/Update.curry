@@ -11,6 +11,7 @@ module CPM.Repository.Update
 
 import System.Directory
 import System.FilePath
+import System.Process    ( system )
 import Data.List         ( isSuffixOf )
 import Control.Monad
 
@@ -46,7 +47,7 @@ updateRepository cfg cleancache download usecache writecsv = do
   if download
     then do
       liftIOEL $ do removeDirectoryComplete repodirbak
-                    renameDirectory repodir repodirbak -- save old repo
+                    system $ "/bin/mv '" ++ repodir ++ "' '" ++ repodirbak ++ "'"
                     recreateDirectory repodir
       c <- inDirectoryEL repodir (tryDownload (packageIndexURLs cfg))
       if c == 0
