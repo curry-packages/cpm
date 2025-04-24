@@ -77,7 +77,7 @@ import CPM.Helpers ( askYesNo )
 
 -- Date of current version:
 cpmDate :: String
-cpmDate = "02/04/2025"
+cpmDate = "24/04/2025"
 
 -- Banner of this tool:
 cpmBanner :: String
@@ -705,8 +705,9 @@ genPackageREADME _ specDir outputdir = do
     entries <- liftIOEL $ getDirectoryContents specDir
     return $ filter ("README" `isPrefixOf`) entries
 
-  formatCmd1 readme = "pandoc -s -t html -o " ++ outfile1 ++ " " ++ readme
-  formatCmd2 readme = "pandoc -t html -o " ++ outfile2 ++ " " ++ readme
+  pandocCmd = "pandoc -f gfm -t html "
+  formatCmd1 readme = pandocCmd ++ "-s -o " ++ outfile1 ++ " " ++ readme
+  formatCmd2 readme = pandocCmd ++ "-o " ++ outfile2 ++ " " ++ readme
 
 --- Generate manual according to  documentation specification of package.
 genPackageManual :: Package -> String -> String -> ErrorLogger ()
@@ -736,7 +737,7 @@ genPackageManual pkg specDir outputdir = case documentation pkg of
     = let formatcmd = "pdflatex -output-directory=\"OUTDIR\" " ++ docmain
       in formatcmd ++ " && " ++ formatcmd
     | ".md" `isSuffixOf` docmain
-    = "pandoc " ++ docmain ++
+    = "pandoc -f gfm " ++ docmain ++
       " -o \"OUTDIR" </> replaceExtension docmain ".pdf" ++ "\""
     | otherwise = ""
 
