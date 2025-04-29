@@ -23,7 +23,7 @@ import Data.List (sortBy, delete, deleteBy)
 import Test.Prop
 import Prelude hiding (empty)
 
-import Data.Table.RBTree as Table ( TableRBT, empty, lookup, toList,update )
+import Data.Map as Map ( Map, empty, lookup, toList, insert )
 
 import CPM.Package
 
@@ -33,7 +33,7 @@ data LookupSource = FromRepository
                   | FromLocalCache
                   | FromGlobalCache
 
-type PkgMap = TableRBT String [(LookupSource, Package)]
+type PkgMap = Map.Map String [(LookupSource, Package)]
 
 data LookupSet = LookupSet PkgMap LookupOptions
 
@@ -42,7 +42,7 @@ data LookupOptions = LookupOptions
 
 --- The empty lookup set.
 emptySet :: LookupSet
-emptySet = LookupSet (empty (<=)) defaultOptions
+emptySet = LookupSet Map.empty defaultOptions
 
 defaultOptions :: LookupOptions
 defaultOptions = LookupOptions []
@@ -70,10 +70,10 @@ allPackages (LookupSet ls _) = map snd $ concat $ map snd $ toList ls
 --- @param p the package to add
 --- @param s where is the package spec from?
 addPackage :: LookupSet -> Package -> LookupSource -> LookupSet
-addPackage (LookupSet ls o) pkg src = case Table.lookup (name pkg) ls of
-  Nothing -> LookupSet (update (name pkg) [(src, pkg)] ls) o
+addPackage (LookupSet ls o) pkg src = case Map.lookup (name pkg) ls of
+  Nothing -> LookupSet (insert (name pkg) [(src, pkg)] ls) o
   Just ps -> let ps' = filter ((/= packageId pkg) . packageId . snd) ps
-              in LookupSet (update (name pkg) ((src, pkg):ps') ls) o
+              in LookupSet (insert (name pkg) ((src, pkg):ps') ls) o
 
 --- Finds a specific entry (including the source) in the lookup set.
 ---
@@ -82,7 +82,7 @@ addPackage (LookupSet ls o) pkg src = case Table.lookup (name pkg) ls of
 findEntry :: LookupSet -> Package -> Maybe (LookupSource, Package)
 findEntry (LookupSet ls _) p = maybeHead candidates
  where
-  allVersions = Table.lookup (name p) ls
+  allVersions = Map.lookup (name p) ls
   candidates = case allVersions of
     Nothing -> []
     Just ps -> filter ((packageIdEq p) . snd) ps
@@ -97,7 +97,7 @@ findEntry (LookupSet ls _) p = maybeHead candidates
 findAllVersions :: LookupSet -> String -> Bool -> [Package]
 findAllVersions (LookupSet ls o) p pre = localSorted' ++ nonLocalSorted
   where
-    packageVersions = case Table.lookup p ls of
+    packageVersions = case Map.lookup p ls of
       Nothing -> []
       Just vs -> vs
     onlyLocal = filter isLocal packageVersions
