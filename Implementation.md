@@ -1,4 +1,4 @@
-Some details about CPM's Implementation
+Some details about CPM's implementation
 ========================================
 
 Information about CPM's local storage structure (i.e., on the client side)
@@ -11,35 +11,32 @@ Global package index
 --------------------
 
 CPM requires a global index containing the specifications
-of all available packages. The default URL is defined in
-`CPM.Config.packageIndexDefaultURL`, currently as
+of all available packages. The default URLs are defined in
+`CPM.Config.packageIndexDefaultURLs`, currently as
 
-    https://git.ps.informatik.uni-kiel.de/curry-packages/cpm-index.git
+    https://cpm.curry-lang.org/PACKAGES/INDEX.tar.gz
 
 This configuration can be changed by the `.cpmrc` value
 
     PACKAGE_INDEX_URL
 
-Currently, it is a git repository but it could also be a tar file
-or a gzipped tar file.
-
-The directory referenced by this URL must contains for each
-package `pkg` and version `vers` a file
+It is a gzipped tar file which contains, for each package `pkg`
+and version `vers`, a file
 
     pkg/vers/package.json
 
-containing the package specification in JSON format.
+This file contains the package specification in JSON format.
 For instance, it contains the files
 
-    cpm/2.0.0/package.json
-    cpm/2.1.0/package.json
     cpm/2.1.1/package.json
+    cpm/3.1.0/package.json
+    cpm/3.3.0/package.json
 
-The global package index is downloaded by the CPM command
+The global package index is downloaded and installed by the CPM command
 
-    cypm update
+    > cypm update
 
-This command also create a local sqlite3 database containing
+This command also downloads a sqlite3 database containing
 the most important information about each package.
 The database is used by various CPM commands to accelerate
 the access to information about packages.
@@ -49,23 +46,20 @@ Global package store
 --------------------
 
 CPM uses a global store containing a gzipped tar file for each package.
-The default URL is defined in `CPM.Config.packageTarFilesDefaultURL`,
+The default URLs are defined in `CPM.Config.packageTarFilesDefaultURLs`,
 currently as
 
-    https://www-ps.informatik.uni-kiel.de/~cpm/PACKAGES/
+    https://cpm.curry-lang.org/PACKAGES
 
 This configuration can be changed by the `.cpmrc` value
 
     PACKAGE_TARFILES_URL
 
-Currently, it is a git repository but it could also be a tar file
-or a gzipped tar file.
-
 In order to download the package `pkg` in version `vers`,
 CPM extends this URL by the string `pkg-vers.tar.gz`.
-For instance, CPM downloads version 2.1.0 of the package `cpm` from
+For instance, CPM downloads version 3.3.0 of package `cpm` from
 
-    https://www-ps.informatik.uni-kiel.de/~cpm/PACKAGES/cpm-2.1.0.tar.gz
+    https://cpm.curry-lang.org/PACKAGES/cpm-3.3.0.tar.gz
 
 If CPM cannot download anything from this location,
 it tries to download the package from the `source` field
@@ -75,15 +69,15 @@ of the package description.
 Global package index cache
 --------------------------
 
-In order to accelerate the creation of the sqlite3 database
-during the `update` command, CPM tries to download the file
+As mentioned above, CPM keeps the most important information
+of all packages in a sqlite3 database which is also downloaded
+by the `update` command. The plain contents of the database
+in CSV format is also kept in the file
 
-    https://www-ps.informatik.uni-kiel.de/~cpm/PACKAGES/REPOSITORY_CACHE.csv
+    https://cpm.curry-lang.org/PACKAGES/REPOSITORY_CACHE.csv
 
-which contains the database information in CSV format.
-If CPM cannot download this file, it creates the database
-by reading all package specifications of the global package index
-(which takes more time than reading the CSV file).
+This file and the database is generated when packages are published
+by [Masala](https://cpm.curry-lang.org/masala/).
 
 
 Uploading packages
@@ -92,18 +86,19 @@ Uploading packages
 Currently, new package or package version can be uploaded to these
 global stores by the command
 
-    cypm upload
+    > cypm upload
 
-(see the manual for more details). Currently, only packages having
+(see the manual for more details). To upload a package, it should have
 a source specification of the form
 
     "source": {
-      "git": "...git.ps.informatik.uni-kiel.de/curry-packages/....git",
+      "git": "...",
       "tag": "$version"
 
-can be uploaded. Furthermore, one has to have write access to the
-source repository. This command tests the package and, in case
-of a successful test, uploads the package to the global package
-index and store via the web script at URL
-
-    https://www-ps.informatik.uni-kiel.de/~cpm/cpm-upload.cgi
+If one has write access to the source repository, one could also add
+the option `--tag` to the `cypm upload` command so that the repository
+is tagged with the current version of the package.
+This command tests the package and, in case of a successful test,
+uploads the package via [Masala](https://cpm.curry-lang.org/masala/)
+to the global package index, i.e., one has also to provide the
+login and password of the Masala account during the upload process.
