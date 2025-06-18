@@ -94,8 +94,8 @@ getCurryCheck cfg = do
 ------------------------------------------------------------------------------
 --- Returns the `curry-doc` command, either from the current path
 --- or from CPM's bin directory. Fails with an error if it does not exist.
-getCurryDoc :: Config -> ErrorLogger String
-getCurryDoc cfg = do
+getCurryDoc :: Config -> String -> ErrorLogger String
+getCurryDoc cfg cdbin = do
   mbf <- liftIOEL $ getFileInPath cdbin
   maybe (do let cpmcurrydoc = binInstallDir cfg </> cdbin
             cdex <- liftIOEL $ doesFileExist cpmcurrydoc
@@ -104,7 +104,5 @@ getCurryDoc cfg = do
         )
         return
         mbf
- where
-  cdbin = "curry-doc"
 
 ------------------------------------------------------------------------------

@@ -73,11 +73,11 @@ import CPM.PackageCopy
 import CPM.Diff.API as APIDiff
 import qualified CPM.Diff.Behavior as BDiff
 import CPM.ConfigPackage        ( packagePath, packageVersion )
-import CPM.Helpers ( askYesNo )
+import CPM.Helpers              ( askYesNo )
 
 -- Date of current version:
 cpmDate :: String
-cpmDate = "24/04/2025"
+cpmDate = "18/06/2025"
 
 -- Banner of this tool:
 cpmBanner :: String
@@ -755,7 +755,7 @@ replaceSubString sub newsub s = replString s
       else c : replString cs
 
 --- Generate program documentation:
---- run `curry-doc` on the modules provided as an argument
+--- run CurryDoc on the modules provided as an argument
 --- or, if they are not given, on exported modules (if specified in the
 --- package), on the main executable (if specified in the package),
 --- or on all source modules of the package.
@@ -795,7 +795,7 @@ genDocForPrograms opts cfg docdir specDir pkg = do
     runDocCmd currypath uses ["--noindexhtml", docdir, mod]
 
   runDocCmd currypath uses docparams = do
-    currydoc <- getCurryDoc cfg
+    currydoc <- getCurryDoc cfg (docExecutable opts)
     let useopts = if docGenImports opts
                     then []
                     else map (\ (d,u) -> "--use "++d++"@"++u) uses

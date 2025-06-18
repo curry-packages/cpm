@@ -161,6 +161,7 @@ data DocOptions = DocOptions
                                      -- (otherwise, use their standard docs)
   , docPackageURL :: String          -- the URL prefix where all repository
                                      -- packages are documented
+  , docExecutable :: String          -- name of CurryDoc executable
 }
 
 data TestOptions = TestOptions
@@ -269,7 +270,7 @@ docOpts :: Options -> DocOptions
 docOpts s = case optCommand s of
   Doc opts -> opts
   _        -> DocOptions Nothing Nothing True True True False
-                         curryPackagesDocURL
+                         curryPackagesDocURL "curry-doc"
 
 testOpts :: Options -> TestOptions
 testOpts s = case optCommand s of
@@ -693,6 +694,12 @@ optionParser allargs = optParser
           <> short "u"
           <> help ("The URL prefix where all repository packages are " ++
                    "documented. Default: " ++ curryPackagesDocURL)
+          <> optional )
+    <.> option (\s a -> Right $ a { optCommand =
+                                      Doc (docOpts a) { docExecutable = s } })
+          (  long "executable"
+          <> short "x"
+          <> help "The name of the CurryDoc executable. Default: curry-doc"
           <> optional )
 
   testArgs =
