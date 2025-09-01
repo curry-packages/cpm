@@ -77,7 +77,7 @@ import CPM.Helpers              ( askYesNo )
 
 -- Date of current version:
 cpmDate :: String
-cpmDate = "18/06/2025"
+cpmDate = "01/09/2025"
 
 -- Banner of this tool:
 cpmBanner :: String
@@ -755,10 +755,11 @@ replaceSubString sub newsub s = replString s
       else c : replString cs
 
 --- Generate program documentation:
---- run CurryDoc on the modules provided as an argument
+--- run CurryDoc on the modules provided as an argument in the options
 --- or, if they are not given, on exported modules (if specified in the
---- package), on the main executable (if specified in the package),
---- or on all source modules of the package.
+--- package) or on all source modules of the package (if the package has
+--- no executable). If the package has an executable, CurryDoc is only
+--- executed on exported modules (if they are defined). 
 genDocForPrograms :: DocOptions -> Config -> String -> String -> Package
                   -> ErrorLogger ()
 genDocForPrograms opts cfg docdir specDir pkg = do
@@ -781,13 +782,11 @@ genDocForPrograms opts cfg docdir specDir pkg = do
     else do
       currypath <- getCurryLoadPath cfg specDir
       let pkgurls = path2packages abspkgdir currypath
-      if apidoc
-        then do
-          mapM_ (docModule currypath pkgurls) docmods
-          runDocCmd currypath pkgurls
-            (["--title", apititle, "--onlyindexhtml", docdir] ++ docmods)
-          logInfo ("Documentation generated in '"++docdir++"'")
-        else runDocCmd currypath pkgurls [docdir, head docmods]
+      when apidoc $ do
+        mapM_ (docModule currypath pkgurls) docmods
+        runDocCmd currypath pkgurls
+          (["--title", apititle, "--onlyindexhtml", docdir] ++ docmods)
+        logInfo ("Documentation generated in '" ++ docdir ++ "'")
  where
   apititle = "\"Package " ++ name pkg ++ "\""
 
