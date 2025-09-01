@@ -38,6 +38,11 @@
         "wl-pprint"      : ">= 3.0.0, < 4.0.0"
     },
     "configModule": "CPM.ConfigPackage",
+    "exportedModules": [ "CPM.Config", "CPM.ErrorLogger", "CPM.FileUtil",
+                         "CPM.Package", "CPM.PackageCache.Global",
+                         "CPM.Package.Helpers",
+                         "CPM.Repository", "CPM.Repository.Update",
+                         "CPM.Repository.Select", "CPM.Resolution" ],
     "executable": {
         "name": "cypm",
         "main": "CPM.Main",
