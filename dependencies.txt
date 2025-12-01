@@ -1,10 +1,10 @@
 abstract-curry https://github.com/curry-packages/abstract-curry.git v4.0.0
 boxes https://github.com/curry-packages/boxes.git v3.0.0
-cass https://github.com/curry-packages/cass.git v4.1.0
-cass-analysis https://github.com/curry-packages/cass-analysis.git v4.0.0
+cass https://github.com/curry-packages/cass.git v5.0.0
+cass-analysis https://github.com/curry-packages/cass-analysis.git v5.0.0
 cdbi https://github.com/curry-packages/cdbi.git v3.2.0
 containers https://github.com/curry-packages/containers.git v3.0.0
-cpm-query https://github.com/curry-packages/cpm-query.git v0.1.0
+cpm-query https://github.com/curry-packages/cpm-query.git v1.0.0
 cryptohash https://github.com/curry-packages/cryptohash.git v3.0.0
 csv https://github.com/curry-packages/csv.git v3.0.0
 curry-resources https://github.com/curry-packages/curry-resources.git v1.0.0
@@ -14,7 +14,7 @@ directory https://github.com/curry-packages/directory.git v3.0.0
 execpath https://github.com/curry-packages/execpath.git v3.0.0
 extra https://github.com/curry-packages/extra.git v3.0.0
 filepath https://github.com/curry-packages/filepath.git v3.0.0
-flatcurry https://github.com/curry-packages/flatcurry.git v4.0.0
+flatcurry https://github.com/curry-packages/flatcurry.git v5.0.0
 frontend-exec https://github.com/curry-packages/frontend-exec.git v3.3.0
 global https://github.com/curry-packages/global.git v3.2.0
 graphviz https://github.com/curry-packages/graphviz.git v3.0.0
