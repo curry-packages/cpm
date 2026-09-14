@@ -77,7 +77,7 @@ import CPM.Helpers              ( askYesNo )
 
 -- Date of current version:
 cpmDate :: String
-cpmDate = "01/09/2025"
+cpmDate = "14/09/2026"
 
 -- Banner of this tool:
 cpmBanner :: String
@@ -96,8 +96,7 @@ main = do
     then putStrLn $ "Curry Package Manager, version " ++ packageVersion ++
                     " (" ++ cpmDate ++ ")"
     else do
-      parseResult <- return $ parse (unwords args) (optionParser args) "cypm"
-      case parseResult of
+      case parse (unwords args) (optionParser args) "cypm" of
         Left err -> do putStrLn cpmBanner
                        putStrLn err
                        --putStrLn "(use option -h for usage information)"

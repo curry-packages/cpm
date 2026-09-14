@@ -193,7 +193,7 @@ tryReadRepositoryFrom path = do
   return $ (Repository $ rights specs, lefts specs)
  where
   readPackageFile f = do
-    spec <- readPackageSpec <$> readCompleteFile f
+    spec <- readPackageFile f
     seq (id $!! spec) (putChar '.' >> hFlush stdout)
     return $ case spec of
       Left err -> Left $ "Problem reading '" ++ f ++ "': " ++ err

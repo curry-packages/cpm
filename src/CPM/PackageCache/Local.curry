@@ -35,7 +35,7 @@ import CPM.Config       ( Config, packageInstallDir )
 import CPM.ErrorLogger
 import CPM.FileUtil     ( createSymlink, getRealPath, isSymlink, linkTarget
                         , removeSymlink )
-import CPM.Package      ( Package, packageId, packageSpecFile, readPackageSpec )
+import CPM.Package      ( Package, packageId, packageSpecFile, readPackageSpecFile )
 import CPM.PackageCache.Global ( installedPackageDir )
 
 --- The cache directory of the local package cache.
@@ -57,11 +57,10 @@ allPackages pkgDir = do
       let pkgDirs = filter (not . isPrefixOf ".") cdircont
       pkgPaths <- liftIOEL $ mapM removeIfIllegalSymLink $ map (cdir </>) pkgDirs
       let specPaths = map (</> packageSpecFile) $ concat pkgPaths
-      specs <- liftIOEL $ mapM (readPackageSpecIO . readCompleteFile) specPaths
+      specs <- liftIOEL $ mapM readPackageSpecFile specPaths
       return $ rights specs
     else return []
  where
-  readPackageSpecIO = fmap readPackageSpec
   cdir = cacheDir pkgDir
 
   removeIfIllegalSymLink target = do

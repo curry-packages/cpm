@@ -264,8 +264,6 @@ readInstalledPackagesFromDir repo path = do
             return (Right $ GlobalCache (rights specs))
     else return (Left $ intercalate "; " (lefts specs))
  where
-  readPackageSpecIO = liftIOEL . fmap readPackageSpec
-
   loadPackageSpecFromDir pkgdir = case packageVersionFromFile pkgdir of
     Nothing -> readPackageSpecFromFile pkgdir
     Just (pn,pv) -> case CPM.Repository.findVersion repo pn pv of
@@ -275,10 +273,7 @@ readInstalledPackagesFromDir repo path = do
   readPackageSpecFromFile pkgdir = do
     let f = path </> pkgdir </> packageSpecFile
     logDebug $ "Reading package spec from '" ++ f ++ "'..."
-    spec <- readPackageSpecIO $ readCompleteFile f
-    return $ case spec of
-      Left err -> Left $ err ++ " for file '" ++ f ++ "'"
-      Right  v -> Right v
+    liftIOEL $ readPackageSpecFile f
 
   packageVersionFromFile :: String -> Maybe (String, Version)
   packageVersionFromFile fn =

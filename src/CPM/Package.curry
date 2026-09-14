@@ -18,7 +18,7 @@ module CPM.Package
   , showSourceOfPackage
   , readVersionConstraint
   , readVersionConstraints
-  , readPackageSpec
+  , readPackageSpecFile, readPackageSpec
   , sourceDirsOf
   , dependencyNames
   , vlt
@@ -351,10 +351,9 @@ loadPackageSpec dir = do
   exfile <- liftIOEL $ doesFileExist packageFile
   if exfile
     then do logDebug $ "Reading package specification '" ++ packageFile ++ "'..."
-            contents <- liftIOEL $ readCompleteFile packageFile
-            case readPackageSpec contents of
-               Left err -> fail err
-               Right v  -> return v
+            pkgspec <- liftIOEL $ readPackageSpecFile packageFile
+            case pkgspec of Left err -> fail err
+                            Right v  -> return v
     else fail $ "Illegal package: file `" ++ packageFile ++ "' does not exist!"
 
 --- Checks whether two package ids are equal, i.e. if their names and versions
@@ -497,6 +496,14 @@ showVersionConstraint (VMajCompatible v) = " ^"   ++ showVersion v
 --- by a dash.
 packageId :: Package -> String
 packageId p = name p ++ "-" ++ showVersion (version p)
+
+--- Reads a package spec from a given `package.json` file.
+readPackageSpecFile :: String -> IO (Either String Package)
+readPackageSpecFile fname = do
+  spec <- fmap readPackageSpec $ readCompleteFile fname
+  return $ case spec of
+    Left err -> Left $ err ++ " (in file '" ++ fname ++ "')"
+    Right  v -> Right v
 
 --- Reads a package spec from a JSON string.
 readPackageSpec :: String -> Either String Package
