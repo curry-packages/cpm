@@ -77,7 +77,7 @@ import CPM.Helpers              ( askYesNo )
 
 -- Date of current version:
 cpmDate :: String
-cpmDate = "14/09/2026"
+cpmDate = "24/09/2026"
 
 -- Banner of this tool:
 cpmBanner :: String
@@ -99,6 +99,8 @@ main = do
       case parse (unwords args) (optionParser args) "cypm" of
         Left err -> do putStrLn cpmBanner
                        putStrLn err
+                       --putStrLn $ "Your cypm arguments: " ++ unwords args
+                       --print (map ord (unwords args))
                        --putStrLn "(use option -h for usage information)"
                        exitWith 1
         Right  r -> case applyParse r of
@@ -147,35 +149,31 @@ runWithArgs opts = do
         Upload    o -> uploadCmd    o config
         Clean     o -> cleanCmd     o config
   mapM (printLogEntry ll) msgs
-  let allOk =  all (levelGte Info) (map logLevelOf msgs) &&
-               either (\le -> levelGte Info (logLevelOf le))
-                      (const True)
-                      result
+  let allOk = all (levelGte Info) (map logLevelOf msgs) &&
+              either (\le -> levelGte Info (logLevelOf le))
+                     (const True)
+                     result
   exitWith $ if allOk then 0 else 1
  where runErrorLogger' a b c = runErrorLogger c a b
 
 ------------------------------------------------------------------------------
 -- `config` command: show current CPM configuration
 configCmd :: ConfigOptions -> Config -> ErrorLogger ()
-configCmd opts cfg
-  | configAll opts = do
-      repo <- getBaseRepository cfg
-      gc <- readGlobalCache cfg repo
-      liftIOEL $ do
-        putStrLn configS
-        putStrLn "Installed packages:\n"
-        putStrLn $ unwords . sortBy (<=) . map packageId . allPackages $ gc
-  | otherwise = putStrLnELM configS
- where
-  configS = unlines
-              [cpmBanner, "Current configuration:", "", showConfiguration cfg]
+configCmd opts cfg = do
+  putStrLnELM $ unlines
+    [cpmBanner, "Current configuration:", "", showConfiguration cfg]
+  checkRequiredExecutables
+  when (configAll opts) $ do
+    putStrLnELM "Installed packages:\n"
+    repo <- getBaseRepository cfg
+    gc <- readGlobalCache cfg repo
+    putStrLnELM $ unwords . sortBy (<=) . map packageId . allPackages $ gc
 
 ------------------------------------------------------------------------------
 -- `update` command:
 updateCmd :: UpdateOptions -> Config -> ErrorLogger ()
 updateCmd opts cfg = do
   let cfg' = cfg { packageIndexURLs = indexURLs opts ++ packageIndexURLs cfg }
-  checkRequiredExecutables
   updateRepository cfg' (cleanCache opts) (downloadIndex opts)
                         (useRepoCache opts) (writeCSV opts)
 
