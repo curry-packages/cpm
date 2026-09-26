@@ -707,7 +707,7 @@ all modules are compiled and possible properties contained
 in the modules are tested with automatically generated test data.
 Moreover, one can also specify test suites.
 More details about these commands can be found in
-Section~\ref{sec:cmd-reference}.
+Sections~\ref{sec:cmd-check} and~\ref{sec:cmd-test}.
 
 
 \subsection{Publishing a Package}
@@ -973,9 +973,12 @@ caches.
 \section{Command Reference}
 \label{sec:cmd-reference}
 
-This section gives a short description of all available CPM commands.
-In addition to the commands listed below, there are some global options
-which can be placed in front of the CPM command:
+This section provides a short description of all available CPM commands.
+
+\subsection{General options}
+
+There are some general global options
+which can be placed in front of any CPM command:
 \begin{description}
 \item[\code{-d$\,|\,$--define $option$=$value$}:]
 This option overrides the configuration options of CPM,
@@ -988,7 +991,44 @@ what CPM is doing.
 This option adds the elapsed time to every info or debug output line.
 \end{description}
 %
-The available commands of CPM are:
+For instance, to see many details when CPM lists all packages
+(e.g., configuration, reading files) together with timings,
+one can use the command
+\begin{lstlisting}
+cypm -v debug -t list
+\end{lstlisting}
+
+\subsection{ \code{add}: Add a package}
+
+\begin{description}
+\item[\fbox{\code{add --package $dir$ [--force]}}]\pindex{add}
+Copies the package contained in directory $dir$ into the local copy
+of the central package index so that it can be used by other packages
+in the local environment
+(see Section~\ref{sec:adding-a-package} for details).
+The option \ccode{--force} allows to overwrite existing copies
+in the central package index.
+
+\item[\fbox{\code{add --dependency $package$ [--force]}}]\pindex{add}
+Adds the package $package$ as a new dependency.
+This command adds a dependency to the given package
+either in the package description file (\code{package.json})
+of the current package or in the meta-package
+(see Section~\ref{sec:meta-package}).
+The option \ccode{--force} allows to overwrite existing dependencies
+in the package description file.
+
+\item[\fbox{\code{add $package$ [--force]}}]\pindex{add}
+Adds the package $package$ as a new dependency and install
+the new dependencies. Thus, this abbreviates the two commands
+\begin{lstlisting}
+cypm add $package$ && cypm install
+\end{lstlisting}
+\end{description}
+
+
+\subsection{ \code{check}: Check a package}
+\label{sec:cmd-check}
 
 \begin{description}
 \item[\fbox{\code{check}}]\pindex{check}
@@ -1008,13 +1048,227 @@ of all package modules are examined by CurryCheck in order to
 report unintended uses of some Curry functions,
 e.g., set functions or non-strict unification (\code{=:<=}).
 The latter checks can be suppressed by the option \code{--source}.
+\end{description}
 
+\subsection{ \code{checkout}: Checkout a package}
+
+\begin{description}
+\item[\fbox{\code{checkout $package$ [--output $d$] [--$pre$]}}]\pindex{checkout}
+Checks out the newest version (compatible to the current compiler)
+of a package into the local directory \code{$package$}
+(if the option \code{--output} is not provided) or into the directory $d$.
+\code{--$pre$} enables the installation of pre-release versions.
+This command is useful to test the package operations
+or install a binary of the package.
+
+\item[\fbox{\code{checkout $package$ $version$ [--output $d$]}}]\pindex{checkout}
+Checks out a specific version of a package
+into the local directory \code{$package$}
+(if the option \code{--output} is not provided) or into the directory $d$.
+This command is useful to test the package operations
+or install a binary of the package.
+
+\end{description}
+
+
+\subsection{ \code{clean}: Clean the current package}
+\label{sec:cmd-clean}
+
+\begin{description}
+\item[\fbox{\code{clean [--dependencies]}}]\pindex{clean}
+Cleans the current package from the
+generated auxiliary files, e.g., intermediate Curry files,
+installed dependent packages, etc.
+Note that a binary installed in the CPM \code{bin} directory
+(by the \code{install} command) will not be removed.
+For instance, this command can be used to clean an application package
+after installing the application.
+
+If the option \code{-d} or \code{--dependencies} is provided,
+then \emph{all} dependencies in the package specification are removed.
+This might be reasonable in the ``homepackage'' to remove
+locally installed packages.
+\end{description}
+
+
+\subsection{ \code{config}:   Show current configuration of CPM}
+
+\begin{description}
 \item[\fbox{\code{config}}]\pindex{config}
 Shows the current configuration of CPM
 (see also Section~\ref{sec:config}).
 The option \code{--all} shows also the names and version
 of the packages installed in the global package cache.
+\end{description}
 
+\subsection{ \code{curry}: Load package spec and start Curry with correct dependencies}
+
+\begin{description}
+\item[\fbox{\code{curry $args$}}]\pindex{curry}
+Starts the Curry system with the 
+dependencies of the current package available.
+Any arguments are passed verbatim to the Curry system.
+\end{description}
+
+
+\subsection{ \code{deps}: Calculate and show dependencies}
+
+\begin{description}
+\item[\fbox{\code{deps}}]\pindex{deps}
+Does a dependency resolution run for the current 
+package and prints the results. The result is either a list of all package
+versions chosen or a description of the conflict encountered during dependency
+resolution.
+In order to reduce the amount of information shown,
+only the first occurrence of a package is shown.
+If the option \code{--full} is given, then also repeated package
+dependencies are shown.
+
+If the option \code{--path} is set, only the value of \code{CURRYPATH}
+required to load modules of this package is shown.
+
+If the option \code{--language-server} is set, the full path containing
+all source directories is written into the file
+in the file \ccode{.curry/language-server/paths.json}.
+This file is used by the Curry Language Server%
+\footnote{\url{https://github.com/fwcd/curry-language-server}}
+to find all imported modules of the current package
+when it is used in the VS Code source-code editor.
+When starting the Curry Language Server with VS Code,
+the language server invokes CPM with this option in order to
+set its import path.
+
+For older version of the Curry Language Server,
+one can also use the option \code{--code} to set the full path
+of all source directories as property
+\code{curry.languageServer.importPaths}
+in the file \ccode{.vscode/settings.json}
+(which is updated if it already exists).
+
+If the option \code{--graph} is provided, then the dependency
+graph is translated into a graph in
+GraphViz\footnote{\url{http://www.graphviz.org/}} format.
+With the option \code{--viewgraph}, the dependency graph is visualized
+with the command defined in the \code{dotviewcommand} field of the
+rc file of the Curry system (e.g., \code{~/.pakcsrc} in case of PAKCS).
+
+\end{description}
+
+
+\subsection{ \code{diff}: Diff the current package against another version}
+
+\begin{description}
+\item[\fbox{\code{diff [$version$]}}]\pindex{diff}
+Compares the API and behavior of the current package to another
+version of the same package.
+If the version option is missing, the latest version of the current package
+found in the repository is used for comparison.
+If the options \code{--api-only} or \code{--behavior-only} are added,
+then only the API or the behavior are compared, respectively.
+In the default case, all modules commonly exported by both
+versions of the package are compared.
+Using the option \code{--modules}, one can restrict this comparison
+to a list of modules specified by a comma-separated list of module names.
+
+As described in Section~\ref{sec:semantic-versioning},
+CPM uses property tests to compare the behavior
+of different package versions. In order to avoid
+infinite loops durings these tests, CPM analyzes the termination
+behavior of the involved operations.
+Using the operation \code{--unsafe}, CPM omits this program analysis
+but then you have to ensure that all operations are terminating
+(or you can annotate them by pragmas,
+see Section~\ref{sec:semantic-versioning}).
+
+In the default case, CPM tests the contextual equivalence of
+operations (see Section~\ref{sec:semantic-versioning}).
+With the option \code{--ground}, the ground equivalence of operations
+is tested.
+\end{description}
+
+
+\subsection{ \code{doc}: Generation documentation for current package (with CurryDoc)}
+
+\begin{description}
+\item[\fbox{\code{doc}}]\pindex{doc}
+Generates the documentation of the current package.
+The documentation consists of the API documentation (in HTML format)
+and the manual (if provided) in PDF format.
+The options \code{--programs} and \code{--text} forces to generate
+only the API documentation and the manual, respectively.
+Using the option \code{--docdir}, one can specify the
+target directory where the documentation should be stored.
+If this option is not provided, \ccode{cdoc} is used as the documentation
+directory.
+The actual documentation will be stored in the subdirectory
+\code{$name$-$version$} of the documentation directory.
+
+The API documentation in HTML format is generated with CurryDoc,\footnote{%
+\url{https://cpm.curry-lang.org/pkgs/currydoc.html}}
+i.e., CPM invokes the executable \code{curry-doc} to generate
+the HTML documentation.
+If the executable of CurryDoc is installed with another name
+or in a directory which is not part of the standard load path,
+one can specify the name of the executable by the option \code{--executable}.
+
+If the package specification contains a list of exported modules
+(see Section~\ref{sec:reference}), then these modules are documented.
+If the package specification contains the entry \code{executable}
+(see Section~\ref{sec:reference}) but no list of exported modules,
+no modules are documented.
+Otherwise, all modules in the directory \code{src} or other directories
+specified in \code{sourceDirs} field of the package specification
+(including hierarchical modules stored in its subdirectories)
+are documented.
+Using the option \code{--modules}, one can also specify a comma-separated
+list of module names to be documented.
+
+In the default case, modules contained in packages used by the current package
+are not documented. Instead, it is assumed that these packages are
+already documented\footnote{The default location for the documentation
+of all packages is \url{https://cpm.curry-lang.org/DOC/},
+i.e., the documentation of package \code{p} with version \code{v}
+can be found at \url{https://cpm.curry-lang.org/DOC/p-v}.
+This default location can be changed with the option \code{--url}.}
+so that links to these package documentations are generated.
+Using the option \code{--full}, one can generate also the documentation
+of packages used by the current package. This might be reasonable
+if one uses packages which are only locally installed.
+
+The manual is generated only if the package specification contains
+a field \code{documentation} where the main file of the manual
+is specified (see Section~\ref{sec:reference} for more details).
+\end{description}
+
+
+\subsection{ \code{exec}: Execute a command with the \code{CURRYPATH} set} 
+
+\begin{description}
+\item[\fbox{\code{exec $command$}}]\pindex{exec}
+Executes an arbitrary command with the 
+\code{CURRYPATH} environment variable set to the paths of all dependencies of
+the current package.
+For example, it can be used to execute \ccode{curry check}
+or \ccode{curry analyze} with correct dependencies available.
+\end{description}
+
+
+\subsection{ \code{help}: Show list of all commands and quit}
+
+\begin{description}
+\item[\fbox{\code{help}}]\pindex{help}
+This command shows a list of all available CPM commands.
+In order to see more details about the options of a command,
+invoke the command with the operation \code{-h} or \code{--help},
+as in
+\begin{lstlisting}
+cypm install --help
+\end{lstlisting}
+\end{description}
+
+\subsection{ \code{info}: Print package information}
+
+\begin{description}
 \item[\fbox{\code{info}}]\pindex{info}
 Gives information on the current package, e.g. the
 package's name, author, synopsis and its dependency specifications.
@@ -1027,59 +1281,21 @@ The option \code{--all} shows more information.
 \item[\fbox{\code{info $package$ $version$ [--all]}}]\pindex{info}
 Prints basic information on the given package version.
 The option \code{--all} shows more information.
+\end{description}
 
-\item[\fbox{\code{list [--system] [--versions] [--csv]}}]\pindex{list}
-List the names and synopses of all packages of the central package index.
-Unless the option \code{--versions} is set, only the newest version
-of a package is shown.
-The option \code{--system} restricts the list to those packages
-which are compatible with the current compiler (if it is
-explicitly specified in the package).
-The option \code{--versions} shows all versions of the packages.
-If a package is not compatible to the current compiler, then
-the package version is shown in brackets (e.g., \ccode{(1.5.4)}).
-The option \code{--csv} shows the information in CSV format.
+\subsection{ \code{init}: Initialize the current directory as a package}
 
-\item[\fbox{\code{list --category [--csv]}}]\pindex{list}
-List the category names together with the packages belonging to this
-category (see Section~\ref{sec:reference})
-of the central package index.
-The option \code{--csv} shows the information in CSV format.
+\begin{description}
+\item[\fbox{\code{init}}]\pindex{init}
+Initializes a new project package in the current directory
+and puts some template files in this directory.
+The name of the new package is the same as the directory name.
+\end{description}
 
-\item[\fbox{\code{search [--module|--exec] $query$}}]\pindex{search}
-Searches the names, synopses, and exported module names of all 
-packages of the central package index for occurrences of the given
-search term.
-If the option \code{--module} is set, then the given name
-is searched in the list of exported modules.
-Thus, the package
-exporting the module \code{JSON.Data} can be found by the command
-%
-\begin{lstlisting}
-> cypm search --module JSON.Data
-\end{lstlisting}
-%
-If the option \code{--exec} is set, then the search is restricted
-to the name of the executable provided by the package.
-For instance, the command
-%
-\begin{lstlisting}
-> cypm search --exec show
-\end{lstlisting}
-%
-lists all packages where the name of the executable contains the
-string \ccode{show}.
 
-\item[\fbox{\code{update}}]\pindex{update}
-Updates the local copy of the central package index
-to the newest available version.
-This command also cleans the global package cache in order to support
-the download of fresh package versions.
-Note that this also removes local copies of packages
-installed by the command \ccode{add --package}.
-The option \code{--url} allows to specify a different URL
-for the central package index (might be useful for experimental purposes).
+\subsection{ \code{install}: Install a package with its dependencies}
 
+\begin{description}
 \item[\fbox{\code{install}}]\pindex{install}
 Installs all dependencies of the current package.
 Furthermore, if the current package contains also executables
@@ -1119,195 +1335,62 @@ Installs a package from a ZIP file
 to the global package cache. The ZIP file must contain at least the
 package description file \code{package.json} and the directory \code{src}
 containing the Curry source files.
+\end{description}
 
-\item[\fbox{\code{uninstall}}]\pindex{uninstall}
-Uninstalls the executable installed for the current package.
 
-\item[\fbox{\code{uninstall $package$}}]\pindex{uninstall}
-Uninstalls the executable and the cached copy of a package
-which has been installed by the \code{install} command.
+\subsection{ \code{link}: Link a package to the local cache}
 
-\item[\fbox{\code{uninstall $package$ $version$}}]\pindex{uninstall}
-Uninstalls a specific version
-of a package from the global package cache.
+\begin{description}
+\item[\fbox{\code{link $source$}}]\pindex{link}
+Can be used to replace a dependency of the 
+current package using a local copy, see Section~\ref{sec:cpm-link} for details.
+\end{description}
 
-\item[\fbox{\code{checkout $package$ [--output $d$] [--$pre$]}}]\pindex{checkout}
-Checks out the newest version (compatible to the current compiler)
-of a package into the local directory \code{$package$}
-(if the option \code{--output} is not provided) or into the directory $d$.
-\code{--$pre$} enables the installation of pre-release versions.
-This command is useful to test the package operations
-or install a binary of the package.
 
-\item[\fbox{\code{checkout $package$ $version$ [--output $d$]}}]\pindex{checkout}
-Checks out a specific version of a package
-into the local directory \code{$package$}
-(if the option \code{--output} is not provided) or into the directory $d$.
-This command is useful to test the package operations
-or install a binary of the package.
+\subsection{ \code{list}: List all packages of the repository}
 
-\item[\fbox{\code{upgrade}}]\pindex{upgrade}
-Upgrades all dependencies of the current package to
-the newest compatible version.
+\begin{description}
+\item[\fbox{\code{list [--system] [--versions] [--csv]}}]\pindex{list}
+List the names and synopses of all packages of the central package index.
+Unless the option \code{--versions} is set, only the newest version
+of a package is shown.
+The option \code{--system} restricts the list to those packages
+which are compatible with the current compiler (if it is
+explicitly specified in the package).
+The option \code{--versions} shows all versions of the packages.
+If a package is not compatible to the current compiler, then
+the package version is shown in brackets (e.g., \ccode{(1.5.4)}).
+The option \code{--csv} shows the information in CSV format.
 
-\item[\fbox{\code{upgrade $package$}}]\pindex{upgrade}
-Upgrades a specific dependency of the
-current package and all its transitive dependencies to their newest compatible
-versions.
+\item[\fbox{\code{list --category [--csv]}}]\pindex{list}
+List the category names together with the packages belonging to this
+category (see Section~\ref{sec:reference})
+of the central package index.
+The option \code{--csv} shows the information in CSV format.
+\end{description}
 
-\item[\fbox{\code{deps}}]\pindex{deps}
-Does a dependency resolution run for the current 
-package and prints the results. The result is either a list of all package
-versions chosen or a description of the conflict encountered during dependency
-resolution.
-In order to reduce the amount of information shown,
-only the first occurrence of a package is shown.
-If the option \code{--full} is given, then also repeated package
-dependencies are shown.
+\subsection{ \code{new}: Create a new package}
 
-If the option \code{--path} is set, only the value of \code{CURRYPATH}
-required to load modules of this package is shown.
+\begin{description}
+\item[\fbox{\code{new $project$}}]\pindex{new}
+Creates a new project package with the given name and some template files
+in the directory $project$.
+\end{description}
 
-If the option \code{--language-server} is set, the full path containing
-all source directories is written into the file
-in the file \ccode{.curry/language-server/paths.json}.
-This file is used by the Curry Language Server%
-\footnote{\url{https://github.com/fwcd/curry-language-server}}
-to find all imported modules of the current package
-when it is used in the VS Code source-code editor.
-When starting the Curry Language Server with VS Code,
-the language server invokes CPM with this option in order to
-set its import path.
 
-For older version of the Curry Language Server,
-one can also use the option \code{--code} to set the full path
-of all source directories as property
-\code{curry.languageServer.importPaths}
-in the file \ccode{.vscode/settings.json}
-(which is updated if it already exists).
+\subsection{ \code{repl}: Load package spec and start Curry REPL with correct dependencies}
 
-If the option \code{--graph} is provided, then the dependency
-graph is translated into a graph in
-GraphViz\footnote{\url{http://www.graphviz.org/}} format.
-With the option \code{--viewgraph}, the dependency graph is visualized
-with the command defined in the \code{dotviewcommand} field of the
-rc file of the Curry system (e.g., \code{~/.pakcsrc} in case of PAKCS).
-
-\item[\fbox{\code{test [--modules $\mathit{modules}$] [--compile]}}]\pindex{test}
-Tests the current package with CurryCheck.
-If the package specification contains a definition of a test suite
-(entry \code{testsuite}, see Section~\ref{sec:reference}),
-then the modules defined there are tested.
-If there is no test suite defined,
-the list of exported modules are tested,
-if they are explicitly specified
-(field \code{exportedModules} of the package specification),
-otherwise all modules in the directory \code{src}
-(including hierarchical modules stored in its subdirectories) are tested.
-Using the option \code{--modules}, one can also specify a comma-separated
-list of module names to be tested.
-
-If the executable \code{curry-check} is not installed or the
-option \code{--compile} is provided, then the modules are only compiled
-and not tested.
-Hence, a package can be checked for compilation errors
-by the command
-\begin{lstlisting}
-cypm test --compile
-\end{lstlisting}
-
-\item[\fbox{\code{doc}}]\pindex{doc}
-Generates the documentation of the current package.
-The documentation consists of the API documentation (in HTML format)
-and the manual (if provided) in PDF format.
-The options \code{--programs} and \code{--text} forces to generate
-only the API documentation and the manual, respectively.
-Using the option \code{--docdir}, one can specify the
-target directory where the documentation should be stored.
-If this option is not provided, \ccode{cdoc} is used as the documentation
-directory.
-The actual documentation will be stored in the subdirectory
-\code{$name$-$version$} of the documentation directory.
-
-The API documentation in HTML format is generated with CurryDoc,\footnote{%
-\url{https://cpm.curry-lang.org/pkgs/currydoc.html}}
-i.e., CPM invokes the executable \code{curry-doc} to generate
-the HTML documentation.
-If the executable of CurryDoc is installed with another name
-or in a directory which is not part of the standard load path,
-one can specify the name of the executable by the option \code{--executable}.
-
-If the package specification contains a list of exported modules
-(see Section~\ref{sec:reference}), then these modules are documented.
-If the package specification contains the entry \code{executable}
-(see Section~\ref{sec:reference}) but no list of exported modules,
-no modules are documented.
-Otherwise, all modules in the directory \code{src} or other directories
-specified in \code{sourceDirs} field of the package specification
-(including hierarchical modules stored in its subdirectories)
-are documented.
-Using the option \code{--modules}, one can also specify a comma-separated
-list of module names to be documented.
-
-In the default case, modules contained in packages used by the current package
-are not documented. Instead, it is assumed that these packages are
-already documented\footnote{See
-\url{https://cpm.curry-lang.org/DOC/}
-for the documentation of all packages. This default location
-can be changed with the option \code{--url}.}
-so that links to these package documentations are generated.
-Using the option \code{--full}, one can generate also the documentation
-of packages used by the current package. This might be reasonable
-if one uses packages which are only locally installed.
-
-The manual is generated only if the package specification contains
-a field \code{documentation} where the main file of the manual
-is specified (see Section~\ref{sec:reference} for more details).
-
-\item[\fbox{\code{diff [$version$]}}]\pindex{diff}
-Compares the API and behavior of the current package to another
-version of the same package.
-If the version option is missing, the latest version of the current package
-found in the repository is used for comparison.
-If the options \code{--api-only} or \code{--behavior-only} are added,
-then only the API or the behavior are compared, respectively.
-In the default case, all modules commonly exported by both
-versions of the package are compared.
-Using the option \code{--modules}, one can restrict this comparison
-to a list of modules specified by a comma-separated list of module names.
-
-As described in Section~\ref{sec:semantic-versioning},
-CPM uses property tests to compare the behavior
-of different package versions. In order to avoid
-infinite loops durings these tests, CPM analyzes the termination
-behavior of the involved operations.
-Using the operation \code{--unsafe}, CPM omits this program analysis
-but then you have to ensure that all operations are terminating
-(or you can annotate them by pragmas,
-see Section~\ref{sec:semantic-versioning}).
-
-In the default case, CPM tests the contextual equivalence of
-operations (see Section~\ref{sec:semantic-versioning}).
-With the option \code{--ground}, the ground equivalence of operations
-is tested.
-
-\item[\fbox{\code{exec $command$}}]\pindex{exec}
-Executes an arbitrary command with the 
-\code{CURRYPATH} environment variable set to the paths of all dependencies of
-the current package.
-For example, it can be used to execute \ccode{curry check}
-or \ccode{curry analyze} with correct dependencies available.
-
-\item[\fbox{\code{curry $args$}}]\pindex{curry}
-Starts the Curry system with the 
-dependencies of the current package available.
-Any arguments are passed verbatim to the Curry system.
-
+\begin{description}
 \item[\fbox{\code{repl $args$}}]\pindex{repl}
 Starts the Curry system with the 
 dependencies of the current package available.
 Any arguments are passed verbatim to the Curry system.
+\end{description}
 
+
+\subsection{ \code{run}: Compile and run a package executable}
+
+\begin{description}
 \item[\fbox{\code{run $args$}}]\pindex{run}
 Compiles and runs the executable specified in the description
 of the current package (see Section~\ref{sec:reference}).
@@ -1337,59 +1420,115 @@ then the previous command is a short form of the command
 \begin{lstlisting}
 cypm curry :load CurryTest :eval main :quit -- first second
 \end{lstlisting}
+\end{description}
 
 
-\item[\fbox{\code{link $source$}}]\pindex{link}
-Can be used to replace a dependency of the 
-current package using a local copy, see Section~\ref{sec:cpm-link} for details.
+\subsection{ \code{search}: Search in the package repository}
 
-\item[\fbox{\code{add --package $dir$ [--force]}}]\pindex{add}
-Copies the package contained in directory $dir$ into the local copy
-of the central package index so that it can be used by other packages
-in the local environment
-(see Section~\ref{sec:adding-a-package} for details).
-The option \ccode{--force} allows to overwrite existing copies
-in the central package index.
-
-\item[\fbox{\code{add --dependency $package$ [--force]}}]\pindex{add}
-Adds the package $package$ as a new dependency.
-This command adds a dependency to the given package
-either in the package description file (\code{package.json})
-of the current package or in the meta-package
-(see Section~\ref{sec:meta-package}).
-The option \ccode{--force} allows to overwrite existing dependencies
-in the package description file.
-
-\item[\fbox{\code{add $package$ [--force]}}]\pindex{add}
-Adds the package $package$ as a new dependency and install
-the new dependencies. Thus, this abbreviates the two commands
+\begin{description}
+\item[\fbox{\code{search [--module|--exec] $query$}}]\pindex{search}
+Searches the names, synopses, and exported module names of all 
+packages of the central package index for occurrences of the given
+search term.
+If the option \code{--module} is set, then the given name
+is searched in the list of exported modules.
+Thus, the package
+exporting the module \code{JSON.Data} can be found by the command
+%
 \begin{lstlisting}
-cypm add $package$ && cypm install
+> cypm search --module JSON.Data
 \end{lstlisting}
+%
+If the option \code{--exec} is set, then the search is restricted
+to the name of the executable provided by the package.
+For instance, the command
+%
+\begin{lstlisting}
+> cypm search --exec show
+\end{lstlisting}
+%
+lists all packages where the name of the executable contains the
+string \ccode{show}.
+\end{description}
 
-\item[\fbox{\code{clean [--dependencies]}}]\pindex{clean}
-Cleans the current package from the
-generated auxiliary files, e.g., intermediate Curry files,
-installed dependent packages, etc.
-Note that a binary installed in the CPM \code{bin} directory
-(by the \code{install} command) will not be removed.
-For instance, this command can be used to clean an application package
-after installing the application.
 
-If the option \code{-d} or \code{--dependencies} is provided,
-then \emph{all} dependencies in the package specification are removed.
-This might be reasonable in the ``homepackage'' to remove
-locally installed packages.
+\subsection{ \code{test}: Test the current package (with CurryCheck)}
+\label{sec:cmd-test}
 
-\item[\fbox{\code{new $project$}}]\pindex{new}
-Creates a new project package with the given name and some template files
-in the directory $project$.
+\begin{description}
+\item[\fbox{\code{test [--modules $\mathit{modules}$] [--compile]}}]\pindex{test}
+Tests the current package with CurryCheck.
+If the package specification contains a definition of a test suite
+(entry \code{testsuite}, see Section~\ref{sec:reference}),
+then the modules defined there are tested.
+If there is no test suite defined,
+the list of exported modules are tested,
+if they are explicitly specified
+(field \code{exportedModules} of the package specification),
+otherwise all modules in the directory \code{src}
+(including hierarchical modules stored in its subdirectories) are tested.
+Using the option \code{--modules}, one can also specify a comma-separated
+list of module names to be tested.
 
-\item[\fbox{\code{init}}]\pindex{init}
-Initializes a new project package in the current directory
-and puts some template files in this directory.
-The name of the new package is the same as the directory name.
+If the executable \code{curry-check} is not installed or the
+option \code{--compile} is provided, then the modules are only compiled
+and not tested.
+Hence, a package can be checked for compilation errors
+by the command
+\begin{lstlisting}
+cypm test --compile
+\end{lstlisting}
+\end{description}
 
+
+\subsection{ \code{uninstall}: Uninstall a package}
+
+\begin{description}
+\item[\fbox{\code{uninstall}}]\pindex{uninstall}
+Uninstalls the executable installed for the current package.
+
+\item[\fbox{\code{uninstall $package$}}]\pindex{uninstall}
+Uninstalls the executable and the cached copy of a package
+which has been installed by the \code{install} command.
+
+\item[\fbox{\code{uninstall $package$ $version$}}]\pindex{uninstall}
+Uninstalls a specific version
+of a package from the global package cache.
+\end{description}
+
+
+\subsection{ \code{upgrade}: Upgrade one or more packages}
+
+\begin{description}
+\item[\fbox{\code{upgrade}}]\pindex{upgrade}
+Upgrades all dependencies of the current package to
+the newest compatible version.
+
+\item[\fbox{\code{upgrade $package$}}]\pindex{upgrade}
+Upgrades a specific dependency of the
+current package and all its transitive dependencies to their newest compatible
+versions.
+\end{description}
+
+
+\subsection{ \code{update}: Update the package index}
+
+\begin{description}
+\item[\fbox{\code{update}}]\pindex{update}
+Updates the local copy of the central package index
+to the newest available version.
+This command also cleans the global package cache in order to support
+the download of fresh package versions.
+Note that this also removes local copies of packages
+installed by the command \ccode{add --package}.
+The option \code{--url} allows to specify a different URL
+for the central package index (might be useful for experimental purposes).
+\end{description}
+
+
+\subsection{ \code{upload}: Upload current package to Masala/CPM package server}
+
+\begin{description}
 \item[\fbox{\code{upload [--tag] [--nopublish] [--force] [--login $name$] [--password $passwd$]}}]\pindex{upload}
 Uploads the current package to the central package index managed by
 Masala.\index{Masala}%
@@ -1439,7 +1578,6 @@ package has been successfully tested.
 Users registered with administrator rights at Masala can also
 use the option \ccode{--force} to overwrite
 an existing version in the central package index.
-
 \end{description}
 
 
@@ -1824,7 +1962,7 @@ Here are some suggestions how to do this:
 \begin{description}
 \item[\code{cypm clean}]~\\
 This command cleans the current package from
-generated auxiliary files (see Section~\ref{sec:cmd-reference}).
+generated auxiliary files (see Section~\ref{sec:cmd-clean}).
 Then you can re-install the package and packages on which it depends
 by the command \code{cypm install}.
 \item[\code{rm -rf \$HOME/.cpm/packages}] ~\\
