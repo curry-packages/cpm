@@ -399,21 +399,29 @@ modules provided. You can use the command \ccode{cypm curry} to start the
 Curry system (which is either the compiler used to install CPM
 or specified with the configuration option \code{CURRY_BIN},
 see Section~\ref{sec:config}).
-Any parameters given to \ccode{cypm curry} will be passed along verbatim to
-the Curry system.
-For example, the following will start the Curry system,
-print the result of evaluating the expression \code{39+3}
-and then quit.
+Any parameters given to \ccode{cypm curry} will be passed along verbatim
+to the Curry system.
+For example, the following command will start the Curry system,
+prints the result of evaluating the expression \code{39+3}
+and then quits.
 \pindex{curry}
 \begin{lstlisting}
 > cypm curry :eval "39+3" :quit
 \end{lstlisting}
 %
-To execute other Curry commands, such as \ccode{curry check},
-with the package's dependencies available,
+The command \ccode{cypm repl} is just a synonym for \ccode{cypm curry}
+so that one can replace the previous command by
+\pindex{repl}
+\begin{lstlisting}
+> cypm repl :eval "39+3" :quit
+\end{lstlisting}
+%
+To execute other commands with the package's dependencies available,
+such as tools like CurryCheck \cite{Hanus16LOPSTR}
+with its executable \code{curry-check},
 you can use the \ccode{cypm exec} command.
 This command will set the \code{CURRYPATH} environment variable
-and then execute the command given after \ccode{exec}.
+and then executes the command given after \ccode{exec}.
 
 
 \subsection{Using Packages Outside a Package}
@@ -1283,7 +1291,6 @@ operations (see Section~\ref{sec:semantic-versioning}).
 With the option \code{--ground}, the ground equivalence of operations
 is tested.
 
-
 \item[\fbox{\code{exec $command$}}]\pindex{exec}
 Executes an arbitrary command with the 
 \code{CURRYPATH} environment variable set to the paths of all dependencies of
@@ -1292,9 +1299,45 @@ For example, it can be used to execute \ccode{curry check}
 or \ccode{curry analyze} with correct dependencies available.
 
 \item[\fbox{\code{curry $args$}}]\pindex{curry}
-Executes the Curry compiler with the 
+Starts the Curry system with the 
 dependencies of the current package available.
-Any arguments are passed verbatim to the compiler.
+Any arguments are passed verbatim to the Curry system.
+
+\item[\fbox{\code{repl $args$}}]\pindex{repl}
+Starts the Curry system with the 
+dependencies of the current package available.
+Any arguments are passed verbatim to the Curry system.
+
+\item[\fbox{\code{run $args$}}]\pindex{run}
+Compiles and runs the executable specified in the description
+of the current package (see Section~\ref{sec:reference}).
+If the package specifies more than one executable,
+the first argument following \ccode{run} should be the
+name of the executable, otherwise the first executable is selected.
+If one wants to pass run-time arguments to the executable,
+they should be prefixed by \ccode{--}.
+For instance, if the executable has the name \code{currytest},
+it can be compiled and executed with the run-time arguments
+\ccode{first second} by
+%
+\begin{lstlisting}
+cypm run currytest -- first second
+\end{lstlisting}
+%
+If \code{currytest} is the only executable of the package,
+the command can be abbreviated to
+%
+\begin{lstlisting}
+cypm run -- first second
+\end{lstlisting}
+%
+If \code{CurryTest} is the main module of this executable,
+then the previous command is a short form of the command
+%
+\begin{lstlisting}
+cypm curry :load CurryTest :eval main :quit -- first second
+\end{lstlisting}
+
 
 \item[\fbox{\code{link $source$}}]\pindex{link}
 Can be used to replace a dependency of the 

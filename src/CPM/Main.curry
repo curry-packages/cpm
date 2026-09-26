@@ -11,7 +11,7 @@ import Crypto.Hash         ( getHash )
 import Data.Char           ( toLower )
 import Data.List           ( (\\), delete, findIndex, groupBy, init
                            , intercalate, isInfixOf, isPrefixOf, isSuffixOf
-                           , nub, replace, split, sortBy )
+                           , nub, replace, split, sortBy, permutations )
 import Data.Maybe          ( isJust, isNothing )
 import Data.Time           ( calendarTimeToString, getClockTime, toUTCTime )
 import FlatCurry.Files     ( readFlatCurryInt )
@@ -77,7 +77,7 @@ import CPM.Helpers              ( askYesNo )
 
 -- Date of current version:
 cpmDate :: String
-cpmDate = "24/09/2026"
+cpmDate = "26/09/2026"
 
 -- Banner of this tool:
 cpmBanner :: String
@@ -130,6 +130,7 @@ runWithArgs opts = do
         Update o    -> updateCmd    o config
         Compiler o  -> curryCmd     o config
         Exec o      -> execCmd      o config
+        Run  o      -> runCmd       o config
         Doc  o      -> docCmd       o config
         Test o      -> testCmd      o config
         Uninstall o -> uninstallCmd o config
@@ -983,6 +984,45 @@ curryCmd o cfg = do
   execWithPkgDir
     (ExecOptions $ unwords [curryExec cfg, "--nocypm", exeCommand o])
     cfg pkgdir
+
+-- Implementation of the `run` command.
+-- Compiles and runs the executable specified in the package.
+runCmd :: ExecOptions -> Config -> ErrorLogger ()
+runCmd o cfg = case words (exeCommand o) of
+  []             -> runC (Nothing, [])
+  ("--":args)    -> runC (Nothing, args)
+  [en]           -> runC (Just en, [])
+  (en:"--":args) -> runC (Just en, args)
+  ws             -> logCritical $ "Illegal parameters: " ++ unwords ws
+ where
+  runC (mbexec,rtargs)= do
+    pkgdir <- getLocalPackageSpec cfg "."
+    pkg    <- loadPackageSpec pkgdir
+    checkCompiler cfg pkg
+    let pkgexecs =
+          filter (\(PackageExecutable name _ _) -> maybe True (==name) mbexec)
+                 (executableSpec pkg)
+    case pkgexecs of
+      []     -> logCritical $ maybe
+                  "Package has no executable, nothing to run!"
+                  (\en -> "Package has no executable with name '" ++ en ++ "'")
+                  mbexec
+      [pe]   -> runExec pe
+      (pe:_) -> do
+        logInfo "Package has more than one executable, running the first..."
+        runExec pe
+   where
+    runExec (PackageExecutable _ mainmod eopts) = do
+      lvl <- getLogLevel
+      logInfo $ "Compiling and running module '" ++ mainmod ++ "'..."
+      let (cmpname,_,_,_) = compilerVersion cfg
+          cmd = unwords $
+                  [":set", if levelGte Debug lvl then "v1" else "v0"
+                  , maybe "" id (lookup cmpname eopts)
+                  , ":load", mainmod, ":eval", "main", ":quit"] ++
+                  (if null rtargs then [] else "--":rtargs)
+      curryCmd (ExecOptions cmd) cfg
+
 
 -- Implementation of the `exec` command.
 execCmd :: ExecOptions -> Config -> ErrorLogger ()

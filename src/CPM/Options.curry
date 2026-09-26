@@ -49,6 +49,7 @@ data Command
   | Link       LinkOptions
   | Add        AddOptions
   | Exec       ExecOptions
+  | Run        ExecOptions
   | Doc        DocOptions
   | Test       TestOptions
   | Diff       DiffOptions
@@ -354,9 +355,9 @@ optionParser allargs = optParser
                     (\a -> Right $ a { optCommand = ConfigCmd (configOpts a) })
                     configArgs
         <|> command "curry"
-           (help "Load package spec and start Curry with correct dependencies.")
+            (help "Load package spec and start Curry with correct dependencies")
                  (\a -> Right $ a { optCommand = Compiler (execOpts a) })
-                 curryArgs
+                 (curryArgs "curry")
         <|> command "deps" (help "Calculate and show dependencies")
                            (\a -> Right $ a { optCommand = Deps (depsOpts a) })
                            depsArgs
@@ -380,7 +381,7 @@ optionParser allargs = optParser
         <|> command "init"
                     (help "Initialize the current directory as a package")
                     (\a -> Right $ a { optCommand = Init }) []
-        <|> command "install" (help "Install a package with its dependencies.")
+        <|> command "install" (help "Install a package with its dependencies")
                      (\a -> Right $ a { optCommand = Install (installOpts a) })
                      installArgs
         <|> command "link" (help "Link a package to the local cache") Right
@@ -389,6 +390,14 @@ optionParser allargs = optParser
                     (\a -> Right $ a { optCommand = List (listOpts a) })
                     listArgs
         <|> command "new" (help "Create a new package") Right newArgs
+        <|> command "repl"
+       (help "Load package spec and start Curry REPL with correct dependencies")
+                 (\a -> Right $ a { optCommand = Compiler (execOpts a) })
+                 (curryArgs "repl")
+        <|> command "run"
+                 (help "Compile and run a package executable")
+                 (\a -> Right $ a { optCommand = Run (execOpts a) })
+                 runArgs
         <|> command "search" (help "Search the package repository") Right
                     searchArgs
         <|> command "test" (help "Test the current package (with CurryCheck)")
@@ -547,14 +556,24 @@ optionParser allargs = optParser
        (  metavar "PROJECT"
        <> help "The name of the new project" )
 
-  curryArgs =
+  curryArgs cmds =
     rest (\_ a -> Right $ a { optCommand = Compiler (execOpts a)
                                             { exeCommand = unwords remargs } })
          (  metavar "ARGS"
-         <> help "The options to pass to the compiler"
+         <> help "The options to pass to the Curry system"
          <> optional )
     where
-     remargs = tail (snd (break (=="curry") allargs))
+     remargs = tail (snd (break (==cmds) allargs))
+
+  runArgs =
+    rest (\_ a -> Right $ a { optCommand = Run (execOpts a)
+                                            { exeCommand = unwords remargs } })
+         (  metavar "ARGS"
+         <> help ": [executable name] [ -- run-time arguments]"
+         <> optional )
+    <.> flag Right ( short "-" ) -- hack to avoid parse errors on "-- ..."
+    where
+     remargs = tail (snd (break (=="run") allargs))
 
   updateArgs =
     option (\s a -> let opts = updateOpts a
@@ -597,7 +616,7 @@ optionParser allargs = optParser
             <> long "force"
             <> help "Force, i.e., overwrite existing package version" )
    <.> flag (\a -> Right $ a { optCommand =
-                                 Upload (uploadOpts a) { uploadPublish = False } })
+                              Upload (uploadOpts a) { uploadPublish = False } })
             (  short "n"
             <> long "nopublish"
             <> help "Do not publish the uploaded package version" )
@@ -608,7 +627,7 @@ optionParser allargs = optParser
               <> help "The login name to Masala"
               <> optional )
    <.> option (\s a -> Right $ a { optCommand =
-                                    Upload (uploadOpts a) { uploadPasswd = s } })
+                                   Upload (uploadOpts a) { uploadPasswd = s } })
               (  long "password"
               <> short "p"
               <> help "The password for the Masala login"
