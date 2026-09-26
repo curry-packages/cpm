@@ -6,6 +6,7 @@ The Curry package manager is implemented in Curry
 It is already part of recent distributions of the Curry systems
 [PAKCS](https://www.curry-lang.org/pakcs/) (Version 1.15.0 or higher),
 [KiCS2](https://www.curry-lang.org/kics2/) (Version 0.6.0 or higher),
+[KMCC](https://www.curry-lang.org/kmcc/) (Version 0.6.0 or higher),
 and
 [Curry2Go](https://www.curry-lang.org/curry2go/).
 
@@ -30,7 +31,7 @@ the CPM source code in the `cdoc` directory.
 
 ## Contents of the repository
 
-- `CompilerRequirements`: A description of the requirements to a
+- `CompilerRequirements.md`: A description of the requirements to a
   Curry compiler so that it can be used with CPM.
 
 - `Implementation.md`: Some details about CPM's implementation, like
